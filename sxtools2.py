@@ -31,8 +31,6 @@ from mathutils import Vector
 # ------------------------------------------------------------------------
 class SXTOOLS2_sxglobals(object):
     def __init__(self):
-        self.layer_update = False
-        self.layer_index = 0
         self.librariesLoaded = False
         self.refreshInProgress = False
         self.hslUpdate = False
@@ -87,6 +85,13 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
 
     selectedlayer: bpy.props.IntProperty(
         name='Selected Layer',
+        min=0,
+        default=0)
+        # update=refresh_actives)
+
+    # Running index for unique layer names
+    layercount: bpy.props.IntProperty(
+        name='Layer Count',
         min=0,
         default=0)
         # update=refresh_actives)
@@ -353,6 +358,14 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
             ('NONMET', 'Non-Metallic', '')],
         default='MET')
 
+    expandlayer: bpy.props.BoolProperty(
+        name='Expand Layer Controls',
+        default=False)
+
+    expandfill: bpy.props.BoolProperty(
+        name='Expand Fill',
+        default=False)
+
 
 class SXTOOLS2_layer(bpy.types.PropertyGroup):
     # name: from PropertyGroup
@@ -383,7 +396,12 @@ class SXTOOLS2_layer(bpy.types.PropertyGroup):
         max=1.0,
         default=(0.0, 0.0, 0.0, 0.0))
 
-    visibility: bpy.props.IntProperty(
+    visibility: bpy.props.BoolProperty(
+        name='Layer Visibility',
+        default=True)
+
+    # Int-type duplicate of the above for shader network
+    int_visibility: bpy.props.IntProperty(
         name='Layer Visibility',
         min=0,
         max=1,
@@ -454,7 +472,6 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
 
     def draw(self, context):
-        print('1')
         objs = selection_validator(self, context)
         layout = self.layout
 
@@ -468,8 +485,6 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
             sel_idx = objs[0].sx2.selectedlayer
             layer = utils.find_layer_from_index(obj, sel_idx)
             # if layer is None:
-            #     sel_idx = 1
-            #     layer = utils.find_layer_from_index(obj, sel_idx)
             #     message_box('Invalid layer selected!', 'SX Tools Error', 'ERROR')
 
             row_shading = layout.row()
@@ -477,15 +492,63 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
             row_shading.operator("wm.url_open", text='', icon='URL').url = 'https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6'
 
             # Layer Controls -----------------------------------------------
+            box_layer = layout.box()
+            row_layer = box_layer.row()
+
+            if layer is None:
+                box_layer.enabled = False
+                row_layer.label(text='No layers')
+            else:
+                row_layer.prop(
+                    scene, 'expandlayer',
+                    icon='TRIA_DOWN' if scene.expandlayer else 'TRIA_RIGHT',
+                    icon_only=True, emboss=False)
+
+                split_basics = row_layer.split(factor=0.3)
+                split_basics.prop(layer, 'blend_mode', text='')
+                split_basics.prop(layer, 'opacity', slider=True, text='Layer Opacity')
+
+                if ((layer.name == 'occlusion') or
+                    (layer.name == 'smoothness') or
+                    (layer.name == 'metallic') or
+                    (layer.name == 'transmission') or
+                    (layer.name == 'emission')):
+                    split_basics.enabled = False
+
+                if scene.expandlayer:
+                    if obj.mode == 'OBJECT':
+                        hue_text = 'Layer Hue'
+                        saturation_text = 'Layer Saturation'
+                        lightness_text = 'Layer Lightness'
+                    else:
+                        hue_text = 'Selection Hue'
+                        saturation_text = 'Selection Saturation'
+                        lightness_text = 'Selection Lightness'
+
+                    col_hsl = box_layer.column(align=True)
+                    row_hue = col_hsl.row(align=True)
+                    row_hue.prop(scene, 'huevalue', slider=True, text=hue_text)
+                    row_sat = col_hsl.row(align=True)
+                    row_sat.prop(scene, 'saturationvalue', slider=True, text=saturation_text)
+                    row_lightness = col_hsl.row(align=True)
+                    row_lightness.prop(scene, 'lightnessvalue', slider=True, text=lightness_text)
+
+                    if ((layer.name == 'occlusion') or
+                        (layer.name == 'smoothness') or
+                        (layer.name == 'metallic') or
+                        (layer.name == 'transmission') or
+                        (layer.name == 'emission') or
+                        (layer.index == 8) or
+                        (layer.index == 9)):
+                        row_hue.enabled = False
+                        row_sat.enabled = False
+
             row_palette = layout.row(align=True)
             for i in range(8):
                 row_palette.prop(scene, 'layerpalette' + str(i+1), text='')
 
-            print('2')
             split_list = layout.split(factor=0.9, align=True)
-            if not sxglobals.layer_update:
-                split_list.template_list('SXTOOLS2_UL_layerlist', 'sx2.layerlist', obj, 'sx2layers', sx2, 'selectedlayer', type='DEFAULT', sort_reverse=False)
-            print('3')
+            split_list.template_list('SXTOOLS2_UL_layerlist', 'sx2.layerlist', obj, 'sx2layers', sx2, 'selectedlayer', type='DEFAULT', sort_reverse=True)
             col_list = split_list.column(align=True)
             col_list.operator('sx2.add_layer', text='', icon='ADD')
             col_list.operator('sx2.del_layer', text='', icon='REMOVE')
@@ -518,7 +581,6 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
 class SXTOOLS2_UL_layerlist(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index, flt_flag):
-        print('p1')
         scene = context.scene.sx2
         objs = selection_validator(self, context)
         hide_icon = {False: 'HIDE_ON', True: 'HIDE_OFF'}
@@ -541,6 +603,7 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
                 row_item.label(text='', icon='UNLOCKED')
 
             row_item.label(text='  ' + item.name)
+
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
             layout.label(text='', icon=hide_icon[item.visibility])
@@ -552,19 +615,17 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
 
 
     def filter_items(self, context, data, propname):
-        print('p2')
         objs = selection_validator(self, context)
         if len(objs) > 0:
             flt_flags = []
             flt_neworder = []
             flt_flags = [self.bitflag_filter_item] * len(objs[0].sx2layers)
-            print('p3')
-            for i, layer in enumerate(objs[0].sx2layers):
+            for i in range(len(objs[0].sx2layers)):
                 flt_neworder.append(i)
+
                 # if not layer.enabled:
                 #     flt_flags[idx] |= ~self.bitflag_filter_item
 
-            print('p4')
             return flt_flags, flt_neworder
 
 
@@ -605,17 +666,8 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
         objs = selection_validator(self, context)
         if len(objs) > 0:
             for obj in objs:
-                indices = []
-                if len(obj.sx2layers) > 0:
-                    for layer in obj.sx2layers:
-                        indices.append(layer.index)
-                    max_index = max(indices)
-                else:
-                    max_index = -1
-
                 item = obj.sx2layers.add()
-                item.index = len(obj.sx2layers) - 1
-                item.name = 'Layer' + str(max_index + 1)
+                item.name = 'Layer' + str(obj.sx2.layercount)
                 item.layer_type = 'COLOR'
                 item.default_color = (0.0, 0.0, 0.0, 0.0)
                 item.visibility = 1
@@ -626,7 +678,9 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
 
                 obj.data.attributes.new(name=item.name, type='FLOAT_COLOR', domain='CORNER')
 
+                item.index = len(obj.sx2layers) - 1
                 obj.sx2.selectedlayer = item.index
+                obj.sx2.layercount += 1
 
             # tools.apply_tool(objs, layer, color=color)
             # if context.scene.sx2.toolmode == 'COL':
@@ -647,17 +701,14 @@ class SXTOOLS2_OT_del_layer(bpy.types.Operator):
 
 
     def invoke(self, context, event):
-        sxglobals.layer_update = True
         objs = selection_validator(self, context)
         if len(objs) > 0:
             idx = objs[0].sx2.selectedlayer
             for obj in objs:
-                layer = utils.find_layer_from_index(obj, idx)
-                if layer is not None:
+                if len(obj.sx2layers) > 0:
                     obj.sx2.selectedlayer = 0 if (idx - 1 < 0) else idx - 1
-                    obj.data.attributes.remove(obj.data.attributes[layer.color_attribute])
+                    obj.data.attributes.remove(obj.data.attributes[idx])
                     obj.sx2layers.remove(idx)
-        sxglobals.layer_update = False
 
         return {'FINISHED'}
 
