@@ -1648,7 +1648,7 @@ class SXTOOLS2_setup(object):
         prev_color = base_color.outputs['Color']
 
         # Layer groups
-        for i in range(layercount):
+        for i in range(layercount-1):
             source_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
             source_color.name = 'LayerColor' + str(i + 1)
             source_color.label = 'LayerColor' + str(i + 1)
@@ -1759,6 +1759,8 @@ class SXTOOLS2_setup(object):
         for obj_name in sx_mat_objs:
             # context.scene.objects[obj_name].sxtools.shadingmode = 'FULL'
             context.scene.objects[obj_name].active_material = bpy.data.materials['SX2Material']
+        for obj in objs:
+            context.scene.objects[obj.name].active_material = bpy.data.materials['SX2Material']
 
 
     def __del__(self):
