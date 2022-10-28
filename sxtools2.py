@@ -1615,6 +1615,156 @@ class SXTOOLS2_tools(object):
         print('SX Tools: Exiting tools')
 
 
+
+
+
+
+
+# ------------------------------------------------------------------------
+#    Scene Setup
+# ------------------------------------------------------------------------
+class SXTOOLS2_setup(object):
+    def __init__(self):
+        return None
+
+
+    def create_sx2material(self, layercount):
+
+        sxmaterial = bpy.data.materials.new(name='SX2Material')
+        sxmaterial.use_nodes = True
+        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'].default_value = [0.0, 0.0, 0.0, 1.0]
+        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = [0.0, 0.0, 0.0, 1.0]
+        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = 0.5
+        sxmaterial.node_tree.nodes['Principled BSDF'].location = (0, 0)
+
+        sxmaterial.node_tree.nodes['Material Output'].location = (300, 0)
+
+        base_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
+        base_color.name = 'BaseColor'
+        base_color.label = 'BaseColor'
+        base_color.layer_name = 'Layer 0'
+        base_color.location = (-1000, -600)
+
+        prev_color = base_color.outputs['Color']
+
+        # Layer groups
+        for i in range(layercount):
+            source_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
+            source_color.name = 'LayerColor' + str(i + 1)
+            source_color.label = 'LayerColor' + str(i + 1)
+            source_color.layer_name = 'Layer ' + str(i + 1)
+            source_color.location = (-800, i*500)
+
+            layer_visibility = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
+            layer_visibility.name = 'Layer Visibility' + str(i + 1)
+            layer_visibility.label = 'Layer Visibility' + str(i + 1)
+            layer_visibility.attribute_name = 'sx2layers[' + str(i + 1) + '].int_visibility'
+            layer_visibility.attribute_type = 'OBJECT'
+            layer_visibility.location = (-1000, i*500)
+
+            layer_opacity = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
+            layer_opacity.name = 'Layer Opacity' + str(i + 1)
+            layer_opacity.label = 'Layer Opacity' + str(i + 1)
+            layer_opacity.attribute_name = 'sx2layers[' + str(i + 1) + '].opacity'
+            layer_opacity.attribute_type = 'OBJECT'
+            layer_opacity.location = (-1000, i*500+200)
+
+            vis_and_opacity = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
+            vis_and_opacity.name = 'Opacity ' + str(i + 1)
+            vis_and_opacity.label = 'Opacity ' + str(i + 1)
+            vis_and_opacity.operation = 'MULTIPLY'
+            vis_and_opacity.use_clamp = True
+            vis_and_opacity.inputs[0].default_value = 1
+            vis_and_opacity.location = (-800, i*500+200)
+
+            toggles_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
+            toggles_and_alpha.name = 'Opacity ' + str(i + 1)
+            toggles_and_alpha.label = 'Opacity ' + str(i + 1)
+            toggles_and_alpha.operation = 'MULTIPLY'
+            toggles_and_alpha.use_clamp = True
+            toggles_and_alpha.inputs[0].default_value = 1
+            toggles_and_alpha.location = (-600, i*500+200)
+
+            layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
+            layer_blend.name = 'Mix ' + str(i + 1)
+            layer_blend.label = 'Mix ' + str(i + 1)
+            layer_blend.inputs[0].default_value = 1
+            layer_blend.inputs[2].default_value = [1.0, 1.0, 1.0, 1.0]
+            layer_blend.blend_type = 'MIX'
+            layer_blend.use_clamp = True
+            layer_blend.location = (-400, i*500+200)
+
+            # Group connections
+            output = source_color.outputs['Color']
+            input = layer_blend.inputs['Color2']
+            sxmaterial.node_tree.links.new(input, output)   
+
+            output = layer_opacity.outputs[2]
+            input = vis_and_opacity.inputs[0]
+            sxmaterial.node_tree.links.new(input, output)
+
+            output = layer_visibility.outputs[2]
+            input = vis_and_opacity.inputs[1]
+            sxmaterial.node_tree.links.new(input, output)
+
+            output = vis_and_opacity.outputs[0]
+            input = toggles_and_alpha.inputs[0]
+            sxmaterial.node_tree.links.new(input, output)
+
+            output = source_color.outputs['Alpha']
+            input = toggles_and_alpha.inputs[1]
+            sxmaterial.node_tree.links.new(input, output)
+
+            output = toggles_and_alpha.outputs[0]
+            input = layer_blend.inputs[0]
+            sxmaterial.node_tree.links.new(input, output)
+
+            output = prev_color
+            input = layer_blend.inputs['Color1']
+            sxmaterial.node_tree.links.new(input, output)
+
+            prev_color = layer_blend.outputs['Color']
+
+        output = prev_color
+        input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color']
+        sxmaterial.node_tree.links.new(input, output)
+
+
+    def update_sx2material(self, context):
+        sx_mat_objs = []
+
+        if 'SX2Material' in bpy.data.materials.keys():
+            sx_mats = [mat for mat in bpy.data.materials.keys() if 'SX2Material' in mat]
+
+            for mat in sx_mats:
+                sx_mat = bpy.data.materials.get(mat)
+
+                for obj in context.scene.objects:
+                    if obj.active_material == bpy.data.materials[mat]:
+                        sx_mat_objs.append(obj.name)
+                        obj.data.materials.clear()
+
+                sx_mat.user_clear()
+                bpy.data.materials.remove(sx_mat)
+
+        bpy.context.view_layer.update()
+
+        objs = selection_validator(self, context)
+        layercount = 0
+        for obj in objs:
+            if len(obj.sx2layers) > layercount:
+                layercount = len(obj.sx2layers)
+        setup.create_sx2material(layercount)
+
+        for obj_name in sx_mat_objs:
+            # context.scene.objects[obj_name].sxtools.shadingmode = 'FULL'
+            context.scene.objects[obj_name].active_material = bpy.data.materials['SX2Material']
+
+
+    def __del__(self):
+        print('SX Tools: Exiting setup')
+
+
 # ------------------------------------------------------------------------
 #    Settings and properties
 # ------------------------------------------------------------------------
@@ -2258,6 +2408,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 for i in range(8):
                     row_fpalette.prop(scene, 'fillpalette' + str(i+1), text='')
 
+            layout.operator('sx2.create_material')
+
         else:
             col = layout.column()
             col.label(text='Select a mesh to continue')
@@ -2273,20 +2425,23 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             row_item = layout.row(align=True)
 
-            if scene.shadingmode == 'FULL':
-                row_item.prop(item, 'visibility', text='', icon=hide_icon[item.visibility])
-            else:
-                row_item.label(icon=hide_icon[(item.index == objs[0].sx2.selectedlayer)])
+            # if scene.shadingmode == 'FULL':
+            #     row_item.prop(item, 'visibility', text='', icon=hide_icon[item.visibility])
+            # else:
+            #     row_item.label(icon=hide_icon[(item.index == objs[0].sx2.selectedlayer)])
 
-            if sxglobals.mode == 'OBJECT':
-                if scene.toolmode == 'PAL':
-                    row_item.label(text='', icon='LOCKED')
-                else:
-                    row_item.prop(item, 'locked', text='', icon=lock_icon[item.locked])
-            else:
-                row_item.label(text='', icon='UNLOCKED')
+            # if sxglobals.mode == 'OBJECT':
+            #     if scene.toolmode == 'PAL':
+            #         row_item.label(text='', icon='LOCKED')
+            #     else:
+            #         row_item.prop(item, 'locked', text='', icon=lock_icon[item.locked])
+            # else:
+            #     row_item.label(text='', icon='UNLOCKED')
 
+            row_item.prop(item, 'visibility', text='', icon=hide_icon[item.visibility])
+            row_item.prop(item, 'locked', text='', icon=lock_icon[item.locked])
             row_item.label(text='  ' + item.name)
+            # row_item.prop(item, 'name', text='')
 
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
@@ -2374,9 +2529,7 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
                 colors = generate.color_list(obj, item.default_color)
                 layers.set_layer(obj, colors, layer)
 
-            # update_sx2material()
-
-            # sxglobals.composite = True
+        setup.update_sx2material(context)
             # refresh_actives(self, context)
 
         return {'FINISHED'}
@@ -2405,8 +2558,22 @@ class SXTOOLS2_OT_del_layer(bpy.types.Operator):
                     l_list.append(layer.index)
                 print('indices:', l_list)
 
+        setup.update_sx2material(context)
+
         return {'FINISHED'}
 
+
+class SXTOOLS2_OT_create_material(bpy.types.Operator):
+    bl_idname = 'sx2.create_material'
+    bl_label = 'Create Material'
+    bl_description = 'Create Material'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        setup.update_sx2material(context)
+
+        return {'FINISHED'}
 
 
 # ------------------------------------------------------------------------
@@ -2418,6 +2585,7 @@ convert = SXTOOLS2_convert()
 generate = SXTOOLS2_generate()
 layers = SXTOOLS2_layers()
 tools = SXTOOLS2_tools()
+setup = SXTOOLS2_setup()
 
 classes = (
     SXTOOLS2_objectprops,
@@ -2427,7 +2595,8 @@ classes = (
     SXTOOLS2_UL_layerlist,
     SXTOOLS2_OT_applytool,
     SXTOOLS2_OT_add_layer,
-    SXTOOLS2_OT_del_layer)
+    SXTOOLS2_OT_del_layer,
+    SXTOOLS2_OT_create_material)
 
 addon_keymaps = []
 
