@@ -2289,8 +2289,9 @@ def message_box(message='', title='SX Tools', icon='INFO'):
 def update_layer_visibility(self, context):
     objs = selection_validator(self, context)
     for obj in objs:
-        layer = obj.sx2layers[obj.sx2.selectedlayer]
-        layer.int_visibility = int(layer.visibility)
+        for layer in obj.sx2layers:
+            if layer.int_visibility != int(layer.visibility):
+                layer.int_visibility = int(layer.visibility)
 
 
 # ------------------------------------------------------------------------
