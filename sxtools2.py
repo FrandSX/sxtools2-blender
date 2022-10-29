@@ -44,6 +44,7 @@ class SXTOOLS2_sxglobals(object):
         self.mode = None
         self.modeID = None
         self.layer_list_dict = {}
+        self.layer_order = []
 
         self.randomseed = 42
 
@@ -93,15 +94,29 @@ class SXTOOLS2_utils(object):
 
 
     def insert_layer_at_index(self, obj, inserted_layer, index):
-        if len(obj.sx2layers) > 1:
-            for layer in obj.sx2layers:
-                if layer.index >= index:
-                    layer.index += 1
-            inserted_layer.index = index
-        else:
-            inserted_layer.index = 0
+        sxglobals.layer_list_dict.clear()
+
+        if len(obj.sx2layers) == 1:
             index = 0
-        
+
+        layers = []
+        for layer in obj.sx2layers:
+            layers.append((layer.index, layer.color_attribute))
+
+        layers.sort(key=lambda y: y[0])
+
+        print(layers)
+        layers.remove((100, inserted_layer.color_attribute))
+        print(layers)
+        layers.insert(index, (index, inserted_layer.color_attribute))
+        print(layers)
+
+        for i, layer_tuple in enumerate(layers):
+            for layer in obj.sx2layers:
+                if layer.color_attribute == layer_tuple[1]:
+                    layer.index = i
+                    sxglobals.layer_list_dict[i] = layer.color_attribute
+
         return index
 
 
@@ -1863,8 +1878,10 @@ def message_box(message='', title='SX Tools', icon='INFO'):
 def update_selected_layer(self, context):
     objs = selection_validator(self, context)
     print(sxglobals.layer_list_dict)
+    print('selected layer:', objs[0].sx2.selectedlayer)
     for obj in objs:
-        obj.data.attributes.active_color = obj.data.attributes[sxglobals.layer_list_dict[obj.sx2.selectedlayer]]
+        if len(obj.sx2layers) > 0:
+            obj.data.attributes.active_color = obj.data.attributes[sxglobals.layer_list_dict[obj.sx2.selectedlayer]]
 
 
 def update_layer_visibility(self, context):
@@ -2591,14 +2608,13 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
                 item.blend_mode = 'ALPHA'
                 item.color_attribute = item.name
                 item.locked = False
+                item.index = 999
 
                 obj.data.attributes.new(name=item.name, type='FLOAT_COLOR', domain='CORNER')
+                item.index = utils.insert_layer_at_index(obj, item, obj.sx2layers[obj.sx2.selectedlayer].index + 1)
+                print('added at:', item.index)
 
-                list_index = obj.sx2.selectedlayer + 1
-                item.index = utils.insert_layer_at_index(obj, item, list_index)
-                print('add:', list_index, 'sel:', item.index)
-                utils.sort_layer_indices(obj)
-                obj.sx2.selectedlayer = item.index
+                obj.sx2.selectedlayer = len(obj.sx2layers) - 1
                 obj.sx2.layercount += 1
 
                 l_list = []
