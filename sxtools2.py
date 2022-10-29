@@ -104,12 +104,8 @@ class SXTOOLS2_utils(object):
             layers.append((layer.index, layer.color_attribute))
 
         layers.sort(key=lambda y: y[0])
-
-        print(layers)
         layers.remove((100, inserted_layer.color_attribute))
-        print(layers)
         layers.insert(index, (index, inserted_layer.color_attribute))
-        print(layers)
 
         for i, layer_tuple in enumerate(layers):
             for layer in obj.sx2layers:
@@ -2480,8 +2476,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
             col_list.operator('sx2.add_layer', text='', icon='ADD')
             col_list.operator('sx2.del_layer', text='', icon='REMOVE')
             col_list.separator()
-            col_list.operator('sx2.applytool', text='', icon='TRIA_UP')
-            col_list.operator('sx2.applytool', text='', icon='TRIA_DOWN')
+            col_list.operator('sx2.layer_up', text='', icon='TRIA_UP')
+            col_list.operator('sx2.layer_down', text='', icon='TRIA_DOWN')
 
             # Fill Tools --------------------------------------------------------
             box_fill = layout.box()
@@ -2617,13 +2613,8 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
                 obj.sx2.selectedlayer = len(obj.sx2layers) - 1
                 obj.sx2.layercount += 1
 
-                l_list = []
-                for layer in obj.sx2layers:
-                    l_list.append(layer.index)
-                print('indices:', l_list)
-
                 colors = generate.color_list(obj, item.default_color)
-                layers.set_layer(obj, colors, layer)
+                layers.set_layer(obj, colors, obj.sx2layers[obj.sx2.selectedlayer])
 
         setup.update_sx2material(context)
             # refresh_actives(self, context)
@@ -2644,11 +2635,70 @@ class SXTOOLS2_OT_del_layer(bpy.types.Operator):
             idx = objs[0].sx2.selectedlayer
             for obj in objs:
                 if len(obj.sx2layers) > 0:
+                    bottom_layer_index = obj.sx2layers[idx].index - 1 if obj.sx2layers[idx].index - 1 > 0 else 0
                     obj.data.attributes.remove(obj.data.attributes[idx])
                     obj.sx2layers.remove(idx)
                     utils.sort_layer_indices(obj)
-                    obj.sx2.selectedlayer = 0 if (idx - 1 < 0) else idx - 1
+                    for i, layer in enumerate(obj.sx2layers):
+                        if layer.index == bottom_layer_index:
+                            obj.sx2.selectedlayer = i
                     print('del:', idx, 'sel:', obj.sx2.selectedlayer)
+
+                l_list = []
+                for layer in obj.sx2layers:
+                    l_list.append(layer.index)
+                print('indices:', l_list)
+
+        setup.update_sx2material(context)
+
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_layer_up(bpy.types.Operator):
+    bl_idname = 'sx2.layer_up'
+    bl_label = 'Layer Up'
+    bl_description = 'Move layer up'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            idx = objs[0].sx2.selectedlayer
+            for obj in objs:
+                if len(obj.sx2layers) > 0:
+                    new_index = obj.sx2layers[idx].index + 1 if obj.sx2layers[idx].index + 1 < len(obj.sx2layers) else obj.sx2layers[idx].index
+                    obj.sx2layers[idx].index = 100
+                    obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
+                    print('added at:', obj.sx2layers[idx].index)
+
+                l_list = []
+                for layer in obj.sx2layers:
+                    l_list.append(layer.index)
+                print('indices:', l_list)
+
+        setup.update_sx2material(context)
+
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_layer_down(bpy.types.Operator):
+    bl_idname = 'sx2.layer_down'
+    bl_label = 'Layer Down'
+    bl_description = 'Move layer down'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            idx = objs[0].sx2.selectedlayer
+            for obj in objs:
+                if len(obj.sx2layers) > 0:
+                    new_index = obj.sx2layers[idx].index - 1 if obj.sx2layers[idx].index -1 >= 0 else 0
+                    obj.sx2layers[idx].index = 100
+                    obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
+                    print('added at:', obj.sx2layers[idx].index)
 
                 l_list = []
                 for layer in obj.sx2layers:
@@ -2693,6 +2743,8 @@ classes = (
     SXTOOLS2_OT_applytool,
     SXTOOLS2_OT_add_layer,
     SXTOOLS2_OT_del_layer,
+    SXTOOLS2_OT_layer_up,
+    SXTOOLS2_OT_layer_down,
     SXTOOLS2_OT_create_material)
 
 addon_keymaps = []
