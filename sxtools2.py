@@ -1645,7 +1645,14 @@ class SXTOOLS2_setup(object):
         return None
 
 
-    def create_sx2material(self, layercount):
+    def create_sx2material(self, objs):
+        blend_mode_dict = {'ALPHA': 'MIX', 'OVR': 'OVERLAY', 'MUL': 'MULTIPLY', 'ADD': 'ADD'}
+
+        # TODO: Create and assign material per object
+        layercount = 0
+        for obj in objs:
+            if len(obj.sx2layers) > layercount:
+                layercount = len(obj.sx2layers)
 
         sxmaterial = bpy.data.materials.new(name='SX2Material')
         sxmaterial.use_nodes = True
@@ -1708,7 +1715,7 @@ class SXTOOLS2_setup(object):
                 layer_blend.label = 'Mix ' + str(i + 1)
                 layer_blend.inputs[0].default_value = 1
                 layer_blend.inputs[2].default_value = [1.0, 1.0, 1.0, 1.0]
-                layer_blend.blend_type = 'MIX'
+                layer_blend.blend_type = blend_mode_dict[objs[0].sx2layers[sxglobals.layer_list_dict[i+1]].blend_mode]
                 layer_blend.use_clamp = True
                 layer_blend.location = (-400, i*500+200)
 
@@ -1768,12 +1775,9 @@ class SXTOOLS2_setup(object):
         bpy.context.view_layer.update()
 
         objs = selection_validator(self, context)
-        layercount = 0
-        for obj in objs:
-            if len(obj.sx2layers) > layercount:
-                layercount = len(obj.sx2layers)
-        setup.create_sx2material(layercount)
+        setup.create_sx2material(objs)
 
+        # TODO: Concatenate obj lists
         for obj_name in sx_mat_objs:
             # context.scene.objects[obj_name].sxtools.shadingmode = 'FULL'
             context.scene.objects[obj_name].active_material = bpy.data.materials['SX2Material']
@@ -1871,13 +1875,14 @@ def message_box(message='', title='SX Tools', icon='INFO'):
         bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
 
+# TODO: This only works with identical layersets
 def update_selected_layer(self, context):
     objs = selection_validator(self, context)
     print(sxglobals.layer_list_dict)
     print('selected layer:', objs[0].sx2.selectedlayer)
     for obj in objs:
         if len(obj.sx2layers) > 0:
-            obj.data.attributes.active_color = obj.data.attributes[sxglobals.layer_list_dict[obj.sx2.selectedlayer]]
+            obj.data.attributes.active_color = obj.data.attributes[obj.sx2.selectedlayer]
 
 
 def update_layer_visibility(self, context):
@@ -1887,6 +1892,22 @@ def update_layer_visibility(self, context):
             if layer.int_visibility != int(layer.visibility):
                 layer.int_visibility = int(layer.visibility)
 
+
+def update_material_props(self, context):
+    objs = selection_validator(self, context)
+    if 'SX2Material' in bpy.data.materials:
+        for obj in objs:
+            bpy.data.materials['SX2Material'].blend_method = 'OPAQUE'
+            bpy.data.materials['SX2Material'].use_backface_culling = False
+
+            for layer in obj.sx2layers:
+                if (layer.index == 0) and (layer.opacity < 1.0):
+                    bpy.data.materials['SX2Material'].blend_method = 'BLEND'
+                    bpy.data.materials['SX2Material'].use_backface_culling = True
+
+
+def update_layer_blend_modes(self, context):
+    setup.update_sx2material(context)
 
 # ------------------------------------------------------------------------
 #    Settings and properties
@@ -2359,7 +2380,8 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
         name='Layer Opacity',
         min=0.0,
         max=1.0,
-        default=1.0)
+        default=1.0,
+        update=lambda self, context: update_material_props(self, context))
 
     blend_mode: bpy.props.EnumProperty(
         name='Layer Blend Mode',
@@ -2368,7 +2390,8 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
             ('ADD', 'Additive', ''),
             ('MUL', 'Multiply', ''),
             ('OVR', 'Overlay', '')],
-        default='ALPHA')
+        default='ALPHA',
+        update=lambda self, context: update_layer_blend_modes(self, context))
 
     color_attribute: bpy.props.StringProperty(
         name='Vertex Color Layer',
@@ -2571,12 +2594,14 @@ class SXTOOLS2_OT_applytool(bpy.types.Operator):
         objs = selection_validator(self, context)
         if len(objs) > 0:
             idx = objs[0].sx2.selectedlayer
-            layer = objs[0].sx2layers[sxglobals.layer_list_dict[idx]]
+            layer = objs[0].sx2layers[idx]
             color = context.scene.sx2.fillcolor
 
             print(layer, color)
 
             tools.apply_tool(objs, layer, color=color)
+            for obj in objs:
+                obj.data.update()
             if context.scene.sx2.toolmode == 'COL':
                 tools.update_recent_colors(color)
 
