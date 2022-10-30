@@ -1696,7 +1696,7 @@ class SXTOOLS2_setup(object):
         if layercount > 0:
             prev_color = None
 
-            if objs[0].sx2layers[sxglobals.layer_list_dict[0]].visibility:
+            if (len(sxglobals.layer_list_dict) > 0) and objs[0].sx2layers[sxglobals.layer_list_dict[0]].visibility:
                 base_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
                 base_color.name = 'BaseColor'
                 base_color.label = 'BaseColor'
@@ -1733,7 +1733,8 @@ class SXTOOLS2_setup(object):
                     layer_blend.name = 'Mix ' + str(i + 1)
                     layer_blend.label = 'Mix ' + str(i + 1)
                     layer_blend.inputs[0].default_value = 1
-                    layer_blend.inputs[2].default_value = [1.0, 1.0, 1.0, 1.0]
+                    layer_blend.inputs[1].default_value = [0.0, 0.0, 0.0, 0.0]
+                    layer_blend.inputs[2].default_value = [0.0, 0.0, 0.0, 0.0]
                     layer_blend.blend_type = blend_mode_dict[objs[0].sx2layers[sxglobals.layer_list_dict[i+1]].blend_mode]
                     layer_blend.use_clamp = True
                     layer_blend.location = (-600, i*500+200)
@@ -1755,9 +1756,10 @@ class SXTOOLS2_setup(object):
                     input = layer_blend.inputs[0]
                     sxmaterial.node_tree.links.new(input, output)
 
-                    output = prev_color
-                    input = layer_blend.inputs['Color1']
-                    sxmaterial.node_tree.links.new(input, output)
+                    if prev_color is not None:
+                        output = prev_color
+                        input = layer_blend.inputs['Color1']
+                        sxmaterial.node_tree.links.new(input, output)
 
                     prev_color = layer_blend.outputs['Color']
 
