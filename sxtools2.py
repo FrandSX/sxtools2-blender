@@ -93,6 +93,36 @@ class SXTOOLS2_utils(object):
         return None
 
 
+    def find_colors_by_frequency(self, objs, layer, numcolors=None, masklayer=None, obj_sel_override=False):
+        colorArray = []
+
+        for obj in objs:
+            if obj_sel_override:
+                values = layers.get_layer(obj, layer, as_tuple=True)
+            else:
+                values = generate.mask_list(obj, layers.get_layer(obj, layer), masklayer=masklayer, as_tuple=True)
+
+            if values is not None:
+                colorArray.extend(values)
+
+        # colors = list(filter(lambda a: a != (0.0, 0.0, 0.0, 0.0), colorArray))
+        colors = list(filter(lambda a: a[3] != 0.0, colorArray))
+        sortList = [color for color, count in Counter(colors).most_common(numcolors)]
+
+        if numcolors is not None:
+            while len(sortList) < numcolors:
+                sortList.append([0.0, 0.0, 0.0, 1.0])
+
+            sortColors = []
+            for i in range(numcolors):
+                sortColors.append(sortList[i])
+
+            return sortColors
+        else:
+            return sortList
+
+
+    # The default index of any added layer is 100
     def insert_layer_at_index(self, obj, inserted_layer, index):
         sxglobals.layer_list_dict.clear()
 
@@ -1392,8 +1422,8 @@ class SXTOOLS2_layers(object):
             setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
 
         # Update SXMaterial color
-        if layer.index <= 5:
-            bpy.data.materials['SXMaterial'].node_tree.nodes['PaletteColor'+str(layer.index - 1)].outputs[0].default_value = colors[0]
+        # if layer.index <= 5:
+        #     bpy.data.materials['SXMaterial'].node_tree.nodes['PaletteColor'+str(layer.index - 1)].outputs[0].default_value = colors[0]
 
 
     def color_layers_to_values(self, objs):
@@ -1664,95 +1694,77 @@ class SXTOOLS2_setup(object):
         sxmaterial.node_tree.nodes['Material Output'].location = (300, 0)
 
         if layercount > 0:
-            base_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
-            base_color.name = 'BaseColor'
-            base_color.label = 'BaseColor'
-            base_color.layer_name = sxglobals.layer_list_dict[0]
-            base_color.location = (-1000, -600)
+            prev_color = None
 
-            prev_color = base_color.outputs['Color']
+            if objs[0].sx2layers[sxglobals.layer_list_dict[0]].visibility:
+                base_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
+                base_color.name = 'BaseColor'
+                base_color.label = 'BaseColor'
+                base_color.layer_name = sxglobals.layer_list_dict[0]
+                base_color.location = (-1000, -600)
+
+                prev_color = base_color.outputs['Color']
 
             # Layer groups
             for i in range(layercount-1):
-                source_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
-                source_color.name = 'LayerColor' + str(i + 1)
-                source_color.label = 'LayerColor' + str(i + 1)
-                source_color.layer_name = sxglobals.layer_list_dict[i+1]
-                source_color.location = (-800, i*500)
+                if objs[0].sx2layers[sxglobals.layer_list_dict[i+1]].visibility:
+                    source_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
+                    source_color.name = 'LayerColor' + str(i + 1)
+                    source_color.label = 'LayerColor' + str(i + 1)
+                    source_color.layer_name = sxglobals.layer_list_dict[i+1]
+                    source_color.location = (-1000, i*500)
 
-                layer_visibility = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
-                layer_visibility.name = 'Layer Visibility' + str(i + 1)
-                layer_visibility.label = 'Layer Visibility' + str(i + 1)
-                layer_visibility.attribute_name = 'sx2layers["' + sxglobals.layer_list_dict[i+1] + '"].int_visibility'
-                layer_visibility.attribute_type = 'OBJECT'
-                layer_visibility.location = (-1000, i*500)
+                    layer_opacity = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
+                    layer_opacity.name = 'Layer Opacity' + str(i + 1)
+                    layer_opacity.label = 'Layer Opacity' + str(i + 1)
+                    layer_opacity.attribute_name = 'sx2layers["' + sxglobals.layer_list_dict[i+1] + '"].opacity'
+                    layer_opacity.attribute_type = 'OBJECT'
+                    layer_opacity.location = (-1000, i*500+200)
 
-                layer_opacity = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
-                layer_opacity.name = 'Layer Opacity' + str(i + 1)
-                layer_opacity.label = 'Layer Opacity' + str(i + 1)
-                layer_opacity.attribute_name = 'sx2layers["' + sxglobals.layer_list_dict[i+1] + '"].opacity'
-                layer_opacity.attribute_type = 'OBJECT'
-                layer_opacity.location = (-1000, i*500+200)
+                    opacity_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
+                    opacity_and_alpha.name = 'Opacity ' + str(i + 1)
+                    opacity_and_alpha.label = 'Opacity ' + str(i + 1)
+                    opacity_and_alpha.operation = 'MULTIPLY'
+                    opacity_and_alpha.use_clamp = True
+                    opacity_and_alpha.inputs[0].default_value = 1
+                    opacity_and_alpha.location = (-800, i*500+200)
 
-                vis_and_opacity = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
-                vis_and_opacity.name = 'Opacity ' + str(i + 1)
-                vis_and_opacity.label = 'Opacity ' + str(i + 1)
-                vis_and_opacity.operation = 'MULTIPLY'
-                vis_and_opacity.use_clamp = True
-                vis_and_opacity.inputs[0].default_value = 1
-                vis_and_opacity.location = (-800, i*500+200)
+                    layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
+                    layer_blend.name = 'Mix ' + str(i + 1)
+                    layer_blend.label = 'Mix ' + str(i + 1)
+                    layer_blend.inputs[0].default_value = 1
+                    layer_blend.inputs[2].default_value = [1.0, 1.0, 1.0, 1.0]
+                    layer_blend.blend_type = blend_mode_dict[objs[0].sx2layers[sxglobals.layer_list_dict[i+1]].blend_mode]
+                    layer_blend.use_clamp = True
+                    layer_blend.location = (-600, i*500+200)
 
-                toggles_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
-                toggles_and_alpha.name = 'Opacity ' + str(i + 1)
-                toggles_and_alpha.label = 'Opacity ' + str(i + 1)
-                toggles_and_alpha.operation = 'MULTIPLY'
-                toggles_and_alpha.use_clamp = True
-                toggles_and_alpha.inputs[0].default_value = 1
-                toggles_and_alpha.location = (-600, i*500+200)
+                    # Group connections
+                    output = source_color.outputs['Color']
+                    input = layer_blend.inputs['Color2']
+                    sxmaterial.node_tree.links.new(input, output)   
 
-                layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
-                layer_blend.name = 'Mix ' + str(i + 1)
-                layer_blend.label = 'Mix ' + str(i + 1)
-                layer_blend.inputs[0].default_value = 1
-                layer_blend.inputs[2].default_value = [1.0, 1.0, 1.0, 1.0]
-                layer_blend.blend_type = blend_mode_dict[objs[0].sx2layers[sxglobals.layer_list_dict[i+1]].blend_mode]
-                layer_blend.use_clamp = True
-                layer_blend.location = (-400, i*500+200)
+                    output = layer_opacity.outputs[2]
+                    input = opacity_and_alpha.inputs[0]
+                    sxmaterial.node_tree.links.new(input, output)
 
-                # Group connections
-                output = source_color.outputs['Color']
-                input = layer_blend.inputs['Color2']
-                sxmaterial.node_tree.links.new(input, output)   
+                    output = source_color.outputs['Alpha']
+                    input = opacity_and_alpha.inputs[1]
+                    sxmaterial.node_tree.links.new(input, output)
 
-                output = layer_opacity.outputs[2]
-                input = vis_and_opacity.inputs[0]
-                sxmaterial.node_tree.links.new(input, output)
+                    output = opacity_and_alpha.outputs[0]
+                    input = layer_blend.inputs[0]
+                    sxmaterial.node_tree.links.new(input, output)
 
-                output = layer_visibility.outputs[2]
-                input = vis_and_opacity.inputs[1]
-                sxmaterial.node_tree.links.new(input, output)
+                    output = prev_color
+                    input = layer_blend.inputs['Color1']
+                    sxmaterial.node_tree.links.new(input, output)
 
-                output = vis_and_opacity.outputs[0]
-                input = toggles_and_alpha.inputs[0]
-                sxmaterial.node_tree.links.new(input, output)
+                    prev_color = layer_blend.outputs['Color']
 
-                output = source_color.outputs['Alpha']
-                input = toggles_and_alpha.inputs[1]
-                sxmaterial.node_tree.links.new(input, output)
-
-                output = toggles_and_alpha.outputs[0]
-                input = layer_blend.inputs[0]
-                sxmaterial.node_tree.links.new(input, output)
-
+            if prev_color is not None:
                 output = prev_color
-                input = layer_blend.inputs['Color1']
+                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color']
                 sxmaterial.node_tree.links.new(input, output)
-
-                prev_color = layer_blend.outputs['Color']
-
-            output = prev_color
-            input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color']
-            sxmaterial.node_tree.links.new(input, output)
 
 
     def update_sx2material(self, context):
@@ -1863,6 +1875,27 @@ def refresh_actives(self, context):
         sxglobals.refreshInProgress = False
 
 
+def refresh_swatches(self, context):
+    if not sxglobals.refreshInProgress:
+        sxglobals.refreshInProgress = True
+
+        scene = context.scene.sx2
+        # mode = context.scene.sxtools.shadingmode
+        objs = selection_validator(self, context)
+
+        utils.mode_manager(objs, set_mode=True, mode_id='refresh_actives')
+
+        if len(objs) > 0:
+            idx = objs[0].sx2.selectedlayer
+            layer = utils.find_layer_from_index(objs[0], idx)
+
+            # Refresh SX Tools UI to latest selection
+            layers.update_layer_panel(objs, layer)
+
+        utils.mode_manager(objs, revert=True, mode_id='refresh_actives')
+        sxglobals.refreshInProgress = False
+
+
 def message_box(message='', title='SX Tools', icon='INFO'):
     messageLines = message.splitlines()
 
@@ -1878,19 +1911,27 @@ def message_box(message='', title='SX Tools', icon='INFO'):
 # TODO: This only works with identical layersets
 def update_selected_layer(self, context):
     objs = selection_validator(self, context)
-    print(sxglobals.layer_list_dict)
-    print('selected layer:', objs[0].sx2.selectedlayer)
     for obj in objs:
         if len(obj.sx2layers) > 0:
             obj.data.attributes.active_color = obj.data.attributes[obj.sx2.selectedlayer]
 
+        sxglobals.layer_list_dict.clear()
+        layers = []
+        for layer in obj.sx2layers:
+            layers.append((layer.index, layer.color_attribute))
+
+        layers.sort(key=lambda y: y[0])
+
+        for i, layer_tuple in enumerate(layers):
+            for layer in obj.sx2layers:
+                if layer.color_attribute == layer_tuple[1]:
+                    sxglobals.layer_list_dict[i] = layer.color_attribute
+
+    refresh_swatches(self, context)
+
 
 def update_layer_visibility(self, context):
-    objs = selection_validator(self, context)
-    for obj in objs:
-        for layer in obj.sx2layers:
-            if layer.int_visibility != int(layer.visibility):
-                layer.int_visibility = int(layer.visibility)
+    setup.update_sx2material(context)
 
 
 def update_material_props(self, context):
@@ -2346,7 +2387,7 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
         name='Layer Index',
         min=0,
         max=100,
-        default=0)
+        default=100)
 
     layer_type: bpy.props.EnumProperty(
         name='Layer Type',
@@ -2368,13 +2409,6 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
         name='Layer Visibility',
         default=True,
         update=lambda self, context: update_layer_visibility(self, context))
-
-    # Int-type duplicate of the above for shader network
-    int_visibility: bpy.props.IntProperty(
-        name='Layer Visibility',
-        min=0,
-        max=1,
-        default=1)
 
     opacity: bpy.props.FloatProperty(
         name='Layer Opacity',
@@ -2622,14 +2656,7 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
             for obj in objs:
                 item = obj.sx2layers.add()
                 item.name = 'Layer ' + str(obj.sx2.layercount)
-                item.layer_type = 'COLOR'
-                item.default_color = (0.0, 0.0, 0.0, 0.0)
-                item.visibility = 1
-                item.opacity = 1.0
-                item.blend_mode = 'ALPHA'
                 item.color_attribute = item.name
-                item.locked = False
-                item.index = 999
 
                 obj.data.attributes.new(name=item.name, type='FLOAT_COLOR', domain='CORNER')
                 item.index = utils.insert_layer_at_index(obj, item, obj.sx2layers[obj.sx2.selectedlayer].index + 1)
