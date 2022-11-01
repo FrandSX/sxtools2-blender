@@ -2425,6 +2425,21 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
             ('DOWN', 'Down', '')],
         default='UP')
 
+    shift: bpy.props.BoolProperty(
+        name='Shift',
+        description='Keyboard input',
+        default=False)
+
+    alt: bpy.props.BoolProperty(
+        name='Alt',
+        description='Keyboard input',
+        default=False)
+
+    ctrl: bpy.props.BoolProperty(
+        name='Ctrl',
+        description='Keyboard input',
+        default=False)
+
     enablelimit: bpy.props.BoolProperty(
         name='PBR Limit',
         description='Limit diffuse color values to PBR range',
@@ -2620,25 +2635,231 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
             col_list.separator()
             col_list.operator('sx2.layer_props', text='', icon='OPTIONS')
 
+            # Layer Copy Paste Merge ---------------------------------------
+            copy_text = 'Copy'
+            clr_text = 'Clear'
+            paste_text = 'Paste'
+            sel_text = 'Select Mask'
+
+            if scene.shift:
+                clr_text = 'Reset All'
+                paste_text = 'Swap'
+                sel_text = 'Select Inverse'
+            elif scene.alt:
+                paste_text = 'Merge Into'
+            elif scene.ctrl:
+                clr_text = 'Flatten'
+                sel_text = 'Select Color'
+                paste_text = 'Paste Alpha'
+
+            col_misc = layout.column(align=True)
+            row_misc1 = col_misc.row(align=True)
+            row_misc1.operator('sx2.mergeup')
+            row_misc1.operator('sx2.copylayer', text=copy_text)
+            row_misc1.operator('sx2.clear', text=clr_text)
+            row_misc2 = col_misc.row(align=True)
+            row_misc2.operator('sx2.mergedown')
+            row_misc2.operator('sx2.pastelayer', text=paste_text)
+            row_misc2.operator('sx2.selmask', text=sel_text)
+
             # Fill Tools --------------------------------------------------------
             box_fill = layout.box()
             row_fill = box_fill.row()
+            row_fill.prop(
+                scene, 'expandfill',
+                icon='TRIA_DOWN' if scene.expandfill else 'TRIA_RIGHT',
+                icon_only=True, emboss=False)
+            row_fill.prop(scene, 'toolmode', text='')
             if scene.toolmode != 'PAL' and scene.toolmode != 'MAT':
                 row_fill.operator('sx2.applytool', text='Apply')
 
             # Color Tool --------------------------------------------------------
             if scene.toolmode == 'COL':
                 split1_fill = box_fill.split(factor=0.33)
-                fill_text = 'Fill Color'
+                if (layer.layer_type == 'COLOR') or (layer.layer_type == 'EMI'):
+                    fill_text = 'Fill Color'
+                else:
+                    fill_text = 'Fill Value'
                 split1_fill.label(text=fill_text)
                 split2_fill = split1_fill.split(factor=0.8)
                 split2_fill.prop(scene, 'fillcolor', text='')
+                split2_fill.operator('sx2.layerinfo', text='', icon='INFO')
 
-                row_fpalette = box_fill.row(align=True)
-                for i in range(8):
-                    row_fpalette.prop(scene, 'fillpalette' + str(i+1), text='')
+                if scene.expandfill:
+                    if layer.layerType != 'UV':
+                        row_fpalette = box_fill.row(align=True)
+                        for i in range(8):
+                            row_fpalette.prop(scene, 'fillpalette' + str(i+1), text='')
 
-            layout.operator('sx2.create_material')
+            # Occlusion Tool ---------------------------------------------------
+            elif scene.toolmode == 'OCC' or scene.toolmode == 'THK':
+                if scene.expandfill:
+                    col_fill = box_fill.column(align=True)
+                    if scene.toolmode == 'OCC' or scene.toolmode == 'THK':
+                        col_fill.prop(scene, 'occlusionrays', slider=True, text='Ray Count')
+                    if scene.toolmode == 'OCC':
+                        col_fill.prop(scene, 'occlusionblend', slider=True, text='Local/Global Mix')
+                        col_fill.prop(scene, 'occlusiondistance', slider=True, text='Ray Distance')
+                        row_ground = col_fill.row(align=False)
+                        row_ground.prop(scene, 'occlusiongroundplane', text='Ground Plane')
+                        row_tiling = col_fill.row(align=False)
+                        row_tiling.prop(sx2, 'tiling', text='Tiling Object')
+                        row_tiling.prop(sx2, 'tile_offset', text='Tile Offset')
+                        row_tiling2 = col_fill.row(align=False)
+                        row_tiling2.prop(sx2, 'tile_pos_x', text='+X')
+                        row_tiling2.prop(sx2, 'tile_pos_y', text='+Y')
+                        row_tiling2.prop(sx2, 'tile_pos_z', text='+Z')
+                        row_tiling3 = col_fill.row(align=False)
+                        row_tiling3.prop(sx2, 'tile_neg_x', text='-X')
+                        row_tiling3.prop(sx2, 'tile_neg_y', text='-Y')
+                        row_tiling3.prop(sx2, 'tile_neg_z', text='-Z')
+                        if scene.occlusionblend == 0:
+                            row_ground.enabled = False
+                        if not sx2.tiling:
+                            row_tiling2.enabled = False
+                            row_tiling3.enabled = False
+
+            # Directional Tool ---------------------------------------------------
+            elif scene.toolmode == 'DIR':
+                if scene.expandfill:
+                    col_fill = box_fill.column(align=True)
+                    col_fill.prop(scene, 'dirInclination', slider=True, text='Inclination')
+                    col_fill.prop(scene, 'dirAngle', slider=True, text='Angle')
+                    col_fill.prop(scene, 'dirCone', slider=True, text='Spread')
+
+            # Curvature Tool ---------------------------------------------------
+            elif scene.toolmode == 'CRV':
+                if scene.expandfill:
+                    col_fill = box_fill.column(align=True)
+                    col_fill.prop(scene, 'curvaturenormalize', text='Normalize')
+                    col_fill.prop(sx2, 'tiling', text='Tiling Object')
+
+            # Noise Tool -------------------------------------------------------
+            elif scene.toolmode == 'NSE':
+                if scene.expandfill:
+                    col_nse = box_fill.column(align=True)
+                    col_nse.prop(scene, 'noiseamplitude', slider=True)
+                    col_nse.prop(scene, 'noiseoffset', slider=True)
+                    col_nse.prop(scene, 'noisemono', text='Monochromatic')
+
+            # Gradient Tool ---------------------------------------------------
+            elif scene.toolmode == 'GRD':
+                split1_fill = box_fill.split(factor=0.33)
+                split1_fill.label(text='Fill Mode')
+                split1_fill.prop(scene, 'rampmode', text='')
+
+                if scene.expandfill:
+                    row3_fill = box_fill.row(align=True)
+                    row3_fill.prop(scene, 'ramplist', text='')
+                    row3_fill.operator('sx2.addramp', text='', icon='ADD')
+                    row3_fill.operator('sx2.delramp', text='', icon='REMOVE')
+                    box_fill.template_color_ramp(bpy.data.materials['SX2Material'].node_tree.nodes['ColorRamp'], 'color_ramp', expand=True)
+                    if mode == 'OBJECT':
+                        box_fill.prop(scene, 'rampbbox', text='Use Combined Bounding Box')
+
+            # Luminance Remap Tool -----------------------------------------------
+            elif scene.toolmode == 'LUM':
+                if scene.expandfill:
+                    row3_fill = box_fill.row(align=True)
+                    row3_fill.prop(scene, 'ramplist', text='')
+                    row3_fill.operator('sx2.addramp', text='', icon='ADD')
+                    row3_fill.operator('sx2.delramp', text='', icon='REMOVE')
+                    box_fill.template_color_ramp(bpy.data.materials['SX2Material'].node_tree.nodes['ColorRamp'], 'color_ramp', expand=True)
+
+            # Master Palettes -----------------------------------------------
+            elif scene.toolmode == 'PAL':
+                palettes = context.scene.sxpalettes
+
+                row_newpalette = box_fill.row(align=True)
+                for i in range(5):
+                    row_newpalette.prop(scene, 'newpalette'+str(i), text='')
+                row_newpalette.operator('sx2.addpalette', text='', icon='ADD')
+
+                if scene.expandfill:
+                    row_lib = box_fill.row()
+                    row_lib.prop(
+                        scene, 'expandpal',
+                        icon='TRIA_DOWN' if scene.expandpal else 'TRIA_RIGHT',
+                        icon_only=True, emboss=False)
+                    row_lib.label(text='Library')
+                    if scene.expandpal:
+                        category = scene.palettecategories
+                        split_category = box_fill.split(factor=0.33)
+                        split_category.label(text='Category:')
+                        row_category = split_category.row(align=True)
+                        row_category.prop(scene, 'palettecategories', text='')
+                        row_category.operator('sx2.addpalettecategory', text='', icon='ADD')
+                        row_category.operator('sx2.delpalettecategory', text='', icon='REMOVE')
+                        for palette in palettes:
+                            name = palette.name
+                            if palette.category.replace(" ", "").upper() == category:
+                                row_mpalette = box_fill.row(align=True)
+                                split_mpalette = row_mpalette.split(factor=0.33)
+                                split_mpalette.label(text=name)
+                                split2_mpalette = split_mpalette.split()
+                                row2_mpalette = split2_mpalette.row(align=True)
+                                for i in range(5):
+                                    row2_mpalette.prop(palette, 'color'+str(i), text='')
+                                if not scene.shift:
+                                    mp_button = split2_mpalette.operator('sx2.applypalette', text='Apply')
+                                    mp_button.label = name
+                                else:
+                                    mp_button = split2_mpalette.operator('sx2.delpalette', text='Delete')
+                                    mp_button.label = name
+
+            # PBR Materials -------------------------------------------------
+            elif scene.toolmode == 'MAT':
+                if sx2.selectedlayer > 7:
+                    if scene.expandfill:
+                        box_fill.label(text='Select Layer 1-7 to apply PBR materials')
+                else:
+                    materials = context.scene.sxmaterials
+
+                    row_newmaterial = box_fill.row(align=True)
+                    for i in range(3):
+                        row_newmaterial.prop(scene, 'newmaterial'+str(i), text='')
+                    row_newmaterial.operator('sx2.addmaterial', text='', icon='ADD')
+
+                    row_limit = box_fill.row(align=True)
+                    row_limit.prop(scene, 'enablelimit', text='Limit to PBR range')
+                    row_limit.prop(scene, 'limitmode', text='')
+
+                    if scene.expandfill:
+                        row_lib = box_fill.row()
+                        row_lib.prop(
+                            scene, 'expandmat',
+                            icon='TRIA_DOWN' if scene.expandmat else 'TRIA_RIGHT',
+                            icon_only=True, emboss=False)
+                        row_lib.label(text='Library')
+                        if scene.expandmat:
+                            category = scene.materialcategories
+                            split_category = box_fill.split(factor=0.33)
+                            split_category.label(text='Category:')
+                            row_category = split_category.row(align=True)
+                            row_category.prop(scene, 'materialcategories', text='')
+                            row_category.operator('sx2.addmaterialcategory', text='', icon='ADD')
+                            row_category.operator('sx2.delmaterialcategory', text='', icon='REMOVE')
+                            for material in materials:
+                                name = material.name
+                                if material.category.replace(" ", "_").upper() == category:
+                                    row_mat = box_fill.row(align=True)
+                                    split_mat = row_mat.split(factor=0.33)
+                                    split_mat.label(text=name)
+                                    split2_mat = split_mat.split()
+                                    row2_mat = split2_mat.row(align=True)
+                                    for i in range(3):
+                                        row2_mat.prop(material, 'color'+str(i), text='')
+                                    if not scene.shift:
+                                        mat_button = split2_mat.operator('sx2.applymaterial', text='Apply')
+                                        mat_button.label = name
+                                    else:
+                                        mat_button = split2_mat.operator('sx2.delmaterial', text='Delete')
+                                        mat_button.label = name
+
+            if (scene.toolmode != 'PAL') and (scene.toolmode != 'MAT') and scene.expandfill:
+                split3_fill = box_fill.split(factor=0.3)
+                split3_fill.prop(scene, 'toolblend', text='')
+                split3_fill.prop(scene, 'toolopacity', slider=True)
 
         else:
             col = layout.column()
@@ -2701,6 +2922,464 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
 # ------------------------------------------------------------------------
 #   Operators
 # ------------------------------------------------------------------------
+class SXTOOLS_OT_selectionmonitor(bpy.types.Operator):
+    bl_idname = 'sxtools.selectionmonitor'
+    bl_label = 'Selection Monitor'
+    bl_description = 'Refreshes the UI on selection change'
+
+
+    @classmethod
+    def poll(cls, context):
+        if not bpy.app.background:
+            if context.area.type == 'VIEW_3D':
+                return context.active_object is not None
+        else:
+            return context.active_object is not None
+
+
+    def modal(self, context, event):
+        if not context.area:
+            print('Selection Monitor: Context Lost')
+            sxglobals.modalStatus = False
+            return {'CANCELLED'}
+
+        if (len(sxglobals.masterPaletteArray) == 0) or (len(sxglobals.materialArray) == 0) or (len(sxglobals.rampDict) == 0) or (len(sxglobals.categoryDict) == 0):
+            sxglobals.librariesLoaded = False
+            load_libraries(self, context)
+            return {'PASS_THROUGH'}
+
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            mode = objs[0].mode
+            if mode != sxglobals.prevMode:
+                # print('selectionmonitor: mode change')
+                sxglobals.prevMode = mode
+                sxglobals.mode = mode
+                refresh_actives(self, context)
+                return {'PASS_THROUGH'}
+
+            if (objs[0].mode == 'EDIT'):
+                objs[0].update_from_editmode()
+                mesh = objs[0].data
+                selection = [None] * len(mesh.vertices)
+                mesh.vertices.foreach_get('select', selection)
+                # print('selectionmonitor: componentselection ', selection)
+
+                if selection != sxglobals.prevComponentSelection:
+                    # print('selectionmonitor: component selection changed')
+                    sxglobals.prevComponentSelection = selection
+                    refresh_actives(self, context)
+                    return {'PASS_THROUGH'}
+                else:
+                    return {'PASS_THROUGH'}
+            else:
+                selection = context.view_layer.objects.selected.keys()
+                # print('selectionmonitor: selection ', selection)
+
+                if selection != sxglobals.prevSelection:
+                    # print('selectionmonitor: object selection changed')
+                    sxglobals.prevSelection = selection[:]
+                    if (selection is not None) and (len(selection) > 0) and (len(context.view_layer.objects[selection[0]].sxlayers) > 0):
+                        refresh_actives(self, context)
+                    return {'PASS_THROUGH'}
+                else:
+                    return {'PASS_THROUGH'}
+
+        return {'PASS_THROUGH'}
+
+
+    def execute(self, context):
+        return self.invoke(context, None)
+
+
+    def invoke(self, context, event):
+        # bpy.app.timers.register(lambda: 0.01 if 'PASS_THROUGH' in self.modal(context, event) else None)
+        sxglobals.prevSelection = context.view_layer.objects.selected.keys()[:]
+        context.window_manager.modal_handler_add(self)
+        print('SX Tools: Starting selection monitor')
+        return {'RUNNING_MODAL'}
+
+
+class SXTOOLS_OT_keymonitor(bpy.types.Operator):
+    bl_idname = 'sxtools.keymonitor'
+    bl_label = 'Key Monitor'
+
+    redraw: bpy.props.BoolProperty(default=False)
+    prevShift: bpy.props.BoolProperty(default=False)
+    prevAlt: bpy.props.BoolProperty(default=False)
+    prevCtrl: bpy.props.BoolProperty(default=False)
+
+
+    def modal(self, context, event):
+        if not context.area:
+            print('Key Monitor: Context Lost')
+            sxglobals.modalStatus = False
+            return {'CANCELLED'}
+
+        scene = context.scene.sxtools
+
+        if (self.prevShift != event.shift):
+            self.prevShift = event.shift
+            scene.shift = event.shift
+            self.redraw = True
+
+        if (self.prevAlt != event.alt):
+            self.prevAlt = event.alt
+            scene.alt = event.alt
+            self.redraw = True
+
+        if (self.prevCtrl != event.ctrl):
+            self.prevCtrl = event.ctrl
+            scene.ctrl = event.ctrl
+            self.redraw = True
+
+        if self.redraw:
+            context.area.tag_redraw()
+            self.redraw = False
+            return {'PASS_THROUGH'}
+        else:
+            return {'PASS_THROUGH'}
+
+        return {'RUNNING_MODAL'}
+
+
+    def execute(self, context):
+        return self.invoke(context, None)
+
+
+    def invoke(self, context, event):
+        context.window_manager.modal_handler_add(self)
+        print('SX Tools: Starting key monitor')
+        return {'RUNNING_MODAL'}
+
+
+class SXTOOLS2_OT_layerinfo(bpy.types.Operator):
+    bl_idname = 'sx2.layerinfo'
+    bl_label = 'Special Layer Info'
+    bl_descriptions = 'Information about special layers'
+
+
+    def invoke(self, context, event):
+        message_box('SPECIAL LAYERS:\nGradient1, Gradient2\nGrayscale layers that receive color from Palette Color 4 and 5\n(i.e. the primary colors of Layer 4 and 5)\n\nOcclusion, Metallic, Smoothness, Transmission, Emission\nGrayscale layers, filled with the luminance of the selected color.')
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_addramp(bpy.types.Operator):
+    bl_idname = 'sxtools.addramp'
+    bl_label = 'Add Ramp Preset'
+    bl_description = 'Add ramp preset to Gradient Library'
+
+    rampName: bpy.props.StringProperty(name='Ramp Name')
+
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        col.prop(self, 'rampName', text='')
+
+
+    def execute(self, context):
+        files.save_ramp(self.rampName)
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_delramp(bpy.types.Operator):
+    bl_idname = 'sxtools.delramp'
+    bl_label = 'Remove Ramp Preset'
+    bl_description = 'Delete ramp preset from Gradient Library'
+
+
+    def execute(self, context):
+        return self.invoke(context, None)
+
+
+    def invoke(self, context, event):
+        rampEnum = context.scene.sxtools.ramplist[:]
+        rampName = sxglobals.presetLookup[context.scene.sxtools.ramplist]
+        del sxglobals.rampDict[rampName]
+        del sxglobals.presetLookup[rampEnum]
+        files.save_file('gradients')
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_addpalettecategory(bpy.types.Operator):
+    bl_idname = 'sxtools.addpalettecategory'
+    bl_label = 'Add Palette Category'
+    bl_description = 'Adds a palette category to the Palette Library'
+
+    paletteCategoryName: bpy.props.StringProperty(name='Category Name')
+
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        col.prop(self, 'paletteCategoryName', text='')
+
+
+    def execute(self, context):
+        found = False
+        for i, categoryDict in enumerate(sxglobals.masterPaletteArray):
+            for category in categoryDict:
+                if category == self.paletteCategoryName.replace(" ", ""):
+                    message_box('Palette Category Exists!')
+                    found = True
+                    break
+
+        if not found:
+            categoryName = self.paletteCategoryName.replace(" ", "")
+            categoryEnum = categoryName.upper()
+            categoryDict = {categoryName: {}}
+
+            sxglobals.masterPaletteArray.append(categoryDict)
+            files.save_file('palettes')
+            files.load_file('palettes')
+            context.scene.sxtools.palettecategories = categoryEnum
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_delpalettecategory(bpy.types.Operator):
+    bl_idname = 'sxtools.delpalettecategory'
+    bl_label = 'Remove Palette Category'
+    bl_description = 'Removes a palette category from the Palette Library'
+
+
+    def invoke(self, context, event):
+        categoryEnum = context.scene.sxtools.palettecategories[:]
+        categoryName = sxglobals.presetLookup[context.scene.sxtools.palettecategories]
+
+        for i, categoryDict in enumerate(sxglobals.masterPaletteArray):
+            for category in categoryDict:
+                if category == categoryName:
+                    sxglobals.masterPaletteArray.remove(categoryDict)
+                    del sxglobals.presetLookup[categoryEnum]
+                    break
+
+        files.save_file('palettes')
+        files.load_file('palettes')
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_addmaterialcategory(bpy.types.Operator):
+    bl_idname = 'sxtools.addmaterialcategory'
+    bl_label = 'Add Material Category'
+    bl_description = 'Adds a material category to the Material Library'
+
+    materialCategoryName: bpy.props.StringProperty(name='Category Name')
+
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        col.prop(self, 'materialCategoryName', text='')
+
+
+    def execute(self, context):
+        found = False
+        for i, categoryDict in enumerate(sxglobals.materialArray):
+            for category in categoryDict:
+                if category == self.materialCategoryName.replace(" ", ""):
+                    message_box('Palette Category Exists!')
+                    found = True
+                    break
+
+        if not found:
+            categoryName = self.materialCategoryName.replace(" ", "")
+            categoryEnum = categoryName.upper()
+            categoryDict = {categoryName: {}}
+
+            sxglobals.materialArray.append(categoryDict)
+            files.save_file('materials')
+            files.load_file('materials')
+            context.scene.sxtools.materialcategories = categoryEnum
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_delmaterialcategory(bpy.types.Operator):
+    bl_idname = 'sxtools.delmaterialcategory'
+    bl_label = 'Remove Material Category'
+    bl_description = 'Removes a material category from the Material Library'
+
+
+    def invoke(self, context, event):
+        categoryEnum = context.scene.sxtools.materialcategories[:]
+        categoryName = sxglobals.presetLookup[context.scene.sxtools.materialcategories]
+
+        for i, categoryDict in enumerate(sxglobals.materialArray):
+            for category in categoryDict:
+                if category == categoryName:
+                    sxglobals.materialArray.remove(categoryDict)
+                    del sxglobals.presetLookup[categoryEnum]
+                    break
+
+        files.save_file('materials')
+        files.load_file('materials')
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_addpalette(bpy.types.Operator):
+    bl_idname = 'sxtools.addpalette'
+    bl_label = 'Add Palette Preset'
+    bl_description = 'Add palette preset to Palette Library'
+
+    label: bpy.props.StringProperty(name='Palette Name')
+
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        col.prop(self, 'label', text='')
+
+
+    def execute(self, context):
+        scene = context.scene.sxtools
+        paletteName = self.label.replace(" ", "")
+        if paletteName in context.scene.sxpalettes:
+            message_box('Palette Name Already in Use!')
+        else:
+            for categoryDict in sxglobals.masterPaletteArray:
+                for i, category in enumerate(categoryDict.keys()):
+                    if category.casefold() == context.scene.sxtools.palettecategories.casefold():
+                        categoryDict[category][paletteName] = [
+                            [
+                                scene.newpalette0[0],
+                                scene.newpalette0[1],
+                                scene.newpalette0[2]
+                            ],
+                            [
+                                scene.newpalette1[0],
+                                scene.newpalette1[1],
+                                scene.newpalette1[2]
+                            ],
+                            [
+                                scene.newpalette2[0],
+                                scene.newpalette2[1],
+                                scene.newpalette2[2]
+                            ],
+                            [
+                                scene.newpalette3[0],
+                                scene.newpalette3[1],
+                                scene.newpalette3[2]
+                            ],
+                            [
+                                scene.newpalette4[0],
+                                scene.newpalette4[1],
+                                scene.newpalette4[2]
+                            ]]
+                    break
+
+        files.save_file('palettes')
+        files.load_file('palettes')
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_delpalette(bpy.types.Operator):
+    bl_idname = 'sxtools.delpalette'
+    bl_label = 'Remove Palette Preset'
+    bl_description = 'Delete palette preset from Palette Library'
+
+    label: bpy.props.StringProperty(name='Palette Name')
+
+
+    def invoke(self, context, event):
+        paletteName = self.label.replace(" ", "")
+        category = context.scene.sxpalettes[paletteName].category
+
+        for i, categoryDict in enumerate(sxglobals.masterPaletteArray):
+            if category in categoryDict:
+                del categoryDict[category][paletteName]
+
+        files.save_file('palettes')
+        files.load_file('palettes')
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_addmaterial(bpy.types.Operator):
+    bl_idname = 'sxtools.addmaterial'
+    bl_label = 'Add Material Preset'
+    bl_description = 'Add palette preset to Material Library'
+
+    materialName: bpy.props.StringProperty(name='Material Name')
+
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        col.prop(self, 'materialName', text='')
+
+
+    def execute(self, context):
+        scene = context.scene.sxtools
+        materialName = self.materialName.replace(" ", "")
+        if materialName in context.scene.sxmaterials:
+            message_box('Material Name Already in Use!')
+        else:
+            for categoryDict in sxglobals.materialArray:
+                for i, category in enumerate(categoryDict.keys()):
+                    if category.casefold() == context.scene.sxtools.materialcategories.casefold():
+                        categoryDict[category][materialName] = [
+                            [
+                                scene.newpalette0[0],
+                                scene.newpalette0[1],
+                                scene.newpalette0[2]
+                            ],
+                            [
+                                scene.newpalette1[0],
+                                scene.newpalette1[1],
+                                scene.newpalette1[2]
+                            ],
+                            [
+                                scene.newpalette2[0],
+                                scene.newpalette2[1],
+                                scene.newpalette2[2]
+                            ]]
+                    break
+
+        files.save_file('materials')
+        files.load_file('materials')
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_delmaterial(bpy.types.Operator):
+    bl_idname = 'sxtools.delmaterial'
+    bl_label = 'Remove Material Preset'
+    bl_description = 'Delete material preset from Material Library'
+
+    label: bpy.props.StringProperty(name='Material Name')
+
+
+    def invoke(self, context, event):
+        materialName = self.label.replace(" ", "")
+        category = context.scene.sxmaterials[materialName].category
+
+        for i, categoryDict in enumerate(sxglobals.materialArray):
+            if category in categoryDict:
+                del categoryDict[category][materialName]
+
+        files.save_file('materials')
+        files.load_file('materials')
+        return {'FINISHED'}
+
+
 class SXTOOLS2_OT_applytool(bpy.types.Operator):
     bl_idname = 'sx2.applytool'
     bl_label = 'Apply Tool'
@@ -2915,6 +3594,285 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class SXTOOLS2_OT_mergeup(bpy.types.Operator):
+    bl_idname = 'sx2.mergeup'
+    bl_label = 'Merge Up'
+    bl_description = 'Merges the selected color layer with the one above'
+    bl_options = {'UNDO'}
+
+
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        if sxglobals.mode == 'EDIT':
+            return enabled
+        objs = context.view_layer.objects.selected
+        meshObjs = []
+        for obj in objs:
+            if obj.type == 'MESH':
+                meshObjs.append(obj)
+
+        idx = meshObjs[0].sx2.selectedlayer
+        layer = utils.find_layer_from_index(meshObjs[0], idx)
+        if (layer.layer_type == 'COLOR') and (sxglobals.listIndices[idx] != 0):
+            enabled = True
+        return enabled
+
+
+    def invoke(self, context, event):
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            idx = objs[0].sxtools.selectedlayer
+            topLayer = utils.find_layer_from_index(objs[0], idx)
+            listIndex = utils.find_list_index(objs[0], topLayer)
+            baseLayer = utils.find_layer_from_index(objs[0], sxglobals.listItems[listIndex - 1])
+            layers.merge_layers(objs, topLayer, baseLayer, baseLayer)
+
+            sxglobals.composite = True
+            refresh_actives(self, context)
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_mergedown(bpy.types.Operator):
+    bl_idname = 'sx2.mergedown'
+    bl_label = 'Merge Down'
+    bl_description = 'Merges the selected color layer with the one below'
+    bl_options = {'UNDO'}
+
+
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        if sxglobals.mode == 'EDIT':
+            return enabled
+        objs = context.view_layer.objects.selected
+        meshObjs = []
+        for obj in objs:
+            if obj.type == 'MESH':
+                meshObjs.append(obj)
+
+        idx = meshObjs[0].sx2.selectedlayer
+        listIdx = sxglobals.listIndices[idx]
+        layer = utils.find_layer_from_index(meshObjs[0], idx)
+
+        if listIdx != (len(sxglobals.listIndices) - 1):
+            nextIdx = sxglobals.listItems[listIdx + 1]
+            nextLayer = utils.find_layer_from_index(meshObjs[0], nextIdx)
+
+            if nextLayer.layer_type != 'COLOR':
+                return False
+
+        if (listIdx != (len(sxglobals.listIndices) - 1)) and (layer.layerType == 'COLOR'):
+            enabled = True
+        return enabled
+
+
+    def invoke(self, context, event):
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            idx = objs[0].sxtools.selectedlayer
+            baseLayer = utils.find_layer_from_index(objs[0], idx)
+            listIndex = utils.find_list_index(objs[0], baseLayer)
+            topLayer = utils.find_layer_from_index(objs[0], sxglobals.listItems[listIndex + 1])
+            layers.merge_layers(objs, topLayer, baseLayer, topLayer)
+
+            sxglobals.composite = True
+            refresh_actives(self, context)
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_copylayer(bpy.types.Operator):
+    bl_idname = 'sx2.copylayer'
+    bl_label = 'Copy Layer'
+    bl_description = 'Mark the selected layer for copying'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            idx = objs[0].sxtools.selectedlayer
+            layer = utils.find_layer_from_index(objs[0], idx)
+            sxglobals.copyLayer = layer
+        return {'FINISHED'}
+
+ 
+class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
+    bl_idname = 'sx2.pastelayer'
+    bl_label = 'Paste Layer'
+    bl_description = 'Shift-click to swap with copied layer\nAlt-click to merge into the target layer'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            idx = objs[0].sxtools.selectedlayer
+            sourceLayer = sxglobals.copyLayer
+            targetLayer = utils.find_layer_from_index(objs[0], idx)
+
+            if event.alt and sourceLayer is not None:
+                layers.merge_layers(objs, sourceLayer, targetLayer, targetLayer)
+
+                sxglobals.composite = True
+                refresh_actives(self, context)
+                return {'FINISHED'}
+
+            elif event.shift:
+                mode = 'swap'
+            elif event.ctrl:
+                mode = 'mask'
+            else:
+                mode = False
+
+            if sourceLayer is None:
+                message_box('Nothing to paste!')
+                return {'FINISHED'}
+            else:
+                layers.paste_layer(objs, sourceLayer, targetLayer, mode)
+
+                sxglobals.composite = True
+                refresh_actives(self, context)
+                return {'FINISHED'}
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
+    bl_idname = 'sx2.clear'
+    bl_label = 'Clear Layer'
+    bl_description = 'Shift-click to clear all layers\non selected objects or components\nCtrl-click to flatten all color layers to Layer 1'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            utils.mode_manager(objs, set_mode=True, mode_id='clearlayers')
+            if event.ctrl:
+                compLayers = utils.find_comp_layers(objs[0])
+                layer0 = utils.find_layer_from_index(objs[0], 1)
+                layer1 = utils.find_layer_from_index(objs[0], 1)
+                layers.blend_layers(objs, compLayers, layer1, layer0, uv_as_alpha=True)
+                for layer in compLayers:
+                    layers.clear_layers(objs, layer)
+            else:
+                if event.shift:
+                    layer = None
+                else:
+                    idx = objs[0].sxtools.selectedlayer
+                    layer = utils.find_layer_from_index(objs[0], idx)
+
+                layers.clear_layers(objs, layer)
+
+            utils.mode_manager(objs, revert=True, mode_id='clearlayers')
+            sxglobals.composite = True
+            refresh_actives(self, context)
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_selmask(bpy.types.Operator):
+    bl_idname = 'sx2.selmask'
+    bl_label = 'Select Layer Mask'
+    bl_description = 'Click to select components with alpha\nShift-click to invert selection\nCtrl-click to select visible faces with Fill Color'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            bpy.context.view_layer.objects.active = objs[0]
+
+            if event.shift:
+                inverse = True
+            else:
+                inverse = False
+
+            if event.ctrl:
+                color = context.scene.sxtools.fillcolor
+                tools.select_color_mask(objs, color, inverse)
+            else:
+                idx = objs[0].sxtools.selectedlayer
+                layer = utils.find_layer_from_index(objs[0], idx)
+                tools.select_mask(objs, layer, inverse)
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_setgroup(bpy.types.Operator):
+    bl_idname = 'sxtools.setgroup'
+    bl_label = 'Set Value'
+    bl_description = 'Click to apply modifier weight to selected edges\nShift-click to add edges to selection\nAlt-click to clear selection and select verts or edges'
+    bl_options = {'UNDO'}
+
+    setmode: bpy.props.StringProperty()
+    setvalue: bpy.props.FloatProperty()
+
+    def invoke(self, context, event):
+        objs = selection_validator(self, context)
+        scene = context.scene.sxtools
+        if len(objs) > 0:
+            setmode = self.setmode
+            setvalue = self.setvalue
+            if event.shift:
+                tools.select_set(objs, setvalue, setmode)
+            elif event.alt:
+                tools.select_set(objs, setvalue, setmode, True)
+            else:
+                tools.assign_set(objs, setvalue, setmode)
+                if (scene.autocrease) and (setmode == 'BEV') and (setvalue != -1.0):
+                    mode = bpy.context.tool_settings.mesh_select_mode[:]
+                    bpy.context.tool_settings.mesh_select_mode = (False, True, False)
+                    tools.assign_set(objs, 1.0, 'CRS')
+                    bpy.context.tool_settings.mesh_select_mode = mode
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_applypalette(bpy.types.Operator):
+    bl_idname = 'sxtools.applypalette'
+    bl_label = 'Apply Palette'
+    bl_description = 'Applies the selected palette to selected objects\nPalette colors are applied to layers 1-5'
+    bl_options = {'UNDO'}
+
+    label: bpy.props.StringProperty()
+
+
+    def execute(self, context):
+        return self.invoke(context, None)
+
+
+    def invoke(self, context, event):
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            palette = self.label
+            tools.apply_palette(objs, palette)
+
+            if not bpy.app.background:
+                sxglobals.composite = True
+                refresh_actives(self, context)
+        return {'FINISHED'}
+
+
+class SXTOOLS_OT_applymaterial(bpy.types.Operator):
+    bl_idname = 'sxtools.applymaterial'
+    bl_label = 'Apply PBR Material'
+    bl_description = 'Applies the selected material to selected objects\nAlbedo color goes to the layer7\nmetallic and smoothness values are automatically applied\nto the selected material channels'
+    bl_options = {'UNDO'}
+
+    label: bpy.props.StringProperty()
+
+
+    def invoke(self, context, event):
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            material = self.label
+            idx = objs[0].sxtools.selectedlayer
+            layer = utils.find_layer_from_index(objs[0], idx)
+            tools.apply_material(objs, layer, material)
+
+            sxglobals.composite = True
+            refresh_actives(self, context)
+        return {'FINISHED'}
+
+
 class SXTOOLS2_OT_create_material(bpy.types.Operator):
     bl_idname = 'sx2.create_material'
     bl_label = 'Create Material'
@@ -2945,12 +3903,19 @@ classes = (
     SXTOOLS2_layerprops,
     SXTOOLS2_PT_panel,
     SXTOOLS2_UL_layerlist,
+    SXTOOLS2_OT_layerinfo,
     SXTOOLS2_OT_applytool,
     SXTOOLS2_OT_add_layer,
     SXTOOLS2_OT_del_layer,
     SXTOOLS2_OT_layer_up,
     SXTOOLS2_OT_layer_down,
     SXTOOLS2_OT_layer_props,
+    SXTOOLS2_OT_mergeup,
+    SXTOOLS2_OT_mergedown,
+    SXTOOLS2_OT_copylayer,
+    SXTOOLS2_OT_pastelayer,
+    SXTOOLS2_OT_clearlayers,
+    SXTOOLS2_OT_selmask,
     SXTOOLS2_OT_create_material)
 
 addon_keymaps = []
