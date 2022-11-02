@@ -1772,6 +1772,25 @@ class SXTOOLS2_setup(object):
                     else:
                         material_layers.append(layer)
 
+            # Create layer inputs
+            for i in range(6):
+                input_vector = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
+                input_vector.name = 'Input Vector ' + str(i)
+                input_vector.label = 'Input Vector ' + str(i)
+                input_vector.attribute_name = 'sx2.layer_opacity_list_' + str(i)
+                input_vector.attribute_type = 'OBJECT'
+                input_vector.location = (-1600, i*200+200)
+
+                input_splitter = sxmaterial.node_tree.nodes.new(type='ShaderNodeSeparateXYZ')
+                input_splitter.name = 'Input Splitter ' + str(i)
+                input_splitter.label = 'Input Splitter ' + str(i)
+                input_splitter.location = (-1400, i*200+200)
+
+                output = input_vector.outputs['Vector']
+                input = input_splitter.inputs['Vector']
+                sxmaterial.node_tree.links.new(input, output)   
+
+
             # Create color layers
             if (len(color_layers) > 0) and objs[0].sx2layers[color_layers[0][0]].visibility:
                 base_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
@@ -1783,6 +1802,8 @@ class SXTOOLS2_setup(object):
                 prev_color = base_color.outputs['Color']
 
             # Layer groups
+            splitter_index = 0
+            count = 1
             for i in range(len(color_layers) - 1):
                 if obj.sx2layers[color_layers[i+1][0]].visibility:
                     source_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
@@ -1791,20 +1812,13 @@ class SXTOOLS2_setup(object):
                     source_color.layer_name = color_layers[i+1][1]
                     source_color.location = (-1000, i*500)
 
-                    layer_opacity = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
-                    layer_opacity.name = 'Layer Opacity' + str(i + 1)
-                    layer_opacity.label = 'Layer Opacity' + str(i + 1)
-                    layer_opacity.attribute_name = 'sx2layers["' + color_layers[i+1][0] + '"].opacity'
-                    layer_opacity.attribute_type = 'OBJECT'
-                    layer_opacity.location = (-1000, i*500+200)
-
                     opacity_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
                     opacity_and_alpha.name = 'Opacity ' + str(i + 1)
                     opacity_and_alpha.label = 'Opacity ' + str(i + 1)
                     opacity_and_alpha.operation = 'MULTIPLY'
                     opacity_and_alpha.use_clamp = True
                     opacity_and_alpha.inputs[0].default_value = 1
-                    opacity_and_alpha.location = (-800, i*500+200)
+                    opacity_and_alpha.location = (-800, i*500)
 
                     layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
                     layer_blend.name = 'Mix ' + str(i + 1)
@@ -1814,16 +1828,20 @@ class SXTOOLS2_setup(object):
                     layer_blend.inputs[2].default_value = [0.0, 0.0, 0.0, 0.0]
                     layer_blend.blend_type = blend_mode_dict[objs[0].sx2layers[color_layers[i+1][0]].blend_mode]
                     layer_blend.use_clamp = True
-                    layer_blend.location = (-600, i*500+200)
+                    layer_blend.location = (-600, i*500)
 
                     # Group connections
                     output = source_color.outputs['Color']
                     input = layer_blend.inputs['Color2']
-                    sxmaterial.node_tree.links.new(input, output)   
+                    sxmaterial.node_tree.links.new(input, output)
 
-                    output = layer_opacity.outputs[2]
+                    output = sxmaterial.node_tree.nodes['Input Splitter ' + str(splitter_index)].outputs[(i+1) % 3]
                     input = opacity_and_alpha.inputs[0]
                     sxmaterial.node_tree.links.new(input, output)
+                    count += 1
+                    if count == 3:
+                        splitter_index += 1
+                        count = 0
 
                     output = source_color.outputs['Alpha']
                     input = opacity_and_alpha.inputs[1]
@@ -1840,7 +1858,27 @@ class SXTOOLS2_setup(object):
 
                     prev_color = layer_blend.outputs['Color']
 
+            # Create material inputs
+            for i in range(2):
+                input_vector = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
+                input_vector.name = 'Material Input Vector ' + str(i)
+                input_vector.label = 'Material Input Vector ' + str(i)
+                input_vector.attribute_name = 'sx2.material_opacity_list_' + str(i)
+                input_vector.attribute_type = 'OBJECT'
+                input_vector.location = (-1600, -i*200-200)
+
+                input_splitter = sxmaterial.node_tree.nodes.new(type='ShaderNodeSeparateXYZ')
+                input_splitter.name = 'Material Input Splitter ' + str(i)
+                input_splitter.label = 'Material Input Splitter ' + str(i)
+                input_splitter.location = (-1400, -i*200-200)
+
+                output = input_vector.outputs['Vector']
+                input = input_splitter.inputs['Vector']
+                sxmaterial.node_tree.links.new(input, output)   
+
             # Create material layers
+            splitter_index = 0
+            count = 0
             for i in range(len(material_layers)):
                 if obj.sx2layers[material_layers[i][0]].visibility:
                     source_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
@@ -1849,20 +1887,13 @@ class SXTOOLS2_setup(object):
                     source_color.layer_name = material_layers[i][1]
                     source_color.location = (0, i*500)
 
-                    layer_opacity = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
-                    layer_opacity.name = material_layers[i][0] + ' Opacity'
-                    layer_opacity.label = material_layers[i][0] + ' Opacity'
-                    layer_opacity.attribute_name = 'sx2layers["' + material_layers[i][0] + '"].opacity'
-                    layer_opacity.attribute_type = 'OBJECT'
-                    layer_opacity.location = (0, i*500+200)
-
                     opacity_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
                     opacity_and_alpha.name = material_layers[i][0] + ' Opacity and Alpha'
                     opacity_and_alpha.label = material_layers[i][0] + ' Opacity and Alpha'
                     opacity_and_alpha.operation = 'MULTIPLY'
                     opacity_and_alpha.use_clamp = True
                     opacity_and_alpha.inputs[0].default_value = 1
-                    opacity_and_alpha.location = (200, i*500+200)
+                    opacity_and_alpha.location = (200, i*500)
 
                     if (material_layers[i][2] == 'OCC') or (material_layers[i][2] == 'EMI'):
                         layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
@@ -1870,12 +1901,16 @@ class SXTOOLS2_setup(object):
                         layer_blend.label = material_layers[i][0] + ' Mix'
                         layer_blend.inputs[0].default_value = 1
                         layer_blend.use_clamp = True
-                        layer_blend.location = (400, i*500+200)
+                        layer_blend.location = (400, i*500)
 
                     # Group connections
-                    output = layer_opacity.outputs[2]
+                    output = sxmaterial.node_tree.nodes['Material Input Splitter ' + str(splitter_index)].outputs[i % 3]
                     input = opacity_and_alpha.inputs[0]
                     sxmaterial.node_tree.links.new(input, output)
+                    count += 1
+                    if count == 3:
+                        splitter_index += 1
+                        count = 0
 
                     if (material_layers[i][2] == 'OCC'):
                         output = source_color.outputs['Alpha']
@@ -2107,6 +2142,39 @@ def update_layer_visibility(self, context):
 
 def update_material_props(self, context):
     objs = selection_validator(self, context)
+    for obj in objs:
+        if len(obj.sx2layers) > 0:
+            color_stack = []
+            material_stack = []
+            for layer in obj.sx2layers:
+                if layer.layer_type == 'COLOR':
+                    color_stack.append((layer.index, layer.opacity))
+                else:
+                    material_stack.append((layer.index, layer.opacity))
+
+            color_stack.sort(key=lambda y: y[0])
+            material_stack.sort(key=lambda y: y[0])
+            opacity_list = [value[1] for value in color_stack]
+            mat_list = [value[1] for value in material_stack]
+
+            vectors = []
+            for i in range(0, len(opacity_list), 3):
+                vectors.append(opacity_list[i:i+3])
+
+            for i, opacity_vector in enumerate(vectors):
+                while len(opacity_vector) < 3:
+                    opacity_vector.append(1.0)
+                setattr(obj.sx2, 'layer_opacity_list_' + str(i), opacity_vector)
+
+            vectors = []
+            for i in range(0, len(mat_list), 3):
+                vectors.append(mat_list[i:i+3])
+
+            for i, opacity_vector in enumerate(vectors):
+                while len(opacity_vector) < 3:
+                    opacity_vector.append(1.0)
+                setattr(obj.sx2, 'material_opacity_list_' + str(i), opacity_vector)
+
     if 'SX2Material' in bpy.data.materials:
         for obj in objs:
             bpy.data.materials['SX2Material'].blend_method = 'OPAQUE'
@@ -2138,23 +2206,6 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         min=0,
         default=0)
         # update=refresh_actives)
-
-    activeLayerAlpha: bpy.props.FloatProperty(
-        name='Opacity',
-        min=0.0,
-        max=1.0,
-        default=1.0)
-        # update=update_layers)
-
-    activeLayerBlendMode: bpy.props.EnumProperty(
-        name='Blend Mode',
-        items=[
-            ('ALPHA', 'Alpha', ''),
-            ('ADD', 'Additive', ''),
-            ('MUL', 'Multiply', ''),
-            ('OVR', 'Overlay', '')],
-        default='ALPHA')
-        # update=update_layers))
 
     tiling: bpy.props.BoolProperty(
         name='Tiling Object',
@@ -2203,6 +2254,70 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         description='Adjust offset of mirror copies',
         default=0.0)
         # update=lambda self, context: update_modifiers(self, context, 'tiling'))
+
+    layer_opacity_list_0: bpy.props.FloatVectorProperty(
+        name='Layer Opacity List',
+        description='Collects layer opacity values for SX2Material',
+        default=(1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        size=3)
+
+    layer_opacity_list_1: bpy.props.FloatVectorProperty(
+        name='Layer Opacity List',
+        description='Collects layer opacity values for SX2Material',
+        default=(1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        size=3)
+
+    layer_opacity_list_2: bpy.props.FloatVectorProperty(
+        name='Layer Opacity List',
+        description='Collects layer opacity values for SX2Material',
+        default=(1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        size=3)
+
+    layer_opacity_list_3: bpy.props.FloatVectorProperty(
+        name='Layer Opacity List',
+        description='Collects layer opacity values for SX2Material',
+        default=(1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        size=3)
+
+    layer_opacity_list_4: bpy.props.FloatVectorProperty(
+        name='Layer Opacity List',
+        description='Collects layer opacity values for SX2Material',
+        default=(1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        size=3)
+
+    layer_opacity_list_5: bpy.props.FloatVectorProperty(
+        name='Layer Opacity List',
+        description='Collects layer opacity values for SX2Material',
+        default=(1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        size=3)
+
+    material_opacity_list_0: bpy.props.FloatVectorProperty(
+        name='Material Opacity List',
+        description='Collects material opacity values for SX2Material',
+        default=(1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        size=3)
+
+    material_opacity_list_1: bpy.props.FloatVectorProperty(
+        name='Material Opacity List',
+        description='Collects material opacity values for SX2Material',
+        default=(1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        size=3)
 
 
 class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
