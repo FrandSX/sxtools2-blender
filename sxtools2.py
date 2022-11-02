@@ -33,7 +33,7 @@ class SXTOOLS2_sxglobals(object):
     def __init__(self):
         self.librariesLoaded = False
         self.refreshInProgress = False
-        self.hslUpdate = False
+        self.hsl_update = False
         self.matUpdate = False
         self.curvatureUpdate = False
         self.modalStatus = False
@@ -1491,9 +1491,9 @@ class SXTOOLS2_layers(object):
         lightness = max(lArray)
 
         sxglobals.hslUpdate = True
-        bpy.context.scene.sx2.huevalue = hue
-        bpy.context.scene.sx2.saturationvalue = sat
-        bpy.context.scene.sx2.lightnessvalue = lightness
+        objs[0].sx2.huevalue = hue
+        objs[0].sx2.saturationvalue = sat
+        objs[0].sx2.lightnessvalue = lightness
         sxglobals.hslUpdate = False
 
         # Update layer palette elements
@@ -2067,7 +2067,7 @@ class SXTOOLS2_setup(object):
                     base_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
                     base_color.name = 'DebugSource'
                     base_color.label = 'DebugSource'
-                    base_color.layer_name = obj.sx2layers[obj.sx2.selectedlayer].name
+                    base_color.layer_name = obj.sx2layers[obj.sx2.selectedlayer].color_attribute
                     base_color.location = (-1000, 0)
 
                     if obj.sx2.shadingmode == 'DEBUG':
@@ -2180,6 +2180,142 @@ def refresh_actives(self, context):
         sxglobals.refreshInProgress = False
 
 
+def shading_mode(self, context):
+    prefs = bpy.context.preferences.addons['sxtools'].preferences
+    mode = context.scene.sxtools.shadingmode
+    objs = selection_validator(self, context)
+
+    if len(objs) > 0:
+        sxmaterial = bpy.data.materials['SXMaterial']
+
+        if prefs.materialtype == 'SMP':
+            context.scene.eevee.use_bloom = False
+            context.scene.eevee.use_ssr = False
+            areas = bpy.context.workspace.screens[0].areas
+            shading = 'MATERIAL'  # 'WIREFRAME' 'SOLID' 'MATERIAL' 'RENDERED'
+            for area in areas:
+                for space in area.spaces:
+                    if space.type == 'VIEW_3D':
+                        space.shading.type = shading
+
+        else:
+            occlusion = objs[0].sxlayers['occlusion'].enabled
+            metallic = objs[0].sxlayers['metallic'].enabled
+            smoothness = objs[0].sxlayers['smoothness'].enabled
+            transmission = objs[0].sxlayers['transmission'].enabled
+            emission = objs[0].sxlayers['emission'].enabled
+
+            materialsubsurface = prefs.materialsubsurface
+            materialtransmission = prefs.materialtransmission
+
+            if mode == 'FULL':
+                if emission:
+                    context.scene.eevee.use_bloom = True
+                if metallic or smoothness:
+                    context.scene.eevee.use_ssr = True
+                areas = bpy.context.workspace.screens[0].areas
+                shading = 'MATERIAL'  # 'WIREFRAME' 'SOLID' 'MATERIAL' 'RENDERED'
+                for area in areas:
+                    for space in area.spaces:
+                        if space.type == 'VIEW_3D':
+                            if ((space.shading.type == 'WIREFRAME') or
+                               (space.shading.type == 'SOLID')):
+                                space.shading.type = shading
+
+                sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = 0.5
+
+                # Disconnect vertex color output from emission
+                attrLink = sxmaterial.node_tree.nodes['Composite Color'].outputs[0].links[0]
+                sxmaterial.node_tree.links.remove(attrLink)
+
+                # Reconnect vertex color to mixer
+                output = sxmaterial.node_tree.nodes['Composite Color'].outputs['Color']
+                input = sxmaterial.node_tree.nodes['Mix'].inputs['Color1']
+                sxmaterial.node_tree.links.new(input, output)
+
+                # Reconnect mixer to base color
+                output = sxmaterial.node_tree.nodes['Mix'].outputs['Color']
+                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color']
+                sxmaterial.node_tree.links.new(input, output)
+
+                if metallic:
+                    # Reconnect metallic and roughness
+                    output = sxmaterial.node_tree.nodes['VisMix 2'].outputs['Color']
+                    input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Metallic']
+                    sxmaterial.node_tree.links.new(input, output)
+
+                if smoothness:
+                    output = sxmaterial.node_tree.nodes['VisMix 3'].outputs['Color']
+                    input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Roughness']
+                    sxmaterial.node_tree.links.new(input, output)
+
+                if transmission:
+                    if materialtransmission:
+                        # Reconnect transmission
+                        output = sxmaterial.node_tree.nodes['VisMix 4'].outputs['Color']
+                        input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission']
+                        sxmaterial.node_tree.links.new(input, output)
+
+                    if materialsubsurface:
+                        output = sxmaterial.node_tree.nodes['VisMix 4'].outputs['Color']
+                        input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface']
+                        sxmaterial.node_tree.links.new(input, output)
+
+                if emission:
+                    # Reconnect emission
+                    output = sxmaterial.node_tree.nodes['VisMix 5'].outputs['Color']
+                    input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission']
+                    sxmaterial.node_tree.links.new(input, output)
+
+                    # Reconnect base mix
+                    output = sxmaterial.node_tree.nodes['Mix'].outputs['Color']
+                    input = sxmaterial.node_tree.nodes['Mix.001'].inputs['Color1']
+                    sxmaterial.node_tree.links.new(input, output)
+
+            else:
+                if emission:
+                    context.scene.eevee.use_bloom = False
+                if metallic or smoothness:
+                    context.scene.eevee.use_ssr = False
+                areas = bpy.context.workspace.screens[0].areas
+                shading = 'MATERIAL'  # 'WIREFRAME' 'SOLID' 'MATERIAL' 'RENDERED'
+                for area in areas:
+                    for space in area.spaces:
+                        if space.type == 'VIEW_3D':
+                            space.shading.type = shading
+
+                sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = 0.0
+
+                # Disconnect base color, metallic and roughness
+                attrLink = sxmaterial.node_tree.nodes['Composite Color'].outputs[0].links[0]
+                sxmaterial.node_tree.links.remove(attrLink)
+
+                # Check if already debug
+                if sxglobals.prevShadingMode == 'FULL':
+                    attrLink = sxmaterial.node_tree.nodes['Mix'].outputs[0].links[0]
+                    sxmaterial.node_tree.links.remove(attrLink)
+                    if metallic:
+                        attrLink = sxmaterial.node_tree.nodes['VisMix 2'].outputs[0].links[0]
+                        sxmaterial.node_tree.links.remove(attrLink)
+                    if smoothness:
+                        attrLink = sxmaterial.node_tree.nodes['VisMix 3'].outputs[0].links[0]
+                        sxmaterial.node_tree.links.remove(attrLink)
+                    if transmission:
+                        if materialtransmission and materialsubsurface:
+                            attrLink = sxmaterial.node_tree.nodes['VisMix 4'].outputs[0].links[1]
+                            sxmaterial.node_tree.links.remove(attrLink)
+                        if materialtransmission or materialsubsurface:
+                            attrLink = sxmaterial.node_tree.nodes['VisMix 4'].outputs[0].links[0]
+                            sxmaterial.node_tree.links.remove(attrLink)
+
+                # Connect vertex color source to emission
+                output = sxmaterial.node_tree.nodes['Composite Color'].outputs['Color']
+                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission']
+                sxmaterial.node_tree.links.new(input, output)
+
+            sxglobals.prevShadingMode = mode
+
+
 def refresh_swatches(self, context):
     if not sxglobals.refreshInProgress:
         sxglobals.refreshInProgress = True
@@ -2230,11 +2366,10 @@ def update_selected_layer(self, context):
                 if layer.color_attribute == layer_tuple[1]:
                     sxglobals.layer_stack_dict[i] = (layer.name, layer.color_attribute, layer.layer_type)
 
+    if objs[0].sx2.shadingmode != 'FULL':
+        update_material(self, context)
+
     refresh_swatches(self, context)
-
-
-def update_layer_visibility(self, context):
-    setup.update_sx2material(context)
 
 
 def update_material_props(self, context):
@@ -2283,8 +2418,24 @@ def update_material_props(self, context):
                     bpy.data.materials['SX2Material'].use_backface_culling = True
 
 
-def update_layer_blend_modes(self, context):
+def update_material(self, context):
     setup.update_sx2material(context)
+
+
+def adjust_hsl(self, context, hslmode):
+    if not sxglobals.hsl_update:
+        objs = selection_validator(self, context)
+
+        if len(objs) > 0:
+            hslvalues = [objs[0].sx2.huevalue, objs[0].sx2.saturationvalue, objs[0].sx2.lightnessvalue]
+            layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+
+            tools.apply_hsl(objs, layer, hslmode, hslvalues[hslmode])
+
+            # sxglobals.composite = True
+            # refresh_actives(self, context)
+            refresh_swatches(self, context)
+
 
 # ------------------------------------------------------------------------
 #    Settings and properties
@@ -2305,7 +2456,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
             ('DEBUG', 'Debug', ''),
             ('ALPHA', 'Alpha', '')],
         default='FULL',
-        update=lambda self, context: update_layer_visibility(self, context))
+        update=lambda self, context: update_material(self, context))
 
     # Running index for unique layer names
     layercount: bpy.props.IntProperty(
@@ -2313,6 +2464,31 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         min=0,
         default=0)
         # update=refresh_actives)
+
+    huevalue: bpy.props.FloatProperty(
+        name='Hue',
+        description='The mode hue in the selection',
+        min=0.0,
+        max=1.0,
+        default=0.0,
+        update=lambda self, context: adjust_hsl(self, context, 0))
+
+    saturationvalue: bpy.props.FloatProperty(
+        name='Saturation',
+        description='The max saturation in the selection',
+        min=0.0,
+        max=1.0,
+        default=0.0,
+        update=lambda self, context: adjust_hsl(self, context, 1))
+
+    lightnessvalue: bpy.props.FloatProperty(
+        name='Lightness',
+        description='The max lightness in the selection',
+        min=0.0,
+        max=1.0,
+        default=0.0,
+        update=lambda self, context: adjust_hsl(self, context, 2))
+
 
     tiling: bpy.props.BoolProperty(
         name='Tiling Object',
@@ -2500,30 +2676,6 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
         default=(0.0, 0.0, 0.0, 1.0))
-
-    huevalue: bpy.props.FloatProperty(
-        name='Hue',
-        description='The mode hue in the selection',
-        min=0.0,
-        max=1.0,
-        default=0.0)
-        # update=lambda self, context: adjust_hsl(self, context, 0))
-
-    saturationvalue: bpy.props.FloatProperty(
-        name='Saturation',
-        description='The max saturation in the selection',
-        min=0.0,
-        max=1.0,
-        default=0.0)
-        # update=lambda self, context: adjust_hsl(self, context, 1))
-
-    lightnessvalue: bpy.props.FloatProperty(
-        name='Lightness',
-        description='The max lightness in the selection',
-        min=0.0,
-        max=1.0,
-        default=0.0)
-        # update=lambda self, context: adjust_hsl(self, context, 2))
 
     toolmode: bpy.props.EnumProperty(
         name='Tool Mode',
@@ -2865,7 +3017,7 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
     visibility: bpy.props.BoolProperty(
         name='Layer Visibility',
         default=True,
-        update=lambda self, context: update_layer_visibility(self, context))
+        update=lambda self, context: update_material(self, context))
 
     opacity: bpy.props.FloatProperty(
         name='Layer Opacity',
@@ -2882,7 +3034,7 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
             ('MUL', 'Multiply', ''),
             ('OVR', 'Overlay', '')],
         default='ALPHA',
-        update=lambda self, context: update_layer_blend_modes(self, context))
+        update=lambda self, context: update_material(self, context))
 
     color_attribute: bpy.props.StringProperty(
         name='Vertex Color Layer',
@@ -2961,11 +3113,11 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
                     col_hsl = box_layer.column(align=True)
                     row_hue = col_hsl.row(align=True)
-                    row_hue.prop(scene, 'huevalue', slider=True, text=hue_text)
+                    row_hue.prop(sx2, 'huevalue', slider=True, text=hue_text)
                     row_sat = col_hsl.row(align=True)
-                    row_sat.prop(scene, 'saturationvalue', slider=True, text=saturation_text)
+                    row_sat.prop(sx2, 'saturationvalue', slider=True, text=saturation_text)
                     row_lightness = col_hsl.row(align=True)
-                    row_lightness.prop(scene, 'lightnessvalue', slider=True, text=lightness_text)
+                    row_lightness.prop(sx2, 'lightnessvalue', slider=True, text=lightness_text)
 
                     if ((layer.name == 'occlusion') or
                         (layer.name == 'smoothness') or
@@ -3244,7 +3396,6 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
             # else:
             #     row_item.label(text='', icon='UNLOCKED')
 
-            row_item.prop(item, 'visibility', text='', icon=hide_icon[item.visibility])
             row_item.prop(item, 'locked', text='', icon=lock_icon[item.locked])
             row_item.label(text='  ' + item.name)
             # row_item.prop(item, 'name', text='')
