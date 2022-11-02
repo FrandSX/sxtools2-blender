@@ -107,6 +107,12 @@ class SXTOOLS2_utils(object):
             return None
 
 
+    def find_layer_index_by_name(self, obj, name):
+        for i, layer in enumerate(obj.sx2layers):
+            if layer.name == name:
+                return i
+
+
     def find_colors_by_frequency(self, objs, layer, numcolors=None, masklayer=None, obj_sel_override=False):
         colorArray = []
 
@@ -167,6 +173,7 @@ class SXTOOLS2_utils(object):
     # The default index of any added layer is 100
     def insert_layer_at_index(self, obj, inserted_layer, index):
         sxglobals.layer_stack_dict.clear()
+        inserted_layer.index = 100
 
         if len(obj.sx2layers) == 1:
             index = 0
@@ -990,9 +997,29 @@ class SXTOOLS2_layers(object):
         return None
 
 
+    def add_layer(self, objs):
+        if len(objs) > 0:
+            for obj in objs:
+                item = obj.sx2layers.add()
+                item.name = 'Layer ' + str(obj.sx2.layercount)
+                item.color_attribute = item.name
+
+                obj.data.attributes.new(name=item.name, type='FLOAT_COLOR', domain='CORNER')
+                item.index = utils.insert_layer_at_index(obj, item, obj.sx2layers[obj.sx2.selectedlayer].index + 1)
+                print('added at:', item.index)
+
+                colors = generate.color_list(obj, item.default_color)
+                layers.set_layer(obj, colors, obj.sx2layers[len(obj.sx2layers) - 1])
+
+                obj.sx2.selectedlayer = len(obj.sx2layers) - 1
+                obj.sx2.layercount += 1
+
+            # refresh_actives(self, context)
+
+
     # wrapper for low-level functions, always returns layerdata in RGBA
     def get_layer(self, obj, sourcelayer, as_tuple=False, uv_as_alpha=False, apply_layer_alpha=False, gradient_with_palette=False):
-        valid_sources = ['COLOR', 'OCC', 'MET', 'SMH', 'TRN', 'EMI']
+        valid_sources = ['COLOR', 'OCC', 'MET', 'RGH', 'TRN', 'EMI']
         sourceType = sourcelayer.layer_type
         # sxmaterial = bpy.data.materials['SXMaterial'].node_tree
         alpha = sourcelayer.opacity
@@ -1049,10 +1076,10 @@ class SXTOOLS2_layers(object):
                     return False
             return True
 
-
+        valid_sources = ['COLOR', 'OCC', 'MET', 'RGH', 'TRN', 'EMI']
         targetType = targetlayer.layer_type
 
-        if targetType == 'COLOR':
+        if targetType in valid_sources:
             layers.set_colors(obj, targetlayer.color_attribute, colors)
 
         elif targetType == 'UV':
@@ -1244,7 +1271,7 @@ class SXTOOLS2_layers(object):
                 obj.data.update()
         else:
             for obj in objs:
-                clear_layer(obj, obj.sx2layers[targetlayer.index])
+                clear_layer(obj, obj.sx2layers[targetlayer.name])
                 obj.data.update()
 
 
@@ -1298,12 +1325,10 @@ class SXTOOLS2_layers(object):
             basecolors = self.get_layer(obj, baseLayer, uv_as_alpha=uv_as_alpha)
 
             for layer in topLayerArray:
-                layerIdx = layer.index
-
-                if getattr(obj.sx2layers[layerIdx], 'visibility'):
-                    blendmode = getattr(obj.sx2layers[layerIdx], 'blend_mode')
-                    layeralpha = getattr(obj.sx2layers[layerIdx], 'alpha')
-                    topcolors = self.get_layer(obj, obj.sx2layers[layerIdx], uv_as_alpha=uv_as_alpha, gradient_with_palette=True)
+                if getattr(obj.sx2layers[layer.name], 'visibility'):
+                    blendmode = getattr(obj.sx2layers[layer.name], 'blend_mode')
+                    layeralpha = getattr(obj.sx2layers[layer.name], 'alpha')
+                    topcolors = self.get_layer(obj, obj.sx2layers[layer.name], uv_as_alpha=uv_as_alpha, gradient_with_palette=True)
                     basecolors = tools.blend_values(topcolors, basecolors, blendmode, layeralpha)
 
             self.set_layer(obj, basecolors, resultLayer)
@@ -1380,10 +1405,10 @@ class SXTOOLS2_layers(object):
             self.set_layer(obj, colors, targetlayer)
 
         for obj in objs:
-            setattr(obj.sx2layers[targetlayer.index], 'visibility', True)
-            setattr(obj.sx2layers[targetlayer.index], 'blend_mode', 'ALPHA')
-            setattr(obj.sx2layers[targetlayer.index], 'opacity', 1.0)
-            obj.sx2.selectedlayer = targetlayer.index
+            setattr(obj.sx2layers[targetlayer.name], 'visibility', True)
+            setattr(obj.sx2layers[targetlayer.name], 'blend_mode', 'ALPHA')
+            setattr(obj.sx2layers[targetlayer.name], 'opacity', 1.0)
+            obj.sx2.selectedlayer = utils.find_layer_index_by_name(obj, targetlayer.name)
 
         if toplayer.name == targetlayer.name:
             self.clear_layers(objs, baselayer)
@@ -1399,19 +1424,19 @@ class SXTOOLS2_layers(object):
 
         if (sourceMode == 'COLOR' or sourceMode == 'UV4') and (targetMode == 'COLOR' or targetMode == 'UV4'):
             for obj in objs:
-                sourceBlend = getattr(obj.sx2layers[sourceLayer.index], 'blend_mode')[:]
-                targetBlend = getattr(obj.sx2layers[targetLayer.index], 'blend_mode')[:]
-                sourceAlpha = getattr(obj.sx2layers[sourceLayer.index], 'opacity')
-                targetAlpha = getattr(obj.sx2layers[targetLayer.index], 'opacity')
+                sourceBlend = getattr(obj.sx2layers[sourceLayer.name], 'blend_mode')[:]
+                targetBlend = getattr(obj.sx2layers[targetLayer.name], 'blend_mode')[:]
+                sourceAlpha = getattr(obj.sx2layers[sourceLayer.name], 'opacity')
+                targetAlpha = getattr(obj.sx2layers[targetLayer.name], 'opacity')
 
                 if fillMode == 'swap':
-                    setattr(obj.sx2layers[sourceLayer.index], 'blend_mode', targetBlend)
-                    setattr(obj.sx2layers[targetLayer.index], 'blend_mode', sourceBlend)
-                    setattr(obj.sx2layers[sourceLayer.index], 'opacity', targetAlpha)
-                    setattr(obj.sx2layers[targetLayer.index], 'opacity', sourceAlpha)
+                    setattr(obj.sx2layers[sourceLayer.name], 'blend_mode', targetBlend)
+                    setattr(obj.sx2layers[targetLayer.name], 'blend_mode', sourceBlend)
+                    setattr(obj.sx2layers[sourceLayer.name], 'opacity', targetAlpha)
+                    setattr(obj.sx2layers[targetLayer.name], 'opacity', sourceAlpha)
                 else:
-                    setattr(obj.sx2layers[targetLayer.index], 'blend_mode', sourceBlend)
-                    setattr(obj.sx2layers[targetLayer.index], 'opacity', sourceAlpha)
+                    setattr(obj.sx2layers[targetLayer.name], 'blend_mode', sourceBlend)
+                    setattr(obj.sx2layers[targetLayer.name], 'opacity', sourceAlpha)
 
         if fillMode == 'swap':
             for obj in objs:
@@ -1822,14 +1847,14 @@ class SXTOOLS2_setup(object):
                     source_color.name = material_layers[i][0]
                     source_color.label = material_layers[i][0]
                     source_color.layer_name = material_layers[i][1]
-                    source_color.location = (0, (len(color_layers) - i)*500)
+                    source_color.location = (0, i*500)
 
                     layer_opacity = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
                     layer_opacity.name = material_layers[i][0] + ' Opacity'
                     layer_opacity.label = material_layers[i][0] + ' Opacity'
                     layer_opacity.attribute_name = 'sx2layers["' + material_layers[i][0] + '"].opacity'
                     layer_opacity.attribute_type = 'OBJECT'
-                    layer_opacity.location = (0, (len(color_layers) - i)*500+200)
+                    layer_opacity.location = (0, i*500+200)
 
                     opacity_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
                     opacity_and_alpha.name = material_layers[i][0] + ' Opacity and Alpha'
@@ -1837,33 +1862,37 @@ class SXTOOLS2_setup(object):
                     opacity_and_alpha.operation = 'MULTIPLY'
                     opacity_and_alpha.use_clamp = True
                     opacity_and_alpha.inputs[0].default_value = 1
-                    opacity_and_alpha.location = (200, (len(color_layers) - i)*500+200)
+                    opacity_and_alpha.location = (200, i*500+200)
 
-                    if material_layers[i][2] == 'OCC':
+                    if (material_layers[i][2] == 'OCC') or (material_layers[i][2] == 'EMI'):
                         layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
                         layer_blend.name = material_layers[i][0] + ' Mix'
                         layer_blend.label = material_layers[i][0] + ' Mix'
                         layer_blend.inputs[0].default_value = 1
-                        layer_blend.inputs[1].default_value = [1.0, 1.0, 1.0, 1.0]
-                        layer_blend.inputs[2].default_value = [1.0, 1.0, 1.0, 1.0]
-                        layer_blend.blend_type = 'MULTIPLY'
                         layer_blend.use_clamp = True
-                        layer_blend.location = (400, (len(color_layers) - i)*500+200)
+                        layer_blend.location = (400, i*500+200)
 
                     # Group connections
-                    output = source_color.outputs['Color']
-                    input = layer_blend.inputs['Color2']
-                    sxmaterial.node_tree.links.new(input, output)   
-
                     output = layer_opacity.outputs[2]
                     input = opacity_and_alpha.inputs[0]
                     sxmaterial.node_tree.links.new(input, output)
 
-                    output = source_color.outputs['Alpha']
+                    if (material_layers[i][2] == 'OCC'):
+                        output = source_color.outputs['Alpha']
+                    else:
+                        output = source_color.outputs['Color']
                     input = opacity_and_alpha.inputs[1]
                     sxmaterial.node_tree.links.new(input, output)
 
                     if material_layers[i][2] == 'OCC':
+                        layer_blend.blend_type = 'MULTIPLY'
+                        layer_blend.inputs[1].default_value = [1.0, 1.0, 1.0, 1.0]
+                        layer_blend.inputs[2].default_value = [1.0, 1.0, 1.0, 1.0]
+
+                        output = source_color.outputs['Color']
+                        input = layer_blend.inputs['Color2']
+                        sxmaterial.node_tree.links.new(input, output)
+
                         output = opacity_and_alpha.outputs[0]
                         input = layer_blend.inputs[0]
                         sxmaterial.node_tree.links.new(input, output)
@@ -1874,6 +1903,41 @@ class SXTOOLS2_setup(object):
                             sxmaterial.node_tree.links.new(input, output)
 
                         prev_color = layer_blend.outputs['Color']
+
+                    if material_layers[i][2] == 'MET':
+                        output = opacity_and_alpha.outputs[0]
+                        input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Metallic']
+                        sxmaterial.node_tree.links.new(input, output)
+
+                    if material_layers[i][2] == 'RGH':
+                        output = opacity_and_alpha.outputs[0]
+                        input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Roughness']
+                        sxmaterial.node_tree.links.new(input, output)
+
+                    if material_layers[i][2] == 'TRN':
+                        output = opacity_and_alpha.outputs[0]
+                        input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission']
+                        sxmaterial.node_tree.links.new(input, output)
+
+                    if material_layers[i][2] == 'EMI':
+                        layer_blend.blend_type = 'MIX'
+                        layer_blend.inputs[1].default_value = [0.0, 0.0, 0.0, 0.0]
+                        layer_blend.inputs[2].default_value = [0.0, 0.0, 0.0, 0.0]
+                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 100
+
+                        output = source_color.outputs['Color']
+                        input = layer_blend.inputs['Color2']
+                        sxmaterial.node_tree.links.new(input, output)
+
+                        output = opacity_and_alpha.outputs[0]
+                        input = layer_blend.inputs[0]
+                        sxmaterial.node_tree.links.new(input, output)
+
+                        output = layer_blend.outputs['Color']
+                        input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission']
+                        sxmaterial.node_tree.links.new(input, output)
+                        bpy.context.scene.eevee.use_bloom = True
+
 
             if prev_color is not None:
                 output = prev_color
@@ -2565,7 +2629,7 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
             ('COLOR', 'Color', ''),
             ('OCC', 'Occlusion', ''),
             ('MET', 'Metallic', ''),
-            ('SMH', 'Smoothness', ''),
+            ('RGH', 'Roughness', ''),
             ('TRN', 'Transmission', ''),
             ('EMI', 'Emission', '')],
         default='COLOR')
@@ -2695,9 +2759,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         (layer.name == 'smoothness') or
                         (layer.name == 'metallic') or
                         (layer.name == 'transmission') or
-                        (layer.name == 'emission') or
-                        (layer.index == 8) or
-                        (layer.index == 9)):
+                        (layer.name == 'emission')):
                         row_hue.enabled = False
                         row_sat.enabled = False
 
@@ -2767,7 +2829,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 split2_fill.operator('sx2.layerinfo', text='', icon='INFO')
 
                 if scene.expandfill:
-                    if layer.layer_type != 'UV':
+                    if (layer is None) or (layer.layer_type == 'COLOR') or (layer.layer_type == 'EMI'):
                         row_fpalette = box_fill.row(align=True)
                         for i in range(8):
                             row_fpalette.prop(scene, 'fillpalette' + str(i+1), text='')
@@ -3141,7 +3203,7 @@ class SXTOOLS2_OT_layerinfo(bpy.types.Operator):
 
 
     def invoke(self, context, event):
-        message_box('SPECIAL LAYERS:\nGradient1, Gradient2\nGrayscale layers that receive color from Palette Color 4 and 5\n(i.e. the primary colors of Layer 4 and 5)\n\nOcclusion, Metallic, Smoothness, Transmission, Emission\nGrayscale layers, filled with the luminance of the selected color.')
+        message_box('SPECIAL LAYERS:\nGradient1, Gradient2\nGrayscale layers that receive color from Palette Color 4 and 5\n(i.e. the primary colors of Layer 4 and 5)\n\nOcclusion, Metallic, Roughness, Transmission, Emission\nGrayscale layers, filled with the luminance of the selected color.')
         return {'FINISHED'}
 
 
@@ -3471,6 +3533,10 @@ class SXTOOLS2_OT_applytool(bpy.types.Operator):
     def invoke(self, context, event):
         objs = selection_validator(self, context)
         if len(objs) > 0:
+            if len(objs[0].sx2layers) == 0:
+                layers.add_layer(objs)
+                setup.update_sx2material(context)
+
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             fillcolor = convert.srgb_to_linear(context.scene.sx2.fillcolor)
 
@@ -3498,23 +3564,9 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
     def invoke(self, context, event):
         objs = selection_validator(self, context)
         if len(objs) > 0:
-            for obj in objs:
-                item = obj.sx2layers.add()
-                item.name = 'Layer ' + str(obj.sx2.layercount)
-                item.color_attribute = item.name
-
-                obj.data.attributes.new(name=item.name, type='FLOAT_COLOR', domain='CORNER')
-                item.index = utils.insert_layer_at_index(obj, item, obj.sx2layers[obj.sx2.selectedlayer].index + 1)
-                print('added at:', item.index)
-
-                colors = generate.color_list(obj, item.default_color)
-                layers.set_layer(obj, colors, obj.sx2layers[len(obj.sx2layers) - 1])
-
-                obj.sx2.selectedlayer = len(obj.sx2layers) - 1
-                obj.sx2.layercount += 1
-
+            layers.add_layer(objs)
             setup.update_sx2material(context)
-            # refresh_actives(self, context)
+            refresh_swatches(self, context)
 
         return {'FINISHED'}
 
@@ -3566,7 +3618,6 @@ class SXTOOLS2_OT_layer_up(bpy.types.Operator):
             for obj in objs:
                 if len(obj.sx2layers) > 0:
                     new_index = obj.sx2layers[idx].index + 1 if obj.sx2layers[idx].index + 1 < len(obj.sx2layers) else obj.sx2layers[idx].index
-                    obj.sx2layers[idx].index = 100
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
                     print('added at:', obj.sx2layers[idx].index)
                     updated = True
@@ -3592,7 +3643,6 @@ class SXTOOLS2_OT_layer_down(bpy.types.Operator):
             for obj in objs:
                 if len(obj.sx2layers) > 0:
                     new_index = obj.sx2layers[idx].index - 1 if obj.sx2layers[idx].index -1 >= 0 else 0
-                    obj.sx2layers[idx].index = 100
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
                     print('added at:', obj.sx2layers[idx].index)
                     updated = True
@@ -3618,7 +3668,7 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
             ('COLOR', 'Color', ''),
             ('OCC', 'Occlusion', ''),
             ('MET', 'Metallic', ''),
-            ('SMH', 'Smoothness', ''),
+            ('RGH', 'Roughness', ''),
             ('TRN', 'Transmission', ''),
             ('EMI', 'Emission', '')],
         default='COLOR')
@@ -3657,8 +3707,8 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     name = 'Occlusion'
                 elif self.layer_type == 'MET':
                     name = 'Metallic'
-                elif self.layer_type == 'SMH':
-                    name = 'Smoothness'
+                elif self.layer_type == 'RGH':
+                    name = 'Roughness'
                 elif self.layer_type == 'TRN':
                     name = 'Transmission'
                 elif self.layer_type == 'EMI':
