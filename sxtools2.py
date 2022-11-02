@@ -1773,18 +1773,18 @@ class SXTOOLS2_setup(object):
                         material_layers.append(layer)
 
             # Create layer inputs
-            for i in range(6):
+            for i in range(math.ceil(len(color_layers)/3)):
                 input_vector = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
                 input_vector.name = 'Input Vector ' + str(i)
                 input_vector.label = 'Input Vector ' + str(i)
                 input_vector.attribute_name = 'sx2.layer_opacity_list_' + str(i)
                 input_vector.attribute_type = 'OBJECT'
-                input_vector.location = (-1600, i*200+200)
+                input_vector.location = (-2000, i*200+400)
 
                 input_splitter = sxmaterial.node_tree.nodes.new(type='ShaderNodeSeparateXYZ')
                 input_splitter.name = 'Input Splitter ' + str(i)
                 input_splitter.label = 'Input Splitter ' + str(i)
-                input_splitter.location = (-1400, i*200+200)
+                input_splitter.location = (-1800, i*200+400)
 
                 output = input_vector.outputs['Vector']
                 input = input_splitter.inputs['Vector']
@@ -1797,7 +1797,7 @@ class SXTOOLS2_setup(object):
                 base_color.name = 'BaseColor'
                 base_color.label = 'BaseColor'
                 base_color.layer_name = color_layers[0][1]
-                base_color.location = (-1000, -600)
+                base_color.location = (-1000, 0)
 
                 prev_color = base_color.outputs['Color']
 
@@ -1810,7 +1810,7 @@ class SXTOOLS2_setup(object):
                     source_color.name = 'LayerColor' + str(i + 1)
                     source_color.label = 'LayerColor' + str(i + 1)
                     source_color.layer_name = color_layers[i+1][1]
-                    source_color.location = (-1000, i*500)
+                    source_color.location = (-1000, i*400+400)
 
                     opacity_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
                     opacity_and_alpha.name = 'Opacity ' + str(i + 1)
@@ -1818,7 +1818,7 @@ class SXTOOLS2_setup(object):
                     opacity_and_alpha.operation = 'MULTIPLY'
                     opacity_and_alpha.use_clamp = True
                     opacity_and_alpha.inputs[0].default_value = 1
-                    opacity_and_alpha.location = (-800, i*500)
+                    opacity_and_alpha.location = (-800, i*400+400)
 
                     layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
                     layer_blend.name = 'Mix ' + str(i + 1)
@@ -1828,7 +1828,7 @@ class SXTOOLS2_setup(object):
                     layer_blend.inputs[2].default_value = [0.0, 0.0, 0.0, 0.0]
                     layer_blend.blend_type = blend_mode_dict[objs[0].sx2layers[color_layers[i+1][0]].blend_mode]
                     layer_blend.use_clamp = True
-                    layer_blend.location = (-600, i*500)
+                    layer_blend.location = (-600, i*400+400)
 
                     # Group connections
                     output = source_color.outputs['Color']
@@ -1859,18 +1859,18 @@ class SXTOOLS2_setup(object):
                     prev_color = layer_blend.outputs['Color']
 
             # Create material inputs
-            for i in range(2):
+            for i in range(math.ceil(len(material_layers)/3)):
                 input_vector = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
                 input_vector.name = 'Material Input Vector ' + str(i)
                 input_vector.label = 'Material Input Vector ' + str(i)
                 input_vector.attribute_name = 'sx2.material_opacity_list_' + str(i)
                 input_vector.attribute_type = 'OBJECT'
-                input_vector.location = (-1600, -i*200-200)
+                input_vector.location = (-1600, -i*200-400)
 
                 input_splitter = sxmaterial.node_tree.nodes.new(type='ShaderNodeSeparateXYZ')
                 input_splitter.name = 'Material Input Splitter ' + str(i)
                 input_splitter.label = 'Material Input Splitter ' + str(i)
-                input_splitter.location = (-1400, -i*200-200)
+                input_splitter.location = (-1400, -i*200-400)
 
                 output = input_vector.outputs['Vector']
                 input = input_splitter.inputs['Vector']
@@ -1885,7 +1885,7 @@ class SXTOOLS2_setup(object):
                     source_color.name = material_layers[i][0]
                     source_color.label = material_layers[i][0]
                     source_color.layer_name = material_layers[i][1]
-                    source_color.location = (0, i*500)
+                    source_color.location = (0, -i*400-400)
 
                     opacity_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
                     opacity_and_alpha.name = material_layers[i][0] + ' Opacity and Alpha'
@@ -1893,7 +1893,7 @@ class SXTOOLS2_setup(object):
                     opacity_and_alpha.operation = 'MULTIPLY'
                     opacity_and_alpha.use_clamp = True
                     opacity_and_alpha.inputs[0].default_value = 1
-                    opacity_and_alpha.location = (200, i*500)
+                    opacity_and_alpha.location = (200, -i*400-400)
 
                     if (material_layers[i][2] == 'OCC') or (material_layers[i][2] == 'EMI'):
                         layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
@@ -1901,7 +1901,7 @@ class SXTOOLS2_setup(object):
                         layer_blend.label = material_layers[i][0] + ' Mix'
                         layer_blend.inputs[0].default_value = 1
                         layer_blend.use_clamp = True
-                        layer_blend.location = (400, i*500)
+                        layer_blend.location = (400, -i*400-400)
 
                     # Group connections
                     output = sxmaterial.node_tree.nodes['Material Input Splitter ' + str(splitter_index)].outputs[i % 3]
@@ -1978,7 +1978,6 @@ class SXTOOLS2_setup(object):
                 output = prev_color
                 input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color']
                 sxmaterial.node_tree.links.new(input, output)
-
 
 
     def update_sx2material(self, context):
@@ -3679,9 +3678,12 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
     def invoke(self, context, event):
         objs = selection_validator(self, context)
         if len(objs) > 0:
-            layers.add_layer(objs)
-            setup.update_sx2material(context)
-            refresh_swatches(self, context)
+            if len(objs[0].sx2layers) == 14:
+                message_box('Max number of layers in use')
+            else:
+                layers.add_layer(objs)
+                setup.update_sx2material(context)
+                refresh_swatches(self, context)
 
         return {'FINISHED'}
 
