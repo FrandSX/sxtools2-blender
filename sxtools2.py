@@ -1017,6 +1017,19 @@ class SXTOOLS2_layers(object):
             # refresh_actives(self, context)
 
 
+    def del_layer(self, objs, layer_to_delete):
+        for obj in objs:
+            bottom_layer_index = obj.sx2layers[layer_to_delete.name].index - 1 if obj.sx2layers[layer_to_delete.name].index - 1 > 0 else 0
+            obj.data.attributes.remove(obj.data.attributes[layer_to_delete.name])
+            idx = utils.find_layer_index_by_name(obj, layer_to_delete.name)
+            obj.sx2layers.remove(idx)
+
+            utils.sort_stack_indices(obj)
+            for i, layer in enumerate(obj.sx2layers):
+                if layer.index == bottom_layer_index:
+                    obj.sx2.selectedlayer = i
+
+
     # wrapper for low-level functions, always returns layerdata in RGBA
     def get_layer(self, obj, sourcelayer, as_tuple=False, uv_as_alpha=False, apply_layer_alpha=False, gradient_with_palette=False):
         valid_sources = ['COLOR', 'OCC', 'MET', 'RGH', 'TRN', 'EMI']
@@ -3698,24 +3711,13 @@ class SXTOOLS2_OT_del_layer(bpy.types.Operator):
     def invoke(self, context, event):
         objs = selection_validator(self, context)
         if len(objs) > 0:
-            idx = objs[0].sx2.selectedlayer
-            for obj in objs:
-                if len(obj.sx2layers) > 0:
-                    bottom_layer_index = obj.sx2layers[idx].index - 1 if obj.sx2layers[idx].index - 1 > 0 else 0
-                    obj.data.attributes.remove(obj.data.attributes[idx])
-                    obj.sx2layers.remove(idx)
-                    utils.sort_stack_indices(obj)
-                    for i, layer in enumerate(obj.sx2layers):
-                        if layer.index == bottom_layer_index:
-                            obj.sx2.selectedlayer = i
-                    print('del:', idx, 'sel:', obj.sx2.selectedlayer)
-
-                l_list = []
-                for layer in obj.sx2layers:
-                    l_list.append(layer.index)
-                print('indices:', l_list)
-
-            setup.update_sx2material(context)
+            if len(objs[0].sx2layers) == 0:
+                message_box('No layers to delete')
+            else:
+                layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+                layers.del_layer(objs, layer)
+                setup.update_sx2material(context)
+                refresh_swatches(self, context)
 
         return {'FINISHED'}
 
@@ -3854,6 +3856,7 @@ class SXTOOLS2_OT_mergeup(bpy.types.Operator):
         enabled = False
         if sxglobals.mode == 'EDIT':
             return enabled
+
         objs = context.view_layer.objects.selected
         mesh_objs = []
         for obj in objs:
@@ -3861,8 +3864,8 @@ class SXTOOLS2_OT_mergeup(bpy.types.Operator):
                 mesh_objs.append(obj)
 
         if len(mesh_objs[0].sx2layers) > 0:
-            layer = utils.find_layer_by_stack_index(mesh_objs[0], mesh_objs[0].sx2.selectedlayer)
-            if layer.layer_type == 'COLOR':
+            layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
+            if (layer.layer_type == 'COLOR') and (layer.index < (len(sxglobals.layer_stack_dict) - 1)):
                 enabled = True
         return enabled
 
@@ -3870,9 +3873,19 @@ class SXTOOLS2_OT_mergeup(bpy.types.Operator):
     def invoke(self, context, event):
         objs = selection_validator(self, context)
         if len(objs) > 0:
-            topLayer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-            baseLayer = utils.find_layer_by_stack_index(objs[0], topLayer.index - 1)
-            layers.merge_layers(objs, topLayer, baseLayer, baseLayer)
+            baseLayer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            topLayer = utils.find_layer_by_stack_index(objs[0], baseLayer.index + 1)
+            layers.merge_layers(objs, topLayer, baseLayer, topLayer)
+            layers.del_layer(objs, baseLayer)
+
+            if len(objs[0].sx2layers) > 1:
+                layer = utils.find_layer_by_stack_index(objs[0], objs[0].sx2layers[objs[0].sx2.selectedlayer].index + 1)
+                idx = utils.find_layer_index_by_name(objs[0], layer.name)
+            else:
+                idx = 0
+            objs[0].sx2.selectedlayer = idx
+
+            setup.update_sx2material(context)
             refresh_swatches(self, context)
             # sxglobals.composite = True
             # refresh_actives(self, context)
@@ -3899,8 +3912,8 @@ class SXTOOLS2_OT_mergedown(bpy.types.Operator):
 
         if len(mesh_objs[0].sx2layers) > 0:
             layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
-            if layer.index < (len(sxglobals.layer_stack_dict) - 1):
-                nextLayer = utils.find_layer_by_stack_index(mesh_objs[0], layer.index + 1)
+            if layer.index > 0:
+                nextLayer = utils.find_layer_by_stack_index(mesh_objs[0], layer.index - 1)
                 if (nextLayer.layer_type == 'COLOR') and (layer.layer_type == 'COLOR'):
                     enabled = True
         return enabled
@@ -3909,9 +3922,11 @@ class SXTOOLS2_OT_mergedown(bpy.types.Operator):
     def invoke(self, context, event):
         objs = selection_validator(self, context)
         if len(objs) > 0:
-            baseLayer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-            topLayer = utils.find_layer_by_stack_index(objs[0], baseLayer.index + 1)
-            layers.merge_layers(objs, topLayer, baseLayer, topLayer)
+            topLayer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            baseLayer = utils.find_layer_by_stack_index(objs[0], topLayer.index - 1)
+            layers.merge_layers(objs, topLayer, baseLayer, baseLayer)
+            layers.del_layer(objs, topLayer)
+            setup.update_sx2material(context)
             refresh_swatches(self, context)
             # sxglobals.composite = True
             # refresh_actives(self, context)
