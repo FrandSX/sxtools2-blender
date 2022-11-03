@@ -45,6 +45,15 @@ class SXTOOLS2_sxglobals(object):
         self.modeID = None
         self.randomseed = 42
 
+        self.prevSelection = []
+        self.prevComponentSelection = []
+        self.rampDict = {}
+        self.categoryDict = {}
+        self.presetLookup = {}
+        self.paletteDict = {}
+        self.masterPaletteArray = []
+        self.materialArray = []
+
         # {stack_layer_index: (layer.name, layer.color_attribute, layer.layer_type)}
         self.layer_stack_dict = {}
 
@@ -60,6 +69,293 @@ class SXTOOLS2_sxglobals(object):
 
     def __del__(self):
         print('SX Tools: Exiting sxglobals')
+
+
+# ------------------------------------------------------------------------
+#    File IO
+# ------------------------------------------------------------------------
+class SXTOOLS2_files(object):
+    def __init__(self):
+        return None
+
+
+    def __del__(self):
+        print('SX Tools: Exiting files')
+
+
+    # Loads palettes.json and materials.json
+    def load_file(self, mode):
+        prefs = bpy.context.preferences.addons['sxtools2'].preferences
+        directory = prefs.libraryfolder
+        filePath = directory + mode + '.json'
+
+        if len(directory) > 0:
+            try:
+                with open(filePath, 'r') as input:
+                    tempDict = {}
+                    tempDict = json.load(input)
+                    if mode == 'palettes':
+                        del sxglobals.masterPaletteArray[:]
+                        bpy.context.scene.sxpalettes.clear()
+                        sxglobals.masterPaletteArray = tempDict['Palettes']
+                    elif mode == 'materials':
+                        del sxglobals.materialArray[:]
+                        bpy.context.scene.sxmaterials.clear()
+                        sxglobals.materialArray = tempDict['Materials']
+                    elif mode == 'gradients':
+                        sxglobals.rampDict.clear()
+                        sxglobals.rampDict = tempDict
+                    elif mode == 'categories':
+                        sxglobals.categoryDict.clear()
+                        sxglobals.categoryDict = tempDict
+
+                    input.close()
+                print(f'SX Tools: {mode} loaded from {filePath}')
+            except ValueError:
+                print(f'SX Tools Error: Invalid {mode} file.')
+                prefs.libraryfolder = ''
+                return False
+            except IOError:
+                print(f'SX Tools Error: {mode} file not found!')
+                return False
+        else:
+            print(f'SX Tools: No {mode} file found')
+            return False
+
+        if mode == 'palettes':
+            self.load_swatches(sxglobals.masterPaletteArray)
+            return True
+        elif mode == 'materials':
+            self.load_swatches(sxglobals.materialArray)
+            return True
+        else:
+            return True
+
+
+    def save_file(self, mode):
+        prefs = bpy.context.preferences.addons['sxtools2'].preferences
+        directory = prefs.libraryfolder
+        filePath = directory + mode + '.json'
+        # Palettes.json Materials.json
+
+        if len(directory) > 0:
+            with open(filePath, 'w') as output:
+                if mode == 'palettes':
+                    tempDict = {}
+                    tempDict['Palettes'] = sxglobals.masterPaletteArray
+                    json.dump(tempDict, output, indent=4)
+                elif mode == 'materials':
+                    tempDict = {}
+                    tempDict['Materials'] = sxglobals.materialArray
+                    json.dump(tempDict, output, indent=4)
+                elif mode == 'gradients':
+                    tempDict = {}
+                    tempDict = sxglobals.rampDict
+                    json.dump(tempDict, output, indent=4)
+                output.close()
+            message_box(mode + ' saved')
+            # print('SX Tools: ' + mode + ' saved')
+        else:
+            message_box(mode + ' file location not set!', 'SX Tools Error', 'ERROR')
+            # print('SX Tools Warning: ' + mode + ' file location not set!')
+
+
+    def load_swatches(self, swatcharray):
+        if swatcharray == sxglobals.materialArray:
+            swatchcount = 3
+            sxlist = bpy.context.scene.sxmaterials
+        elif swatcharray == sxglobals.masterPaletteArray:
+            swatchcount = 5
+            sxlist = bpy.context.scene.sxpalettes
+
+        for categoryDict in swatcharray:
+            for category in categoryDict:
+                if len(categoryDict[category]) == 0:
+                    item = sxlist.add()
+                    item.name = 'Empty'
+                    item.category = category
+                    for i in range(swatchcount):
+                        incolor = [0.0, 0.0, 0.0, 1.0]
+                        setattr(item, 'color'+str(i), incolor[:])
+                else:
+                    for entry in categoryDict[category]:
+                        item = sxlist.add()
+                        item.name = entry
+                        item.category = category
+                        for i in range(swatchcount):
+                            incolor = [0.0, 0.0, 0.0, 1.0]
+                            incolor[0] = categoryDict[category][entry][i][0]
+                            incolor[1] = categoryDict[category][entry][i][1]
+                            incolor[2] = categoryDict[category][entry][i][2]
+                            setattr(item, 'color'+str(i), convert.srgb_to_linear(incolor))
+
+
+    def save_ramp(self, rampName):
+        tempDict = {}
+        ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'].color_ramp
+
+        tempDict['mode'] = ramp.color_mode
+        tempDict['interpolation'] = ramp.interpolation
+        tempDict['hue_interpolation'] = ramp.hue_interpolation
+
+        tempColorArray = []
+        for i, element in enumerate(ramp.elements):
+            tempElement = [None, [None, None, None, None], None]
+            tempElement[0] = element.position
+            tempElement[1] = [element.color[0], element.color[1], element.color[2], element.color[3]]
+            tempColorArray.append(tempElement)
+
+        tempDict['elements'] = tempColorArray
+        sxglobals.rampDict[rampName] = tempDict
+
+        self.save_file('gradients')
+
+
+    # In paletted export mode, gradients and overlays are
+    # not composited to VertexColor0 as that will be
+    # done by the shader on the game engine side
+    def export_files(self, groups):
+        scene = bpy.context.scene.sx2
+        prefs = bpy.context.preferences.addons['sxtools2'].preferences
+        exportspace = prefs.exportspace
+        empty = True
+
+        if 'ExportObjects' not in bpy.data.collections:
+            exportObjects = bpy.data.collections.new('ExportObjects')
+        else:
+            exportObjects = bpy.data.collections['ExportObjects']
+
+        groupNames = []
+        for group in groups:
+            bpy.context.view_layer.objects.active = group
+            bpy.ops.object.select_all(action='DESELECT')
+            group.select_set(True)
+            org_loc = group.location.copy()
+            group.location = (0, 0, 0)
+
+            selArray = utils.find_children(group, recursive=True)
+            for sel in selArray:
+                sel.select_set(True)
+            group.select_set(False)
+
+            # Check for mesh colliders
+            collider_array = []
+            if 'SXColliders' in bpy.data.collections:
+                colliders = bpy.data.collections['SXColliders'].objects
+                if group.name.endswith('_root'):
+                    collider_id = group.name[:-5]
+                else:
+                    collider_id = group.name
+
+                for collider in colliders:
+                    if collider_id in collider.name:
+                        collider_array.append(collider)
+                        collider['sxToolsVersion'] = 'SX Tools for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
+
+            # Only groups with meshes and armatures as children are exported
+            objArray = []
+            for sel in selArray:
+                if sel.type == 'MESH':
+                    objArray.append(sel)
+                    sel['staticVertexColors'] = sel.sx2.staticvertexcolors
+                    sel['sxToolsVersion'] = 'SX Tools for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
+                    sel['colorSpace'] = prefs.exportspace
+
+            if len(objArray) > 0:
+                empty = False
+
+                # Create palette masks
+                layers.generate_masks(objArray)
+
+                for obj in objArray:
+                    bpy.context.view_layer.objects.active = obj
+                    compLayers = utils.find_comp_layers(obj, obj['staticVertexColors'])
+                    layer0 = utils.find_layer_from_index(obj, 0)
+                    layer1 = utils.find_layer_from_index(obj, 1)
+                    layers.blend_layers([obj, ], compLayers, layer1, layer0, uv_as_alpha=True)
+
+                    # Temporary fix for Blender 3.x not supporting exporting of float color attributes
+                    color_layers = utils.find_color_layers(obj)
+                    for layer in color_layers:
+                        colors = layers.get_layer(obj, layer)
+                        obj.data.attributes.remove(obj.data.attributes[layer.vertexColorLayer])
+                        obj.data.attributes.new(name=layer.vertexColorLayer, type='BYTE_COLOR', domain='CORNER')
+                        layers.set_layer(obj, colors, layer)
+
+                    obj.data.attributes.active_color = obj.data.attributes[layer0.vertexColorLayer]
+                    bpy.ops.geometry.color_attribute_render_set(name=layer0.vertexColorLayer)
+
+                    # bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+                    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+
+                    if 'sxTiler' in obj.modifiers:
+                        obj.modifiers.remove(obj.modifiers['sxTiler'])
+                        obj.data.use_auto_smooth = True
+
+                # bpy.context.view_layer.update()
+                bpy.context.view_layer.objects.active = group
+
+                # If linear colorspace exporting is selected
+                # vertex colors pre-multiplied against Blender's unwanted sRGB export conversion
+                if exportspace == 'LIN':
+                    export.export_to_linear(objArray)
+
+                if prefs.materialtype == 'SMP':
+                    path = scene.exportfolder
+                else:
+                    category = objArray[0].sx2.category.lower()
+                    print(f'Determining path: {objArray[0].name} {category}')
+                    path = scene.exportfolder + category + os.path.sep
+                    pathlib.Path(path).mkdir(exist_ok=True)
+
+                if len(collider_array) > 0:
+                    for collider in collider_array:
+                        collider.select_set(True)
+
+                exportPath = path + group.name + '.' + 'fbx'
+                export_settings = ['FBX_SCALE_UNITS', False, False, False, 'Z', '-Y', '-Y', '-X']
+
+                bpy.ops.export_scene.fbx(
+                    filepath=exportPath,
+                    apply_scale_options=export_settings[0],
+                    use_selection=True,
+                    apply_unit_scale=export_settings[1],
+                    use_space_transform=export_settings[2],
+                    bake_space_transform=export_settings[3],
+                    use_mesh_modifiers=True,
+                    axis_up=export_settings[4],
+                    axis_forward=export_settings[5],
+                    use_active_collection=False,
+                    add_leaf_bones=False,
+                    primary_bone_axis=export_settings[6],
+                    secondary_bone_axis=export_settings[7],
+                    object_types={'ARMATURE', 'EMPTY', 'MESH'},
+                    use_custom_props=True,
+                    use_metadata=False)
+
+                groupNames.append(group.name)
+                group.location = org_loc
+
+                tools.remove_modifiers(objArray)
+                tools.add_modifiers(objArray)
+
+                # Clean-up of temporary fix for Blender 3.x not supporting exporting of float color attributes
+                for obj in objArray:
+                    color_layers = utils.find_color_layers(obj)
+                    for layer in color_layers:
+                        colors = layers.get_layer(obj, layer)
+                        obj.data.attributes.remove(obj.data.attributes[layer.color_attribute])
+                        obj.data.attributes.new(name=layer.color_attribute, type='FLOAT_COLOR', domain='CORNER')
+                        layers.set_layer(obj, colors, layer)
+
+                bpy.context.view_layer.objects.active = group
+
+        if empty:
+            message_box('No objects exported!')
+        else:
+            message_box('Exported:\n' + str('\n').join(groupNames))
+            for group_name in groupNames:
+                print(f'Completed: {group_name}')
 
 
 # ------------------------------------------------------------------------
@@ -809,7 +1105,7 @@ class SXTOOLS2_generate(object):
 
 
     def ramp_list(self, obj, objs, rampmode, masklayer=None, mergebbx=True):
-        ramp = bpy.data.materials['SXMaterial'].node_tree.nodes['ColorRamp']
+        ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp']
 
         # For OBJECT mode selections
         if sxglobals.mode == 'OBJECT':
@@ -855,7 +1151,7 @@ class SXTOOLS2_generate(object):
 
 
     def luminance_remap_list(self, obj, layer=None, masklayer=None, values=None):
-        ramp = bpy.data.materials['SXMaterial'].node_tree.nodes['ColorRamp']
+        ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp']
         if values is None:
             values = layers.get_luminances(obj, layer, as_rgba=False)
         colors = generate.empty_list(obj, 4)
@@ -1034,7 +1330,7 @@ class SXTOOLS2_layers(object):
     def get_layer(self, obj, sourcelayer, as_tuple=False, uv_as_alpha=False, apply_layer_alpha=False, gradient_with_palette=False):
         valid_sources = ['COLOR', 'OCC', 'MET', 'RGH', 'TRN', 'EMI']
         sourceType = sourcelayer.layer_type
-        # sxmaterial = bpy.data.materials['SXMaterial'].node_tree
+        # sxmaterial = bpy.data.materials['SXToolMaterial'].node_tree
         alpha = sourcelayer.opacity
 
         if sourceType in valid_sources:
@@ -1501,9 +1797,9 @@ class SXTOOLS2_layers(object):
             palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
             setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
 
-        # Update SXMaterial color
-        # if layer.index <= 5:
-        #     bpy.data.materials['SXMaterial'].node_tree.nodes['PaletteColor'+str(layer.index - 1)].outputs[0].default_value = colors[0]
+        # Update SXToolMaterial color
+        if layer.index <= 5:
+            bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(layer.index - 1)].outputs[0].default_value = colors[0]
 
 
     def color_layers_to_values(self, objs):
@@ -1516,7 +1812,7 @@ class SXTOOLS2_layers(object):
 
             if not utils.color_compare(palettecolor, tabcolor) and not utils.color_compare(palettecolor, (0.0, 0.0, 0.0, 1.0)):
                 setattr(scene, 'newpalette' + str(i), palettecolor)
-                bpy.data.materials['SXMaterial'].node_tree.nodes['PaletteColor'+str(i)].outputs[0].default_value = palettecolor
+                bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(i)].outputs[0].default_value = palettecolor
 
 
     def material_layers_to_values(self, objs):
@@ -1823,6 +2119,25 @@ class SXTOOLS2_setup(object):
         return None
 
 
+    def create_sxtoolmaterial(self):
+        sxmaterial = bpy.data.materials.new(name='SXToolMaterial')
+        sxmaterial.use_nodes = True
+
+        sxmaterial.node_tree.nodes.remove(sxmaterial.node_tree.nodes['Principled BSDF'])
+        sxmaterial.node_tree.nodes['Material Output'].location = (-200, 0)
+
+        # Gradient tool color ramp
+        sxmaterial.node_tree.nodes.new(type='ShaderNodeValToRGB')
+        sxmaterial.node_tree.nodes['ColorRamp'].location = (-1000, 0)
+
+        # Palette colors
+        for i in range(5):
+            pCol = sxmaterial.node_tree.nodes.new(type="ShaderNodeRGB")
+            pCol.name = 'PaletteColor' + str(i)
+            pCol.label = 'PaletteColor' + str(i)
+            pCol.location = (-1000+(200*i), -400)
+
+
     def create_sx2material(self, objs):
         blend_mode_dict = {'ALPHA': 'MIX', 'OVR': 'OVERLAY', 'MUL': 'MULTIPLY', 'ADD': 'ADD'}
 
@@ -2098,6 +2413,8 @@ class SXTOOLS2_setup(object):
         bpy.context.view_layer.update()
 
         objs = selection_validator(self, context)
+        if 'SXToolMaterial' not in bpy.data.materials:
+            setup.create_sxtoolmaterial()
         setup.create_sx2material(objs)
 
         for obj in objs:
@@ -2151,7 +2468,7 @@ def refresh_actives(self, context):
             # update Palettes-tab color values
             if scene.toolmode == 'PAL':
                 layers.color_layers_to_values(objs)
-            elif (prefs.materialtype != 'SMP') and (scene.toolmode == 'MAT'):
+            elif (scene.toolmode == 'MAT'):
                 layers.material_layers_to_values(objs)
 
             for obj in objs:
@@ -2325,7 +2642,7 @@ def refresh_swatches(self, context):
 
         utils.mode_manager(objs, set_mode=True, mode_id='refresh_actives')
 
-        if len(objs) > 0:
+        if (len(objs) > 0) and (len(objs[0].sx2layers) > 0):
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
 
             # Refresh SX Tools UI to latest selection
@@ -2347,6 +2664,55 @@ def message_box(message='', title='SX Tools', icon='INFO'):
         bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
 
+def update_layers(self, context):
+    if not sxglobals.refreshInProgress:
+        update_gpu_props(self, context)
+
+        if 'SXMaterial' not in bpy.data.materials:
+            setup.create_sxmaterial()
+
+        shading_mode(self, context)
+        objs = selection_validator(self, context)
+
+        if len(objs) > 0:
+            utils.mode_manager(objs, set_mode=True, mode_id='update_layers')
+            idx = objs[0].sxtools.selectedlayer
+            alphaVal = getattr(objs[0].sxtools, 'activeLayerAlpha')
+            blendVal = getattr(objs[0].sxtools, 'activeLayerBlendMode')
+
+            vis_array = []
+            for layer in objs[0].sxlayers:
+                vis_array.append(layer.visibility)
+
+            for obj in objs:
+                setattr(obj.sxlayers[idx], 'alpha', alphaVal)
+                setattr(obj.sxlayers[idx], 'blendMode', blendVal)
+                sxglobals.refreshInProgress = True
+                for i, layer in enumerate(obj.sxlayers):
+                    layer.visibility = vis_array[i]
+                sxglobals.refreshInProgress = False
+
+                if blendVal == 'OVR':
+                    setattr(obj.sxlayers[idx], 'defaultColor', (0.5, 0.5, 0.5, 1.0))
+                elif (idx == 1) and (obj.sxtools.category != 'TRANSPARENT'):
+                    setattr(obj.sxlayers[idx], 'defaultColor', (0.5, 0.5, 0.5, 1.0))
+                else:
+                    setattr(obj.sxlayers[idx], 'defaultColor', utils.find_default_color(obj, obj.sxlayers[idx]))
+
+                sxglobals.refreshInProgress = True
+                setattr(obj.sxtools, 'selectedlayer', idx)
+                setattr(obj.sxtools, 'activeLayerAlpha', alphaVal)
+                setattr(obj.sxtools, 'activeLayerBlendMode', blendVal)
+                sxglobals.refreshInProgress = False
+
+            # setup.setup_geometry(objs)
+            if not context.scene.sxtools.gpucomposite:
+                sxglobals.composite = True
+                layers.composite_layers(objs)
+
+            utils.mode_manager(objs, revert=True, mode_id='update_layers')
+
+
 # TODO: This only works with identical layersets
 def update_selected_layer(self, context):
     objs = selection_validator(self, context)
@@ -2365,6 +2731,13 @@ def update_selected_layer(self, context):
             for layer in obj.sx2layers:
                 if layer.color_attribute == layer_tuple[1]:
                     sxglobals.layer_stack_dict[i] = (layer.name, layer.color_attribute, layer.layer_type)
+
+    areas = bpy.context.workspace.screens[0].areas
+    shading = 'MATERIAL'  # 'WIREFRAME' 'SOLID' 'MATERIAL' 'RENDERED'
+    for area in areas:
+        for space in area.spaces:
+            if space.type == 'VIEW_3D':
+                space.shading.type = shading
 
     if objs[0].sx2.shadingmode != 'FULL':
         update_material(self, context)
@@ -2435,6 +2808,90 @@ def adjust_hsl(self, context, hslmode):
             # sxglobals.composite = True
             # refresh_actives(self, context)
             refresh_swatches(self, context)
+
+
+def dict_lister(self, context, data_dict):
+    items = data_dict.keys()
+    enumItems = []
+    for item in items:
+        sxglobals.presetLookup[item.replace(" ", "_").upper()] = item
+        enumItem = (item.replace(" ", "_").upper(), item, '')
+        enumItems.append(enumItem)
+    return enumItems
+
+
+def ext_category_lister(self, context, category):
+    items = getattr(context.scene, category)
+    categories = []
+    for item in items:
+        categoryEnum = item.category.replace(" ", "").upper()
+        if categoryEnum not in sxglobals.presetLookup:
+            sxglobals.presetLookup[categoryEnum] = item.category
+        enumItem = (categoryEnum, item.category, '')
+        categories.append(enumItem)
+    enumItems = list(set(categories))
+    return enumItems
+
+
+def load_category(self, context):
+    if not sxglobals.refreshInProgress:
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            sxglobals.refreshInProgress = True
+            categoryData = sxglobals.categoryDict[sxglobals.presetLookup[objs[0].sxtools.category]]
+
+            for obj in objs:
+                for i in range(7):
+                    layer = utils.find_layer_from_index(obj, i+1)
+                    layer.name = categoryData[i]
+
+                obj.sx2.staticvertexcolors = str(categoryData[7])
+                obj.sx2.smoothness1 = categoryData[8]
+                obj.sx2.smoothness2 = categoryData[9]
+                obj.sx2.overlaystrength = categoryData[10]
+                obj.sx2.selectedlayer = 1
+
+                bpy.data.materials['SX2Material_'].blend_method = categoryData[11]
+                if categoryData[11] == 'BLEND':
+                    bpy.data.materials['SX2Material_' + obj.name].use_backface_culling = True
+                else:
+                    bpy.data.materials['SX2Material_' + obj.name].use_backface_culling = False
+
+            sxglobals.refreshInProgress = False
+        update_layers(self, context)
+
+
+def load_ramp(self, context):
+    rampName = sxglobals.presetLookup[context.scene.sxtools.ramplist]
+    ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'].color_ramp
+    tempDict = sxglobals.rampDict[rampName]
+
+    ramp.color_mode = tempDict['mode']
+    ramp.interpolation = tempDict['interpolation']
+    ramp.hue_interpolation = tempDict['hue_interpolation']
+
+    rampLength = len(ramp.elements)
+    for i in range(rampLength-1):
+        ramp.elements.remove(ramp.elements[0])
+
+    for i, tempElement in enumerate(tempDict['elements']):
+        if i == 0:
+            ramp.elements[0].position = tempElement[0]
+            ramp.elements[0].color = [tempElement[1][0], tempElement[1][1], tempElement[1][2], tempElement[1][3]]
+        else:
+            newElement = ramp.elements.new(tempElement[0])
+            newElement.color = [tempElement[1][0], tempElement[1][1], tempElement[1][2], tempElement[1][3]]
+
+
+def load_libraries(self, context):
+    status1 = files.load_file('palettes')
+    status2 = files.load_file('materials')
+    status3 = files.load_file('gradients')
+    status4 = files.load_file('categories')
+
+    if status1 and status2 and status3 and status4:
+        message_box('Libraries loaded successfully')
+        sxglobals.librariesLoaded = True
 
 
 # ------------------------------------------------------------------------
@@ -3046,6 +3503,211 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
         default=False)
 
 
+class SXTOOLS2_preferences(bpy.types.AddonPreferences):
+    bl_idname = __name__
+
+    libraryfolder: bpy.props.StringProperty(
+        name='Library Folder',
+        description='Folder containing SX Tools data files\n(materials.json, palettes.json, gradients.json)',
+        default='',
+        maxlen=1024,
+        subtype='DIR_PATH',
+        update=load_libraries)
+
+    enable_modifiers: bpy.props.BoolProperty(
+        name='Modifiers',
+        description='Enable the custom workflow modifier module',
+        default=False)
+
+    enable_export: bpy.props.BoolProperty(
+        name='Export',
+        description='Enable export module',
+        default=False)
+
+    materialsubsurface: bpy.props.BoolProperty(
+        name='Subsurface Scattering',
+        description='Connect Transmission Layer to SX2Material Subsurface Scattering',
+        default=False)
+
+    materialtransmission: bpy.props.BoolProperty(
+        name='Transmission',
+        description='Connect Transmission Layer to SX2Material Transmission',
+        default=True)
+
+    exportspace: bpy.props.EnumProperty(
+        name='Color Space for Exports',
+        description='Color space for exported vertex colors',
+        items=[
+            ('SRGB', 'sRGB', ''),
+            ('LIN', 'Linear', '')],
+        default='LIN')
+
+    removelods: bpy.props.BoolProperty(
+        name='Remove LOD Meshes After Export',
+        description='Remove LOD meshes from the scene after exporting to FBX',
+        default=True)
+
+    lodoffset: bpy.props.FloatProperty(
+        name='LOD Mesh Preview Z-Offset',
+        min=0.0,
+        max=10.0,
+        default=1.0)
+
+    flipsmartx: bpy.props.BoolProperty(
+        name='Flip Smart X',
+        description='Reverse smart naming on X-axis',
+        default=False)
+
+    flipsmarty: bpy.props.BoolProperty(
+        name='Flip Smart Y',
+        description='Reverse smart naming on Y-axis',
+        default=False)
+
+    cataloguepath: bpy.props.StringProperty(
+        name='Catalogue File',
+        description='Catalogue file for batch exporting',
+        default='',
+        maxlen=1024,
+        subtype='FILE_PATH')
+
+
+    def draw(self, context):
+        layout = self.layout
+        layout_split_modules_1 = layout.split()
+        layout_split_modules_1.label(text='Enable SX Tools Modules:')
+        layout_split_modules_2 = layout_split_modules_1.split()
+        layout_split_modules_2.prop(self, 'enable_modifiers')
+        layout_split_modules_2.prop(self, 'enable_export')
+        layout_split1 = layout.split()
+        layout_split1.label(text='Connect Transmission Layer to:')
+        layout_split2 = layout_split1.split()
+        layout_split2.prop(self, 'materialsubsurface')
+        layout_split2.prop(self, 'materialtransmission')
+        layout_split4 = layout.split()
+        layout_split4.label(text='FBX Export Color Space:')
+        layout_split4.prop(self, 'exportspace', text='')
+        layout_split5 = layout.split()
+        layout_split5.label(text='LOD Mesh Preview Z-Offset')
+        layout_split5.prop(self, 'lodoffset', text='')
+        layout_split6 = layout.split()
+        layout_split6.label(text='Clear LOD Meshes After Export')
+        layout_split6.prop(self, 'removelods', text='')
+        layout_split7 = layout.split()
+        layout_split7.label(text='Reverse Smart Mirror Naming:')
+        layout_split8 = layout_split7.split()
+        layout_split8.prop(self, 'flipsmartx', text='X-Axis')
+        layout_split8.prop(self, 'flipsmarty', text='Y-Axis')
+        layout_split9 = layout.split()
+        layout_split9.label(text='Library Folder:')
+        layout_split9.prop(self, 'libraryfolder', text='')
+        layout_split10 = layout.split()
+        layout_split10.label(text='Catalogue File (Optional):')
+        layout_split10.prop(self, 'cataloguepath', text='')
+
+
+class SXTOOLS2_masterpalette(bpy.types.PropertyGroup):
+    category: bpy.props.StringProperty(
+        name='Category',
+        description='Palette Category',
+        default='')
+
+    color0: bpy.props.FloatVectorProperty(
+        name='Palette Color 0',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0))
+
+    color1: bpy.props.FloatVectorProperty(
+        name='Palette Color 1',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0))
+
+    color2: bpy.props.FloatVectorProperty(
+        name='Palette Color 2',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0))
+
+    color3: bpy.props.FloatVectorProperty(
+        name='Palette Color 3',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0))
+
+    color4: bpy.props.FloatVectorProperty(
+        name='Palette Color 4',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0))
+
+
+class SXTOOLS2_material(bpy.types.PropertyGroup):
+    category: bpy.props.StringProperty(
+        name='Category',
+        description='Material Category',
+        default='')
+
+    color0: bpy.props.FloatVectorProperty(
+        name='Material Color',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0))
+
+    color1: bpy.props.FloatVectorProperty(
+        name='Material Metallic',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0))
+
+    color2: bpy.props.FloatVectorProperty(
+        name='Material Smoothness',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(1.0, 1.0, 1.0, 1.0))
+
+
+class SXTOOLS2_rampcolor(bpy.types.PropertyGroup):
+    # name: from PropertyGroup
+
+    index: bpy.props.IntProperty(
+        name='Element Index',
+        min=0,
+        max=100,
+        default=0)
+
+    position: bpy.props.FloatProperty(
+        name='Element Position',
+        min=0.0,
+        max=1.0,
+        default=0.0)
+
+    color: bpy.props.FloatVectorProperty(
+        name='Element Color',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.0, 0.0, 0.0, 1.0))
+
+
+
 # ------------------------------------------------------------------------
 #    UI Panel
 # ------------------------------------------------------------------------
@@ -3260,7 +3922,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     row3_fill.prop(scene, 'ramplist', text='')
                     row3_fill.operator('sx2.addramp', text='', icon='ADD')
                     row3_fill.operator('sx2.delramp', text='', icon='REMOVE')
-                    box_fill.template_color_ramp(bpy.data.materials['SX2Material'].node_tree.nodes['ColorRamp'], 'color_ramp', expand=True)
+                    box_fill.template_color_ramp(bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'], 'color_ramp', expand=True)
                     if mode == 'OBJECT':
                         box_fill.prop(scene, 'rampbbox', text='Use Combined Bounding Box')
 
@@ -3271,7 +3933,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     row3_fill.prop(scene, 'ramplist', text='')
                     row3_fill.operator('sx2.addramp', text='', icon='ADD')
                     row3_fill.operator('sx2.delramp', text='', icon='REMOVE')
-                    box_fill.template_color_ramp(bpy.data.materials['SX2Material'].node_tree.nodes['ColorRamp'], 'color_ramp', expand=True)
+                    box_fill.template_color_ramp(bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'], 'color_ramp', expand=True)
 
             # Master Palettes -----------------------------------------------
             elif scene.toolmode == 'PAL':
@@ -3570,7 +4232,7 @@ class SXTOOLS2_OT_layerinfo(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_addramp(bpy.types.Operator):
+class SXTOOLS2_OT_add_ramp(bpy.types.Operator):
     bl_idname = 'sx2.addramp'
     bl_label = 'Add Ramp Preset'
     bl_description = 'Add ramp preset to Gradient Library'
@@ -3593,7 +4255,7 @@ class SXTOOLS_OT_addramp(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_delramp(bpy.types.Operator):
+class SXTOOLS2_OT_del_ramp(bpy.types.Operator):
     bl_idname = 'sx2.delramp'
     bl_label = 'Remove Ramp Preset'
     bl_description = 'Delete ramp preset from Gradient Library'
@@ -3612,7 +4274,7 @@ class SXTOOLS_OT_delramp(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_addpalettecategory(bpy.types.Operator):
+class SXTOOLS2_OT_addpalettecategory(bpy.types.Operator):
     bl_idname = 'sx2.addpalettecategory'
     bl_label = 'Add Palette Category'
     bl_description = 'Adds a palette category to the Palette Library'
@@ -3651,7 +4313,7 @@ class SXTOOLS_OT_addpalettecategory(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_delpalettecategory(bpy.types.Operator):
+class SXTOOLS2_OT_delpalettecategory(bpy.types.Operator):
     bl_idname = 'sx2.delpalettecategory'
     bl_label = 'Remove Palette Category'
     bl_description = 'Removes a palette category from the Palette Library'
@@ -3673,7 +4335,7 @@ class SXTOOLS_OT_delpalettecategory(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_addmaterialcategory(bpy.types.Operator):
+class SXTOOLS2_OT_addmaterialcategory(bpy.types.Operator):
     bl_idname = 'sx2.addmaterialcategory'
     bl_label = 'Add Material Category'
     bl_description = 'Adds a material category to the Material Library'
@@ -3712,7 +4374,7 @@ class SXTOOLS_OT_addmaterialcategory(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_delmaterialcategory(bpy.types.Operator):
+class SXTOOLS2_OT_delmaterialcategory(bpy.types.Operator):
     bl_idname = 'sx2.delmaterialcategory'
     bl_label = 'Remove Material Category'
     bl_description = 'Removes a material category from the Material Library'
@@ -3734,7 +4396,7 @@ class SXTOOLS_OT_delmaterialcategory(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_addpalette(bpy.types.Operator):
+class SXTOOLS2_OT_addpalette(bpy.types.Operator):
     bl_idname = 'sx2.addpalette'
     bl_label = 'Add Palette Preset'
     bl_description = 'Add palette preset to Palette Library'
@@ -3794,7 +4456,7 @@ class SXTOOLS_OT_addpalette(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_delpalette(bpy.types.Operator):
+class SXTOOLS2_OT_delpalette(bpy.types.Operator):
     bl_idname = 'sx2.delpalette'
     bl_label = 'Remove Palette Preset'
     bl_description = 'Delete palette preset from Palette Library'
@@ -3815,7 +4477,7 @@ class SXTOOLS_OT_delpalette(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_addmaterial(bpy.types.Operator):
+class SXTOOLS2_OT_addmaterial(bpy.types.Operator):
     bl_idname = 'sx2.addmaterial'
     bl_label = 'Add Material Preset'
     bl_description = 'Add palette preset to Material Library'
@@ -3865,7 +4527,7 @@ class SXTOOLS_OT_addmaterial(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_delmaterial(bpy.types.Operator):
+class SXTOOLS2_OT_delmaterial(bpy.types.Operator):
     bl_idname = 'sx2.delmaterial'
     bl_label = 'Remove Material Preset'
     bl_description = 'Delete material preset from Material Library'
@@ -3944,6 +4606,24 @@ class SXTOOLS2_OT_del_layer(bpy.types.Operator):
     bl_options = {'UNDO'}
 
 
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        if sxglobals.mode == 'EDIT':
+            return enabled
+
+        objs = context.view_layer.objects.selected
+        mesh_objs = []
+        for obj in objs:
+            if obj.type == 'MESH':
+                mesh_objs.append(obj)
+
+        if len(mesh_objs[0].sx2layers) > 0:
+            enabled = True
+
+        return enabled
+
+
     def invoke(self, context, event):
         objs = selection_validator(self, context)
         if len(objs) > 0:
@@ -3963,6 +4643,24 @@ class SXTOOLS2_OT_layer_up(bpy.types.Operator):
     bl_label = 'Layer Up'
     bl_description = 'Move layer up'
     bl_options = {'UNDO'}
+
+
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        if sxglobals.mode == 'EDIT':
+            return enabled
+
+        objs = context.view_layer.objects.selected
+        mesh_objs = []
+        for obj in objs:
+            if obj.type == 'MESH':
+                mesh_objs.append(obj)
+
+        if len(mesh_objs[0].sx2layers) > 0:
+            enabled = True
+
+        return enabled
 
 
     def invoke(self, context, event):
@@ -3988,6 +4686,24 @@ class SXTOOLS2_OT_layer_down(bpy.types.Operator):
     bl_label = 'Layer Down'
     bl_description = 'Move layer down'
     bl_options = {'UNDO'}
+
+
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        if sxglobals.mode == 'EDIT':
+            return enabled
+
+        objs = context.view_layer.objects.selected
+        mesh_objs = []
+        for obj in objs:
+            if obj.type == 'MESH':
+                mesh_objs.append(obj)
+
+        if len(mesh_objs[0].sx2layers) > 0:
+            enabled = True
+
+        return enabled
 
 
     def invoke(self, context, event):
@@ -4029,9 +4745,27 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
         default='COLOR')
 
 
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        if sxglobals.mode == 'EDIT':
+            return enabled
+
+        objs = context.view_layer.objects.selected
+        mesh_objs = []
+        for obj in objs:
+            if obj.type == 'MESH':
+                mesh_objs.append(obj)
+
+        if len(mesh_objs[0].sx2layers) > 0:
+            enabled = True
+
+        return enabled
+
+
     def invoke(self, context, event):
         objs = selection_validator(self, context)
-        if len(objs) > 0:
+        if (len(objs) > 0) and (len(objs[0].sx2layers) > 0):
             idx = objs[0].sx2.selectedlayer
             self.layer_name = objs[0].sx2layers[idx].name
             self.layer_type = objs[0].sx2layers[idx].layer_type
@@ -4176,6 +4910,24 @@ class SXTOOLS2_OT_copylayer(bpy.types.Operator):
     bl_options = {'UNDO'}
 
 
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        if sxglobals.mode == 'EDIT':
+            return enabled
+
+        objs = context.view_layer.objects.selected
+        mesh_objs = []
+        for obj in objs:
+            if obj.type == 'MESH':
+                mesh_objs.append(obj)
+
+        if len(mesh_objs[0].sx2layers) > 0:
+            enabled = True
+
+        return enabled
+
+
     def invoke(self, context, event):
         objs = selection_validator(self, context)
         if len(objs) > 0:
@@ -4188,6 +4940,24 @@ class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
     bl_label = 'Paste Layer'
     bl_description = 'Shift-click to swap with copied layer\nAlt-click to merge into the target layer'
     bl_options = {'UNDO'}
+
+
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        if sxglobals.mode == 'EDIT':
+            return enabled
+
+        objs = context.view_layer.objects.selected
+        mesh_objs = []
+        for obj in objs:
+            if obj.type == 'MESH':
+                mesh_objs.append(obj)
+
+        if len(mesh_objs[0].sx2layers) > 0:
+            enabled = True
+
+        return enabled
 
 
     def invoke(self, context, event):
@@ -4229,6 +4999,24 @@ class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
     bl_options = {'UNDO'}
 
 
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        if sxglobals.mode == 'EDIT':
+            return enabled
+
+        objs = context.view_layer.objects.selected
+        mesh_objs = []
+        for obj in objs:
+            if obj.type == 'MESH':
+                mesh_objs.append(obj)
+
+        if len(mesh_objs[0].sx2layers) > 0:
+            enabled = True
+
+        return enabled
+
+
     def invoke(self, context, event):
         objs = selection_validator(self, context)
         if len(objs) > 0:
@@ -4260,6 +5048,24 @@ class SXTOOLS2_OT_selmask(bpy.types.Operator):
     bl_label = 'Select Layer Mask'
     bl_description = 'Click to select components with alpha\nShift-click to invert selection\nCtrl-click to select visible faces with Fill Color'
     bl_options = {'UNDO'}
+
+
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        if sxglobals.mode == 'EDIT':
+            return enabled
+
+        objs = context.view_layer.objects.selected
+        mesh_objs = []
+        for obj in objs:
+            if obj.type == 'MESH':
+                mesh_objs.append(obj)
+
+        if len(mesh_objs[0].sx2layers) > 0:
+            enabled = True
+
+        return enabled
 
 
     def invoke(self, context, event):
@@ -4356,19 +5162,6 @@ class SXTOOLS_OT_applymaterial(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS2_OT_create_material(bpy.types.Operator):
-    bl_idname = 'sx2.create_material'
-    bl_label = 'Create Material'
-    bl_description = 'Create Material'
-    bl_options = {'UNDO'}
-
-
-    def invoke(self, context, event):
-        setup.update_sx2material(context)
-
-        return {'FINISHED'}
-
-
 # ------------------------------------------------------------------------
 #    Registration and initialization
 # ------------------------------------------------------------------------
@@ -4379,11 +5172,16 @@ generate = SXTOOLS2_generate()
 layers = SXTOOLS2_layers()
 tools = SXTOOLS2_tools()
 setup = SXTOOLS2_setup()
+files = SXTOOLS2_files()
 
 classes = (
     SXTOOLS2_objectprops,
     SXTOOLS2_sceneprops,
     SXTOOLS2_layerprops,
+    SXTOOLS2_preferences,
+    SXTOOLS2_masterpalette,
+    SXTOOLS2_material,
+    SXTOOLS2_rampcolor,
     SXTOOLS2_PT_panel,
     SXTOOLS2_UL_layerlist,
     SXTOOLS2_OT_layerinfo,
@@ -4399,7 +5197,8 @@ classes = (
     SXTOOLS2_OT_pastelayer,
     SXTOOLS2_OT_clearlayers,
     SXTOOLS2_OT_selmask,
-    SXTOOLS2_OT_create_material)
+    SXTOOLS2_OT_add_ramp,
+    SXTOOLS2_OT_del_ramp)
 
 addon_keymaps = []
 
@@ -4412,6 +5211,8 @@ def register():
     bpy.types.Object.sx2 = bpy.props.PointerProperty(type=SXTOOLS2_objectprops)
     bpy.types.Object.sx2layers = bpy.props.CollectionProperty(type=SXTOOLS2_layerprops)
     bpy.types.Scene.sx2 = bpy.props.PointerProperty(type=SXTOOLS2_sceneprops)
+    bpy.types.Scene.sxpalettes = bpy.props.CollectionProperty(type=SXTOOLS2_masterpalette)
+    bpy.types.Scene.sxmaterials = bpy.props.CollectionProperty(type=SXTOOLS2_material)
 
 
 def unregister():
