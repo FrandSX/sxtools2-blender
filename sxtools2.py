@@ -438,6 +438,18 @@ class SXTOOLS2_utils(object):
             return sortList
 
 
+    def find_color_layers(self, obj):
+        color_layers = []
+        if len(obj.sx2layers) > 0:
+            for layer in obj.sx2layers:
+                if layer.layer_type == 'COLOR':
+                    color_layers.append(layer)
+            color_layers.sort(key=lambda x: x.index)
+            return color_layers
+        else:
+            return None
+
+
     def find_root_pivot(self, objs):
         xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box(objs)
         pivot = ((xmax + xmin)*0.5, (ymax + ymin)*0.5, zmin)
@@ -1541,7 +1553,7 @@ class SXTOOLS2_layers(object):
         def clear_layer(obj, layer, reset=False):
             default_color = layer.default_color[:]
             if sxglobals.mode == 'OBJECT':
-                setattr(obj.sx2layers[layer.name], 'alpha', 1.0)
+                setattr(obj.sx2layers[layer.name], 'opacity', 1.0)
                 setattr(obj.sx2layers[layer.name], 'visibility', True)
                 setattr(obj.sx2layers[layer.name], 'locked', False)
                 if reset:
@@ -1557,10 +1569,7 @@ class SXTOOLS2_layers(object):
                 colors = generate.color_list(obj, color=default_color)
                 layers.set_layer(obj, colors, layer)
             else:
-                if (targetlayer.name == 'gradient1') or (targetlayer.name == 'gradient2'):
-                    colors = layers.get_layer(obj, layer, uv_as_alpha=True)
-                else:
-                    colors = layers.get_layer(obj, layer)
+                colors = layers.get_layer(obj, layer)
                 mask, empty = generate.selection_mask(obj)
                 if not empty:
                     for i in range(len(mask)):
@@ -2017,6 +2026,62 @@ class SXTOOLS2_tools(object):
                 layers.set_layer(obj, colors, layer)
 
         utils.mode_manager(objs, revert=True, mode_id='apply_hsl')
+
+
+    def apply_palette(self, objs, palette):
+        utils.mode_manager(objs, set_mode=True, mode_id='apply_palette')
+        if not sxglobals.refreshInProgress:
+            sxglobals.refreshInProgress = True
+
+        scene = bpy.context.scene
+        palette = [
+            scene.sxpalettes[palette].color0,
+            scene.sxpalettes[palette].color1,
+            scene.sxpalettes[palette].color2,
+            scene.sxpalettes[palette].color3,
+            scene.sxpalettes[palette].color4]
+
+        for obj in objs:
+            color_layers = utils.find_color_layers(obj)
+            for idx in range(5):
+                palette_color = palette[idx]
+                layer = color_layers[idx]
+                bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(idx)].outputs[0].default_value = palette_color
+                colors = generate.color_list(obj, color=palette_color, masklayer=layer)
+                if colors is not None:
+                    layers.set_layer(obj, colors, layer)
+
+        sxglobals.refreshInProgress = False
+        utils.mode_manager(objs, revert=True, mode_id='apply_palette')
+
+
+    # NOTE: Material library file contains all entries in srgb color change by default
+    def apply_material(self, objs, targetlayer, material):
+        utils.mode_manager(objs, set_mode=True, mode_id='apply_material')
+        if not sxglobals.refreshInProgress:
+            sxglobals.refreshInProgress = True
+
+        material = bpy.context.scene.sxmaterials[material]
+        scene = bpy.context.scene.sxtools
+
+        # for obj in objs:
+        #     scene.toolopacity = 1.0
+        #     scene.toolblend = 'ALPHA'
+        #     self.apply_tool([obj, ], targetlayer, color=material.color0)
+
+        #     if sxglobals.mode == 'EDIT':
+        #         self.apply_tool([obj, ], obj.sxlayers['metallic'], color=material.color1)
+        #         self.apply_tool([obj, ], obj.sxlayers['smoothness'], color=material.color2)
+        #     else:
+        #         self.apply_tool([obj, ], obj.sxlayers['metallic'], masklayer=targetlayer, color=material.color1)
+        #         self.apply_tool([obj, ], obj.sxlayers['smoothness'], masklayer=targetlayer, color=material.color2)
+
+        setattr(scene, 'newmaterial0', material.color0)
+        setattr(scene, 'newmaterial1', material.color1)
+        setattr(scene, 'newmaterial2', material.color2)
+
+        sxglobals.refreshInProgress = False
+        utils.mode_manager(objs, revert=True, mode_id='apply_material')
 
 
     def select_color_mask(self, objs, color, invertmask=False):
@@ -3430,6 +3495,106 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         name='Expand Fill',
         default=False)
 
+    expandpal: bpy.props.BoolProperty(
+        name='Expand Add Palette',
+        default=False)
+
+    newpalettename: bpy.props.StringProperty(
+        name='Palette Name',
+        description='New Palette Name',
+        default='',
+        maxlen=64)
+
+    newpalette0: bpy.props.FloatVectorProperty(
+        name='New Palette Color 0',
+        description='New Palette Color',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.0, 0.0, 0.0, 1.0),
+        update=lambda self, context: update_palette_layer(self, context, 0))
+
+    newpalette1: bpy.props.FloatVectorProperty(
+        name='New Palette Color 1',
+        description='New Palette Color',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.0, 0.0, 0.0, 1.0),
+        update=lambda self, context: update_palette_layer(self, context, 1))
+
+    newpalette2: bpy.props.FloatVectorProperty(
+        name='New Palette Color 2',
+        description='New Palette Color',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.0, 0.0, 0.0, 1.0),
+        update=lambda self, context: update_palette_layer(self, context, 2))
+
+    newpalette3: bpy.props.FloatVectorProperty(
+        name='New Palette Color 3',
+        description='New Palette Color',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.0, 0.0, 0.0, 1.0),
+        update=lambda self, context: update_palette_layer(self, context, 3))
+
+    newpalette4: bpy.props.FloatVectorProperty(
+        name='New Palette Color 4',
+        description='New Palette Color',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.0, 0.0, 0.0, 1.0),
+        update=lambda self, context: update_palette_layer(self, context, 4))
+
+    expandmat: bpy.props.BoolProperty(
+        name='Expand Add Material',
+        default=False)
+
+    newmaterialname: bpy.props.StringProperty(
+        name='Material Name',
+        description='New Material Name',
+        default='',
+        maxlen=64)
+
+    newmaterial0: bpy.props.FloatVectorProperty(
+        name='Layer 7',
+        description='Diffuse Color',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.0, 0.0, 0.0, 1.0),
+        update=lambda self, context: update_material_layer(self, context, 0))
+
+    newmaterial1: bpy.props.FloatVectorProperty(
+        name='Metallic',
+        description='Metallic Value',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.0, 0.0, 0.0, 1.0),
+        update=lambda self, context: update_material_layer(self, context, 1))
+
+    newmaterial2: bpy.props.FloatVectorProperty(
+        name='Smoothness',
+        description='Smoothness Value',
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.0, 0.0, 0.0, 1.0),
+        update=lambda self, context: update_material_layer(self, context, 2))
+
 
 class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
     # name: from PropertyGroup
@@ -4792,21 +4957,32 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     return {'FINISHED'}
 
             if len(obj.sx2layers) > 0:
+                if self.layer_type == 'COLOR':
+                    default_color = (0.0, 0.0, 0.0, 0.0)
                 if self.layer_type == 'OCC':
                     name = 'Occlusion'
+                    default_color = (1.0, 1.0, 1.0, 1.0)
                 elif self.layer_type == 'MET':
                     name = 'Metallic'
+                    default_color = (0.0, 0.0, 0.0, 1.0)
                 elif self.layer_type == 'RGH':
                     name = 'Roughness'
+                    default_color = (1.0, 1.0, 1.0, 1.0)
                 elif self.layer_type == 'TRN':
                     name = 'Transmission'
+                    default_color = (0.0, 0.0, 0.0, 1.0)
                 elif self.layer_type == 'EMI':
                     name = 'Emission'
+                    default_color = (0.0, 0.0, 0.0, 1.0)
                 else:
                     name = self.layer_name
 
-                obj.sx2layers[obj.sx2.selectedlayer].name = name
+                if obj.sx2layers[obj.sx2.selectedlayer].layer_type == 'COLOR':
+                    obj.sx2layers[obj.sx2.selectedlayer].name = name
+                else:
+                    obj.sx2layers[obj.sx2.selectedlayer].name = 'Layer ' + str(obj.sx2.layercount)
                 obj.sx2layers[obj.sx2.selectedlayer].layer_type = self.layer_type
+                obj.sx2layers[obj.sx2.selectedlayer].default_color = default_color
                 utils.sort_stack_indices(obj)
 
         setup.update_sx2material(context)
@@ -5038,7 +5214,6 @@ class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
 
             utils.mode_manager(objs, revert=True, mode_id='clearlayers')
             refresh_swatches(self, context)
-            # sxglobals.composite = True
             # refresh_actives(self, context)
         return {'FINISHED'}
 
@@ -5117,7 +5292,7 @@ class SXTOOLS_OT_setgroup(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_applypalette(bpy.types.Operator):
+class SXTOOLS2_OT_applypalette(bpy.types.Operator):
     bl_idname = 'sx2.applypalette'
     bl_label = 'Apply Palette'
     bl_description = 'Applies the selected palette to selected objects\nPalette colors are applied to layers 1-5'
@@ -5142,7 +5317,7 @@ class SXTOOLS_OT_applypalette(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_applymaterial(bpy.types.Operator):
+class SXTOOLS2_OT_applymaterial(bpy.types.Operator):
     bl_idname = 'sx2.applymaterial'
     bl_label = 'Apply PBR Material'
     bl_description = 'Applies the selected material to selected objects\nAlbedo color goes to the layer7\nmetallic and smoothness values are automatically applied\nto the selected material channels'
@@ -5198,7 +5373,13 @@ classes = (
     SXTOOLS2_OT_clearlayers,
     SXTOOLS2_OT_selmask,
     SXTOOLS2_OT_add_ramp,
-    SXTOOLS2_OT_del_ramp)
+    SXTOOLS2_OT_del_ramp,
+    SXTOOLS2_OT_addpalette,
+    SXTOOLS2_OT_delpalette,
+    SXTOOLS2_OT_addpalettecategory,
+    SXTOOLS2_OT_delpalettecategory,
+    SXTOOLS2_OT_applypalette,
+    SXTOOLS2_OT_applymaterial)
 
 addon_keymaps = []
 
