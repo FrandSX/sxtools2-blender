@@ -480,44 +480,33 @@ class SXTOOLS2_utils(object):
 
     # The default index of any added layer is 100
     def insert_layer_at_index(self, obj, inserted_layer, index):
-        sxglobals.layer_stack_dict.clear()
         inserted_layer.index = 100
-
         if len(obj.sx2layers) == 1:
             index = 0
 
-        layers = []
-        for layer in obj.sx2layers:
-            layers.append((layer.index, layer.color_attribute))
+        sort_layers = self.sort_stack_indices(obj)
+        del sort_layers[-1]
+        sort_layers.insert(index, inserted_layer)
 
-        layers.sort(key=lambda y: y[0])
-        layers.remove((100, inserted_layer.color_attribute))
-        layers.insert(index, (index, inserted_layer.color_attribute))
-
-        for i, layer_tuple in enumerate(layers):
-            for layer in obj.sx2layers:
-                if layer.color_attribute == layer_tuple[1]:
-                    layer.index = i
-                    sxglobals.layer_stack_dict[i] = (layer.name, layer.color_attribute, layer.layer_type)
-
+        self.sort_stack_indices(obj, sort_layers=sort_layers)
         return index
 
 
-    def sort_stack_indices(self, obj):
+    def sort_stack_indices(self, obj, sort_layers=None):
         sxglobals.layer_stack_dict.clear()
 
         if len(obj.sx2layers) > 0:
-            layers = []
-            for layer in obj.sx2layers:
-                layers.append((layer.index, layer.color_attribute))
+            if sort_layers is None:
+                sort_layers = obj.sx2layers[:]
+                sort_layers.sort(key=lambda x: x.index)
 
-            layers.sort(key=lambda y: y[0])
-            print('sorted:', layers)
-            for i, layer_tuple in enumerate(layers):
-                for layer in obj.sx2layers:
-                    if layer.color_attribute == layer_tuple[1]:
-                        layer.index = i
-                        sxglobals.layer_stack_dict[i] = (layer.name, layer.color_attribute, layer.layer_type)
+            for i, sort_layer in enumerate(sort_layers):
+                obj.sx2layers[sort_layer.name].index = i
+                sxglobals.layer_stack_dict[i] = (sort_layer.name, sort_layer.color_attribute, sort_layer.layer_type)
+
+            return sort_layers
+        else:
+            return None
 
 
     def __del__(self):
@@ -1419,8 +1408,9 @@ class SXTOOLS2_layers(object):
 
     def get_layer_mask(self, obj, sourcelayer):
         layer_type = sourcelayer.layer_type
+        valid_sources = ['COLOR', 'OCC', 'MET', 'RGH', 'TRN', 'EMI']
 
-        if layer_type == 'COLOR':
+        if layer_type in valid_sources:
             colors = self.get_colors(obj, sourcelayer.color_attribute)
             values = colors[3::4]
         elif layer_type == 'UV':
@@ -1779,38 +1769,6 @@ class SXTOOLS2_layers(object):
         utils.mode_manager(objs, revert=True, mode_id='paste_layer')
 
 
-    def update_layer_panel(self, objs, layer):
-        scene = bpy.context.scene.sx2
-        colors = utils.find_colors_by_frequency(objs, layer, 8)
-        # Update layer HSL elements
-        hArray = []
-        sArray = []
-        lArray = []
-        for color in colors:
-            hsl = convert.rgb_to_hsl(color)
-            hArray.append(hsl[0])
-            sArray.append(hsl[1])
-            lArray.append(hsl[2])
-        hue = max(hArray)
-        sat = max(sArray)
-        lightness = max(lArray)
-
-        sxglobals.hslUpdate = True
-        objs[0].sx2.huevalue = hue
-        objs[0].sx2.saturationvalue = sat
-        objs[0].sx2.lightnessvalue = lightness
-        sxglobals.hslUpdate = False
-
-        # Update layer palette elements
-        for i, pcol in enumerate(colors):
-            palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
-            setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
-
-        # Update SXToolMaterial color
-        if layer.index <= 5:
-            bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(layer.index - 1)].outputs[0].default_value = colors[0]
-
-
     def color_layers_to_values(self, objs):
         scene = bpy.context.scene.sx2
 
@@ -2041,15 +1999,17 @@ class SXTOOLS2_tools(object):
             scene.sxpalettes[palette].color3,
             scene.sxpalettes[palette].color4]
 
+        for i in range(5):
+            bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(i)].outputs[0].default_value = palette[i]
+
         for obj in objs:
             color_layers = utils.find_color_layers(obj)
-            for idx in range(5):
-                palette_color = palette[idx]
-                layer = color_layers[idx]
-                bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(idx)].outputs[0].default_value = palette_color
-                colors = generate.color_list(obj, color=palette_color, masklayer=layer)
-                if colors is not None:
-                    layers.set_layer(obj, colors, layer)
+            for layer in color_layers:
+                if layer.paletted:
+                    colors = generate.color_list(obj, color=palette[layer.palette_index], masklayer=layer)
+                    if colors is not None:
+                        layers.set_layer(obj, colors, layer)
+            obj.data.update()
 
         sxglobals.refreshInProgress = False
         utils.mode_manager(objs, revert=True, mode_id='apply_palette')
@@ -2702,6 +2662,7 @@ def refresh_swatches(self, context):
     if not sxglobals.refreshInProgress:
         sxglobals.refreshInProgress = True
 
+        scene = context.scene.sx2
         objs = selection_validator(self, context)
         # mode = objs[0].sx2.shadingmode
 
@@ -2709,9 +2670,36 @@ def refresh_swatches(self, context):
 
         if (len(objs) > 0) and (len(objs[0].sx2layers) > 0):
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            colors = utils.find_colors_by_frequency(objs, layer, 8)
 
             # Refresh SX Tools UI to latest selection
-            layers.update_layer_panel(objs, layer)
+            # 1) Update layer HSL elements
+            hArray = []
+            sArray = []
+            lArray = []
+            for color in colors:
+                hsl = convert.rgb_to_hsl(color)
+                hArray.append(hsl[0])
+                sArray.append(hsl[1])
+                lArray.append(hsl[2])
+            hue = max(hArray)
+            sat = max(sArray)
+            lightness = max(lArray)
+
+            sxglobals.hslUpdate = True
+            objs[0].sx2.huevalue = hue
+            objs[0].sx2.saturationvalue = sat
+            objs[0].sx2.lightnessvalue = lightness
+            sxglobals.hslUpdate = False
+
+            # 2) Update layer palette elements
+            for i, pcol in enumerate(colors):
+                palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
+                setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
+
+            # 3) Update SXToolMaterial color
+            if layer.paletted:
+                bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(layer.palette_index)].outputs[0].default_value = colors[0]
 
         utils.mode_manager(objs, revert=True, mode_id='refresh_actives')
         sxglobals.refreshInProgress = False
@@ -2785,17 +2773,7 @@ def update_selected_layer(self, context):
         if len(obj.sx2layers) > 0:
             obj.data.attributes.active_color = obj.data.attributes[obj.sx2.selectedlayer]
 
-        sxglobals.layer_stack_dict.clear()
-        layers = []
-        for layer in obj.sx2layers:
-            layers.append((layer.index, layer.color_attribute))
-
-        layers.sort(key=lambda y: y[0])
-
-        for i, layer_tuple in enumerate(layers):
-            for layer in obj.sx2layers:
-                if layer.color_attribute == layer_tuple[1]:
-                    sxglobals.layer_stack_dict[i] = (layer.name, layer.color_attribute, layer.layer_type)
+        # utils.sort_stack_indices(obj)
 
     areas = bpy.context.workspace.screens[0].areas
     shading = 'MATERIAL'  # 'WIREFRAME' 'SOLID' 'MATERIAL' 'RENDERED'
@@ -2807,6 +2785,8 @@ def update_selected_layer(self, context):
     if objs[0].sx2.shadingmode != 'FULL':
         update_material(self, context)
 
+    if 'SXToolMaterial' not in bpy.data.materials:
+        setup.create_sxtoolmaterial()
     refresh_swatches(self, context)
 
 
@@ -3667,6 +3647,16 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
         name='Lock Layer Opacity',
         default=False)
 
+    paletted: bpy.props.BoolProperty(
+        name='Paletted Layer',
+        default=True)
+
+    palette_index: bpy.props.IntProperty(
+        name='Palette Color Index',
+        min = 0,
+        max = 4,
+        default=0)
+
 
 class SXTOOLS2_preferences(bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -4206,6 +4196,7 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
         objs = selection_validator(self, context)
         hide_icon = {False: 'HIDE_ON', True: 'HIDE_OFF'}
         lock_icon = {False: 'UNLOCKED', True: 'LOCKED'}
+        paletted_icon = {False: 'RESTRICT_COLOR_OFF', True: 'RESTRICT_COLOR_ON'}
 
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             row_item = layout.row(align=True)
@@ -4215,17 +4206,19 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
             else:
                 row_item.label(icon=hide_icon[(utils.find_layer_index_by_name(objs[0], item.name) == objs[0].sx2.selectedlayer)])
 
-            # if sxglobals.mode == 'OBJECT':
-            #     if scene.toolmode == 'PAL':
-            #         row_item.label(text='', icon='LOCKED')
-            #     else:
-            #         row_item.prop(item, 'locked', text='', icon=lock_icon[item.locked])
-            # else:
-            #     row_item.label(text='', icon='UNLOCKED')
+            if sxglobals.mode == 'OBJECT':
+                if scene.toolmode == 'PAL':
+                    row_item.label(text='', icon='LOCKED')
+                else:
+                    row_item.prop(item, 'locked', text='', icon=lock_icon[item.locked])
+            else:
+                row_item.label(text='', icon='UNLOCKED')
 
-            row_item.prop(item, 'locked', text='', icon=lock_icon[item.locked])
-            row_item.label(text='  ' + item.name)
-            # row_item.prop(item, 'name', text='')
+            row_item.label(text='   ' + item.name + '   ')
+
+            if ((item.layer_type == 'COLOR') or (item.layer_type == 'EMI')) and (scene.toolmode == 'PAL'):
+                row_item.prop(item, 'paletted', text='', icon=paletted_icon[item.paletted])
+                row_item.prop(item, 'palette_index', text='')
 
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
@@ -4896,18 +4889,26 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
     bl_options = {'UNDO'}
 
     layer_name: bpy.props.StringProperty(
-        name='Ramp Name')
+        name = 'Ramp Name')
 
     layer_type: bpy.props.EnumProperty(
-        name='Layer Type',
-        items=[
+        name = 'Layer Type',
+        items = [
             ('COLOR', 'Color', ''),
             ('OCC', 'Occlusion', ''),
             ('MET', 'Metallic', ''),
             ('RGH', 'Roughness', ''),
             ('TRN', 'Transmission', ''),
             ('EMI', 'Emission', '')],
-        default='COLOR')
+        default = 'COLOR')
+
+    paletted: bpy.props.BoolProperty(
+        name ='Paletted Layer')
+
+    palette_index: bpy.props.IntProperty(
+        min = 0,
+        max = 4,
+        name = 'Palette Color Index')
 
 
     @classmethod
@@ -4945,6 +4946,11 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
         col = layout.column()
         col.prop(self, 'layer_name', text='Layer Name')
         col.prop(self, 'layer_type', text='Layer Type')
+        col_split = col.split()
+        col_split.prop(self, 'paletted', text='Paletted')
+        col_split.prop(self, 'palette_index', text='Palette Color')
+        if self.layer_type != 'COLOR':
+            col_split.enabled = False
         return None
 
 
@@ -4977,12 +4983,19 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                 else:
                     name = self.layer_name
 
-                if obj.sx2layers[obj.sx2.selectedlayer].layer_type == 'COLOR':
-                    obj.sx2layers[obj.sx2.selectedlayer].name = name
+                layer = obj.sx2layers[obj.sx2.selectedlayer]
+                if layer.layer_type == 'COLOR':
+                    layer.name = name
                 else:
-                    obj.sx2layers[obj.sx2.selectedlayer].name = 'Layer ' + str(obj.sx2.layercount)
-                obj.sx2layers[obj.sx2.selectedlayer].layer_type = self.layer_type
-                obj.sx2layers[obj.sx2.selectedlayer].default_color = default_color
+                    layer.name = 'Layer ' + str(obj.sx2.layercount)
+                layer.layer_type = self.layer_type
+                layer.default_color = default_color
+
+                colors = generate.color_list(obj, color=default_color, masklayer=layer)
+                if colors is None:
+                    colors = generate.color_list(obj, default_color)
+                    layers.set_layer(obj, colors, layer)
+
                 utils.sort_stack_indices(obj)
 
         setup.update_sx2material(context)
@@ -5311,7 +5324,8 @@ class SXTOOLS2_OT_applypalette(bpy.types.Operator):
             palette = self.label
             tools.apply_palette(objs, palette)
 
-            # if not bpy.app.background:
+            if not bpy.app.background:
+                refresh_swatches(self, context)
             #     sxglobals.composite = True
             #     refresh_actives(self, context)
         return {'FINISHED'}
