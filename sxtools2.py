@@ -509,6 +509,14 @@ class SXTOOLS2_utils(object):
             return None
 
 
+    def color_compare(self, color1, color2, tolerance=0.001):
+        vec1 = Vector(color1)
+        vec2 = Vector(color2)
+        difference = vec1 - vec2
+
+        return difference.length <= tolerance
+
+
     def __del__(self):
         print('SX Tools: Exiting utils')
 
@@ -1772,14 +1780,16 @@ class SXTOOLS2_layers(object):
     def color_layers_to_values(self, objs):
         scene = bpy.context.scene.sx2
 
-        for i in range(5):
-            layer = objs[0].sx2layers[i+1]
-            palettecolor = utils.find_colors_by_frequency(objs, layer, 1, obj_sel_override=True)[0]
-            tabcolor = getattr(scene, 'newpalette' + str(i))
+        for obj in objs:
+            for i in range(5):
+                for layer in obj.sx2layers:
+                    if layer.paletted and (layer.palette_index == i):
+                        palettecolor = utils.find_colors_by_frequency(objs, layer, 1, obj_sel_override=True)[0]
+                        tabcolor = getattr(scene, 'newpalette' + str(i))
 
-            if not utils.color_compare(palettecolor, tabcolor) and not utils.color_compare(palettecolor, (0.0, 0.0, 0.0, 1.0)):
-                setattr(scene, 'newpalette' + str(i), palettecolor)
-                bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(i)].outputs[0].default_value = palettecolor
+                        if not utils.color_compare(palettecolor, tabcolor) and not utils.color_compare(palettecolor, (0.0, 0.0, 0.0, 1.0)):
+                            setattr(scene, 'newpalette' + str(i), palettecolor)
+                            bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(i)].outputs[0].default_value = palettecolor
 
 
     def material_layers_to_values(self, objs):
@@ -2003,13 +2013,13 @@ class SXTOOLS2_tools(object):
             bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(i)].outputs[0].default_value = palette[i]
 
         for obj in objs:
-            color_layers = utils.find_color_layers(obj)
-            for layer in color_layers:
-                if layer.paletted:
-                    colors = generate.color_list(obj, color=palette[layer.palette_index], masklayer=layer)
-                    if colors is not None:
-                        layers.set_layer(obj, colors, layer)
-            obj.data.update()
+            if len(obj.sx2layers) > 0:
+                for layer in obj.sx2layers:
+                    if layer.paletted:
+                        colors = generate.color_list(obj, color=palette[layer.palette_index], masklayer=layer)
+                        if colors is not None:
+                            layers.set_layer(obj, colors, layer)
+                obj.data.update()
 
         sxglobals.refreshInProgress = False
         utils.mode_manager(objs, revert=True, mode_id='apply_palette')
@@ -2697,7 +2707,15 @@ def refresh_swatches(self, context):
                 palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
                 setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
 
-            # 3) Update SXToolMaterial color
+
+            # 3) update Palettes-tab color values
+            if scene.toolmode == 'PAL':
+                layers.color_layers_to_values(objs)
+            # elif (scene.toolmode == 'MAT'):
+            #     layers.material_layers_to_values(objs)
+
+
+            # 4) Update SXToolMaterial color
             if layer.paletted:
                 bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(layer.palette_index)].outputs[0].default_value = colors[0]
 
@@ -4988,6 +5006,8 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     layer.name = name
                 else:
                     layer.name = 'Layer ' + str(obj.sx2.layercount)
+                if layer.layer_type in ['OCC', 'MET', 'RGH', 'TRN']:
+                    layer.paletted = False
                 layer.layer_type = self.layer_type
                 layer.default_color = default_color
 
