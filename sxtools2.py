@@ -2784,6 +2784,81 @@ def update_layers(self, context):
             utils.mode_manager(objs, revert=True, mode_id='update_layers')
 
 
+def update_palette_layer(self, context, index):
+    scene = context.scene.sx2
+    objs = selection_validator(self, context)
+    for obj in objs:
+        if objs[0].mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+
+        color = getattr(scene, 'newpalette'+str(index))
+        for layer in obj.sx2layers:
+            if layer.paletted and (layer.palette_index == index):
+                modecolor = utils.find_colors_by_frequency(objs, layer, 1)[0]
+                if color != modecolor:
+                    bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor' + str(index)].outputs[0].default_value = color
+                    colors = generate.color_list(obj, color, masklayer=layer)
+                    if colors is not None:
+                        layers.set_layer(obj, colors, layer)
+
+        obj.data.update()
+    # sxglobals.composite = True
+    # refresh_actives(self, context)
+    refresh_swatches(self, context)
+
+
+def update_material_layer(self, context, index):
+    if not sxglobals.matUpdate:
+        sxglobals.matUpdate = True
+
+        scene = context.scene.sx2
+        objs = selection_validator(self, context)
+        utils.mode_manager(objs, set_mode=True, mode_id='update_material_layer')
+        layer = objs[0].sx2layers[objs[0].sxtools.selectedlayer]
+        layer_ids = [objs[0].sx2.selectedlayer, 'metallic', 'smoothness']
+        pbr_values = [scene.newmaterial0, scene.newmaterial1, scene.newmaterial2]
+        scene.toolopacity = 1.0
+        scene.toolblend = 'ALPHA'
+
+        if scene.enablelimit:
+            hsl = convert.rgb_to_hsl(pbr_values[index])
+            if scene.limitmode == 'MET':
+                minl = float(170.0/255.0)
+                if hsl[2] < minl:
+                    rgb = convert.hsl_to_rgb((hsl[0], hsl[1], minl))
+                    pbr_values[index] = (rgb[0], rgb[1], rgb[2], 1.0)
+            else:
+                minl = float(50.0/255.0)
+                maxl = float(240.0/255.0)
+                if hsl[2] > maxl:
+                    rgb = convert.hsl_to_rgb((hsl[0], hsl[1], maxl))
+                    pbr_values[index] = (rgb[0], rgb[1], rgb[2], 1.0)
+                elif hsl[2] < minl:
+                    rgb = convert.hsl_to_rgb((hsl[0], hsl[2], minl))
+                    pbr_values[index] = (rgb[0], rgb[1], rgb[2], 1.0)
+
+        if sxglobals.mode == 'EDIT':
+            modecolor = utils.find_colors_by_frequency(objs, objs[0].sx2layers[layer_ids[index]], 1)[0]
+        else:
+            modecolor = utils.find_colors_by_frequency(objs, objs[0].sx2layers[layer_ids[index]], 1, masklayer=layer)[0]
+
+        if not utils.color_compare(modecolor, pbr_values[index]):
+            if sxglobals.mode == 'EDIT':
+                tools.apply_tool(objs, objs[0].sx2layers[layer_ids[index]], color=pbr_values[index])
+            else:
+                tools.apply_tool(objs, objs[0].sx2layers[layer_ids[index]], masklayer=objs[0].sxlayers[layer_ids[0]], color=pbr_values[index])
+
+            setattr(scene, 'newmaterial' + str(index), pbr_values[index])
+
+        utils.mode_manager(objs, revert=True, mode_id='update_material_layer')
+        sxglobals.matUpdate = False
+
+        # if index == 0:
+        #     sxglobals.composite = True
+    # refresh_actives(self, context)
+    refresh_swatches(self, context)
+
+
 # TODO: This only works with identical layersets
 def update_selected_layer(self, context):
     objs = selection_validator(self, context)
@@ -4768,8 +4843,10 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
             if len(objs[0].sx2layers) == 14:
                 message_box('Max number of layers in use')
             else:
+                utils.mode_manager(objs, set_mode=True, mode_id='add_layer')
                 layers.add_layer(objs)
                 setup.update_sx2material(context)
+                utils.mode_manager(objs, revert=True, mode_id='add_layer')
                 refresh_swatches(self, context)
 
         return {'FINISHED'}
@@ -4785,9 +4862,6 @@ class SXTOOLS2_OT_del_layer(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         enabled = False
-        if sxglobals.mode == 'EDIT':
-            return enabled
-
         objs = context.view_layer.objects.selected
         mesh_objs = []
         for obj in objs:
@@ -4806,9 +4880,11 @@ class SXTOOLS2_OT_del_layer(bpy.types.Operator):
             if len(objs[0].sx2layers) == 0:
                 message_box('No layers to delete')
             else:
+                utils.mode_manager(objs, set_mode=True, mode_id='del_layer')
                 layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
                 layers.del_layer(objs, layer)
                 setup.update_sx2material(context)
+                utils.mode_manager(objs, revert=True, mode_id='del_layer')
                 refresh_swatches(self, context)
 
         return {'FINISHED'}
@@ -4824,9 +4900,6 @@ class SXTOOLS2_OT_layer_up(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         enabled = False
-        if sxglobals.mode == 'EDIT':
-            return enabled
-
         objs = context.view_layer.objects.selected
         mesh_objs = []
         for obj in objs:
@@ -4846,10 +4919,12 @@ class SXTOOLS2_OT_layer_up(bpy.types.Operator):
             updated = False
             for obj in objs:
                 if len(obj.sx2layers) > 0:
+                    utils.mode_manager(objs, set_mode=True, mode_id='layer_up')
                     new_index = obj.sx2layers[idx].index + 1 if obj.sx2layers[idx].index + 1 < len(obj.sx2layers) else obj.sx2layers[idx].index
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
                     print('added at:', obj.sx2layers[idx].index)
                     updated = True
+                    utils.mode_manager(objs, revert=True, mode_id='layer_up')
 
             if updated:
                 setup.update_sx2material(context)
@@ -4867,9 +4942,6 @@ class SXTOOLS2_OT_layer_down(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         enabled = False
-        if sxglobals.mode == 'EDIT':
-            return enabled
-
         objs = context.view_layer.objects.selected
         mesh_objs = []
         for obj in objs:
@@ -4889,10 +4961,12 @@ class SXTOOLS2_OT_layer_down(bpy.types.Operator):
             updated = False
             for obj in objs:
                 if len(obj.sx2layers) > 0:
+                    utils.mode_manager(objs, set_mode=True, mode_id='layer_down')
                     new_index = obj.sx2layers[idx].index - 1 if obj.sx2layers[idx].index -1 >= 0 else 0
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
                     print('added at:', obj.sx2layers[idx].index)
                     updated = True
+                    utils.mode_manager(objs, revert=True, mode_id='layer_down')
 
             if updated:
                 setup.update_sx2material(context)
