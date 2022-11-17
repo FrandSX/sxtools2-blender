@@ -1711,6 +1711,28 @@ class SXTOOLS2_layers(object):
                     layer.opacity = 1.0
 
 
+    def linear_alphas(self, objs):
+        def value_to_linear(value):
+            value = value[0]
+            if value < 0.0:
+                output = 0.0
+            elif 0.0 <= value <= 0.0404482362771082:
+                output = float(value) / 12.92
+            elif 0.0404482362771082 < value <= 1.0:
+                output = ((value + 0.055) / 1.055) ** 2.4
+            else:
+                output = 1.0
+            return [output]
+
+        for obj in objs:
+            for layer in obj.sx2layers:
+                values = self.get_colors(obj, layer.color_attribute)
+                for i in range(len(values)//4):
+                    values[(3+i*4):(4+i*4)] = value_to_linear(values[(3+i*4):(4+i*4)])
+                self.set_colors(obj, layer.color_attribute, values)
+            obj.data.update()
+
+
     def merge_layers(self, objs, toplayer, baselayer, targetlayer):
         for obj in objs:
             basecolors = self.get_layer(obj, baselayer, apply_layer_alpha=True, uv_as_alpha=True)
@@ -4277,6 +4299,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 split3_fill = box_fill.split(factor=0.3)
                 split3_fill.prop(scene, 'toolblend', text='')
                 split3_fill.prop(scene, 'toolopacity', slider=True)
+            
+            layout.operator('sx2.linear_alphas')
 
         else:
             col = layout.column()
@@ -5445,6 +5469,24 @@ class SXTOOLS2_OT_applymaterial(bpy.types.Operator):
         return {'FINISHED'}
 
 
+
+class SXTOOLS2_OT_linear_alphas(bpy.types.Operator):
+    bl_idname = 'sx2.linear_alphas'
+    bl_label = 'Convert sRGB alpha values to linear'
+    bl_description = 'Alpha channels should always be linear\nSome Blender actions use sRGB instead\nUse this tool to fix the issue'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = selection_validator(self, context)
+        if len(objs) > 0:
+            layers.linear_alphas(objs)
+
+            refresh_swatches(self, context)
+        return {'FINISHED'}
+
+
+
 # ------------------------------------------------------------------------
 #    Registration and initialization
 # ------------------------------------------------------------------------
@@ -5487,7 +5529,8 @@ classes = (
     SXTOOLS2_OT_addpalettecategory,
     SXTOOLS2_OT_delpalettecategory,
     SXTOOLS2_OT_applypalette,
-    SXTOOLS2_OT_applymaterial)
+    SXTOOLS2_OT_applymaterial,
+    SXTOOLS2_OT_linear_alphas)
 
 addon_keymaps = []
 
