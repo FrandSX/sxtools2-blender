@@ -10,6 +10,7 @@ bl_info = {
     'category': 'Development',
 }
 
+
 import bpy
 import time
 import random
@@ -1106,9 +1107,10 @@ class SXTOOLS2_generate(object):
                 return color_list
 
 
-    def color_list(self, obj, color, masklayer=None, as_tuple=False):
-        count = len(obj.data.attributes[0].data)
+    def color_list(self, obj, color, targetlayer, masklayer=None, as_tuple=False):
+        count = len(obj.data.attributes[targetlayer.color_attribute].data)
         colors = [color[0], color[1], color[2], color[3]] * count
+        print('color list len:', count)
 
         return self.mask_list(obj, colors, masklayer, as_tuple)
 
@@ -1312,8 +1314,11 @@ class SXTOOLS2_layers(object):
                 obj.data.attributes.new(name=item.name, type='FLOAT_COLOR', domain='CORNER')
                 item.index = utils.insert_layer_at_index(obj, item, obj.sx2layers[obj.sx2.selectedlayer].index + 1)
                 print('added at:', item.index)
+                print('new attr len:', len(obj.data.attributes[item.name].data))
 
-                colors = generate.color_list(obj, item.default_color)
+                colors = generate.color_list(obj, item.default_color, item)
+                print('layerslen:', len(obj.sx2layers) - 1)
+                print('layer:', obj.sx2layers[len(obj.sx2layers) - 1])
                 layers.set_layer(obj, colors, obj.sx2layers[len(obj.sx2layers) - 1])
 
                 obj.sx2.selectedlayer = len(obj.sx2layers) - 1
@@ -1442,6 +1447,7 @@ class SXTOOLS2_layers(object):
     def set_colors(self, obj, target, colors):
         targetColors = obj.data.attributes[target].data
         targetColors.foreach_set('color', colors)
+        obj.data.update()
 
 
     def get_luminances(self, obj, sourcelayer=None, colors=None, as_rgba=False, as_alpha=False):
@@ -1564,7 +1570,7 @@ class SXTOOLS2_layers(object):
                             default_color = (0.5, 0.5, 0.5, 1.0)
                         elif layer.layer_type == 'COLOR':
                             default_color = (0.0, 0.0, 0.0, 0.0)
-                colors = generate.color_list(obj, color=default_color)
+                colors = generate.color_list(obj, default_color, layer)
                 layers.set_layer(obj, colors, layer)
             else:
                 colors = layers.get_layer(obj, layer)
@@ -1956,9 +1962,9 @@ class SXTOOLS2_tools(object):
 
             # Get colorbuffer
             if color is not None:
-                colors = generate.color_list(obj, color, masklayer)
+                colors = generate.color_list(obj, color, targetlayer, masklayer)
             elif scene.toolmode == 'COL':
-                colors = generate.color_list(obj, scene.fillcolor, masklayer)
+                colors = generate.color_list(obj, scene.fillcolor, targetlayer, masklayer)
             elif scene.toolmode == 'GRD':
                 colors = generate.ramp_list(obj, objs, rampmode, masklayer, mergebbx)
             elif scene.toolmode == 'NSE':
@@ -2038,7 +2044,7 @@ class SXTOOLS2_tools(object):
             if len(obj.sx2layers) > 0:
                 for layer in obj.sx2layers:
                     if layer.paletted:
-                        colors = generate.color_list(obj, color=palette[layer.palette_index], masklayer=layer)
+                        colors = generate.color_list(obj, palette[layer.palette_index], layer, masklayer=layer)
                         if colors is not None:
                             layers.set_layer(obj, colors, layer)
                 obj.data.update()
@@ -2819,7 +2825,7 @@ def update_palette_layer(self, context, index):
                 modecolor = utils.find_colors_by_frequency(objs, layer, 1)[0]
                 if color != modecolor:
                     bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor' + str(index)].outputs[0].default_value = color
-                    colors = generate.color_list(obj, color, masklayer=layer)
+                    colors = generate.color_list(obj, color, layer, masklayer=layer)
                     if colors is not None:
                         layers.set_layer(obj, colors, layer)
 
@@ -5109,9 +5115,9 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                 layer.layer_type = self.layer_type
                 layer.default_color = default_color
 
-                colors = generate.color_list(obj, color=default_color, masklayer=layer)
+                colors = generate.color_list(obj, default_color, layer, masklayer=layer)
                 if colors is None:
-                    colors = generate.color_list(obj, default_color)
+                    colors = generate.color_list(obj, default_color, layer)
                     layers.set_layer(obj, colors, layer)
 
                 utils.sort_stack_indices(obj)
