@@ -359,6 +359,31 @@ class SXTOOLS2_files(object):
                 print(f'Completed: {group_name}')
 
 
+    def export_palette_texture(self, colors):
+        swatch_size = 16
+        n = 1 if len(colors) == 0 else 2**math.ceil(math.log2(math.sqrt(len(colors))))
+        pixels = [0.0, 0.0, 0.0, 0.1] * n * n * swatch_size * swatch_size
+
+        z = 0
+        for y in range(n):
+            row = [0.0, 0.0, 0.0, 1.0] * n * swatch_size
+            row_length = 4 * n * swatch_size
+            for x in range(n):
+                color = colors[z] if z < len(colors) else (0.0, 0.0, 0.0, 1.0)
+                z += 1
+                for i in range(swatch_size):
+                    row[x*swatch_size*4+i*4:x*swatch_size*4+i*4+4] = [color[0], color[1], color[2], color[3]]
+            for j in range(swatch_size):
+                pixels[y*swatch_size*row_length+j*row_length:y*swatch_size*row_length+(j+1)*row_length] = row
+
+        image = bpy.data.images.new('palette_atlas', alpha=True, width=n*swatch_size, height=n*swatch_size)
+        image.alpha_mode = 'STRAIGHT'
+        image.pixels = pixels
+        image.filepath_raw = '/tmp/palette_atlas.png'
+        image.file_format = 'PNG'
+        image.save()
+
+
 # ------------------------------------------------------------------------
 #    Useful Miscellaneous Functions
 # ------------------------------------------------------------------------
@@ -1302,12 +1327,13 @@ class SXTOOLS2_layers(object):
         return None
 
 
-    def add_layer(self, objs):
+    def add_layer(self, objs, name=None, layer_type=None):
         if len(objs) > 0:
             for obj in objs:
                 item = obj.sx2layers.add()
-                item.name = 'Layer ' + str(obj.sx2.layercount)
+                item.name = 'Layer ' + str(obj.sx2.layercount) if name is None else name
                 item.color_attribute = item.name
+                item.layer_type = 'COLOR' if layer_type is None else layer_type
 
                 obj.data.attributes.new(name=item.name, type='FLOAT_COLOR', domain='CORNER')
                 item.index = utils.insert_layer_at_index(obj, item, obj.sx2layers[obj.sx2.selectedlayer].index + 1)
@@ -1336,15 +1362,13 @@ class SXTOOLS2_layers(object):
 
     # wrapper for low-level functions, always returns layerdata in RGBA
     def get_layer(self, obj, sourcelayer, as_tuple=False, uv_as_alpha=False, apply_layer_alpha=False, gradient_with_palette=False):
-        valid_sources = ['COLOR', 'OCC', 'MET', 'RGH', 'TRN', 'EMI']
-        sourceType = sourcelayer.layer_type
+        valid_sources = ['COLOR', 'OCC', 'MET', 'RGH', 'TRN', 'EMI', 'CMP']
         # sxmaterial = bpy.data.materials['SXToolMaterial'].node_tree
-        alpha = sourcelayer.opacity
 
-        if sourceType in valid_sources:
+        if sourcelayer.layer_type in valid_sources:
             values = self.get_colors(obj, sourcelayer.color_attribute)
 
-        elif sourceType == 'UV':
+        elif sourcelayer.layer_type == 'UV':
             uvs = self.get_uvs(obj, sourcelayer.uvLayer0, channel=sourcelayer.uvChannel0)
             count = len(uvs)  # len(obj.data.uv_layers[0].data)
             values = [None] * count * 4
@@ -1366,13 +1390,13 @@ class SXTOOLS2_layers(object):
                 for i in range(count):
                     values[(0+i*4):(4+i*4)] = [uvs[i], uvs[i], uvs[i], 1.0]
 
-        elif sourceType == 'UV4':
+        elif sourcelayer.layer_type == 'UV4':
             values = layers.get_uv4(obj, sourcelayer)
 
-        if apply_layer_alpha and alpha != 1.0:
+        if apply_layer_alpha and sourcelayer.opacity != 1.0:
             count = len(values)//4
             for i in range(count):
-                values[3+i*4] *= alpha
+                values[3+i*4] *= sourcelayer.opacity
 
         if as_tuple:
             count = len(values)//4
@@ -1393,7 +1417,7 @@ class SXTOOLS2_layers(object):
                     return False
             return True
 
-        valid_sources = ['COLOR', 'OCC', 'MET', 'RGH', 'TRN', 'EMI']
+        valid_sources = ['COLOR', 'OCC', 'MET', 'RGH', 'TRN', 'EMI', 'CMP']
         targetType = targetlayer.layer_type
 
         if targetType in valid_sources:
@@ -1584,53 +1608,11 @@ class SXTOOLS2_layers(object):
                     if sxlayer.enabled:
                         sxlayer.locked = False
                         clear_layer(obj, sxlayer, reset=True)
-                obj.data.update()
+                # obj.data.update()
         else:
             for obj in objs:
                 clear_layer(obj, obj.sx2layers[targetlayer.name])
-                obj.data.update()
-
-
-    def composite_layers(self, objs):
-        if sxglobals.composite:
-            # then = time.perf_counter()
-            compLayers = utils.find_comp_layers(objs[0])
-            shadingmode = objs[0].sx2.shadingmode
-            layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-
-            if shadingmode == 'FULL':
-                layer0 = utils.find_layer_by_stack_index(objs[0], 0)
-                layer1 = utils.find_layer_by_stack_index(objs[0], 1)
-                self.blend_layers(objs, compLayers, layer1, layer0, uv_as_alpha=True)
-            else:
-                self.blend_debug(objs, layer, shadingmode)
-
-            sxglobals.composite = False
-            # now = time.perf_counter()
-            # print('Compositing duration: ', now-then, ' seconds')
-
-
-    def blend_debug(self, objs, layer, shadingmode):
-        active = bpy.context.view_layer.objects.active
-        bpy.context.view_layer.objects.active = objs[0]
-
-        for obj in objs:
-            colors = self.get_layer(obj, layer, uv_as_alpha=True)
-            count = len(colors)//4
-
-            if shadingmode == 'DEBUG':
-                for i in range(count):
-                    color = colors[(0+i*4):(4+i*4)]
-                    a = color[3] * layer.opacity
-                    colors[(0+i*4):(4+i*4)] = [color[0]*a, color[1]*a, color[2]*a, 1.0]
-            elif shadingmode == 'ALPHA':
-                for i in range(count):
-                    a = colors[3+i*4] * layer.opacity
-                    colors[(0+i*4):(4+i*4)] = [a, a, a, 1.0]
-
-            self.set_layer(obj, colors, obj.sx2layers['composite'])
-            # obj.data.update()
-        bpy.context.view_layer.objects.active = active
+                # obj.data.update()
 
 
     def blend_layers(self, objs, topLayerArray, baseLayer, resultLayer, uv_as_alpha=False):
@@ -1643,7 +1625,7 @@ class SXTOOLS2_layers(object):
             for layer in topLayerArray:
                 if getattr(obj.sx2layers[layer.name], 'visibility'):
                     blendmode = getattr(obj.sx2layers[layer.name], 'blend_mode')
-                    layeralpha = getattr(obj.sx2layers[layer.name], 'alpha')
+                    layeralpha = getattr(obj.sx2layers[layer.name], 'opacity')
                     topcolors = self.get_layer(obj, obj.sx2layers[layer.name], uv_as_alpha=uv_as_alpha, gradient_with_palette=True)
                     basecolors = tools.blend_values(topcolors, basecolors, blendmode, layeralpha)
 
@@ -1730,7 +1712,7 @@ class SXTOOLS2_layers(object):
                 for i in range(len(values)//4):
                     values[(3+i*4):(4+i*4)] = value_to_linear(values[(3+i*4):(4+i*4)])
                 self.set_colors(obj, layer.color_attribute, values)
-            obj.data.update()
+            # obj.data.update()
 
 
     def merge_layers(self, objs, toplayer, baselayer, targetlayer):
@@ -1980,7 +1962,7 @@ class SXTOOLS2_tools(object):
                 colors = self.blend_values(colors, target_colors, blendmode, blendvalue)
                 layers.set_layer(obj, colors, targetlayer)
 
-            obj.data.update()
+            # obj.data.update()
         utils.mode_manager(objs, revert=True, mode_id='apply_tool')
         # now = time.perf_counter()
         # print('Apply tool ', scene.toolmode, ' duration: ', now-then, ' seconds')
@@ -2041,7 +2023,7 @@ class SXTOOLS2_tools(object):
                         colors = generate.color_list(obj, palette[layer.palette_index], masklayer=layer)
                         if colors is not None:
                             layers.set_layer(obj, colors, layer)
-                obj.data.update()
+                # obj.data.update()
 
         sxglobals.refreshInProgress = False
         utils.mode_manager(objs, revert=True, mode_id='apply_palette')
@@ -2829,7 +2811,7 @@ def update_palette_layer(self, context, index):
                     if colors is not None:
                         layers.set_layer(obj, colors, layer)
 
-        obj.data.update()
+        # obj.data.update()
     # sxglobals.composite = True
     # refresh_actives(self, context)
     refresh_swatches(self, context)
@@ -3719,7 +3701,8 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
             ('MET', 'Metallic', ''),
             ('RGH', 'Roughness', ''),
             ('TRN', 'Transmission', ''),
-            ('EMI', 'Emission', '')],
+            ('EMI', 'Emission', ''),
+            ('CMP', 'Composite', '')],
         default='COLOR')
 
     export_type: bpy.props.EnumProperty(
@@ -4307,7 +4290,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 split3_fill.prop(scene, 'toolblend', text='')
                 split3_fill.prop(scene, 'toolopacity', slider=True)
             
-            # layout.operator('sx2.linear_alphas')
+            layout.operator('sx2.test_button')
 
         else:
             col = layout.column()
@@ -5020,7 +5003,8 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
             ('MET', 'Metallic', ''),
             ('RGH', 'Roughness', ''),
             ('TRN', 'Transmission', ''),
-            ('EMI', 'Emission', '')],
+            ('EMI', 'Emission', ''),
+            ('CMP', 'Composite', '')],
         default = 'COLOR')
 
 
@@ -5078,16 +5062,19 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     default_color = (1.0, 1.0, 1.0, 1.0)
                 elif self.layer_type == 'MET':
                     name = 'Metallic'
-                    default_color = (0.0, 0.0, 0.0, 1.0)
+                    default_color = (0.0, 0.0, 0.0, 0.0)
                 elif self.layer_type == 'RGH':
                     name = 'Roughness'
                     default_color = (1.0, 1.0, 1.0, 1.0)
                 elif self.layer_type == 'TRN':
                     name = 'Transmission'
-                    default_color = (0.0, 0.0, 0.0, 1.0)
+                    default_color = (0.0, 0.0, 0.0, 0.0)
                 elif self.layer_type == 'EMI':
                     name = 'Emission'
-                    default_color = (0.0, 0.0, 0.0, 1.0)
+                    default_color = (0.0, 0.0, 0.0, 0.0)
+                elif self.layer_type == 'CMP':
+                    name = 'Composite'
+                    default_color = (0.0, 0.0, 0.0, 0.0)
                 else:
                     name = self.layer_name
 
@@ -5096,7 +5083,7 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     layer.name = name
                 else:
                     layer.name = 'Layer ' + str(obj.sx2.layercount)
-                if layer.layer_type in ['OCC', 'MET', 'RGH', 'TRN']:
+                if layer.layer_type in ['OCC', 'MET', 'RGH', 'TRN', 'CMP']:
                     layer.paletted = False
                 layer.layer_type = self.layer_type
                 layer.default_color = default_color
@@ -5461,22 +5448,35 @@ class SXTOOLS2_OT_applymaterial(bpy.types.Operator):
         return {'FINISHED'}
 
 
-
-class SXTOOLS2_OT_linear_alphas(bpy.types.Operator):
-    bl_idname = 'sx2.linear_alphas'
-    bl_label = 'Convert sRGB alpha values to linear'
-    bl_description = 'Alpha channels should always be linear\nSome Blender actions use sRGB instead\nUse this tool to fix the issue'
+class SXTOOLS2_OT_test_button(bpy.types.Operator):
+    bl_idname = 'sx2.test_button'
+    bl_label = 'Test Button'
+    bl_description = 'Run test functions'
     bl_options = {'UNDO'}
 
 
     def invoke(self, context, event):
         objs = selection_validator(self, context)
         if len(objs) > 0:
-            layers.linear_alphas(objs)
 
+        # ---- LINEAR ALPHA CONVERSION ----
+        #     layers.linear_alphas(objs)
+        #     refresh_swatches(self, context)
+
+        # ---- PALETTE TEXTURE TEST ----
+        # colors = [(1.0, 0.0, 0.0, 1.0), (0.0, 1.0, 0.0, 1.0), (0.0, 0.0, 1.0, 1.0), (1.0, 1.0, 0.0, 1.0), (0.0, 1.0, 1.0, 1.0), (1.0, 0.0, 1.0, 1.0)]
+        # files.export_palette_texture(colors)
+
+        # ---- COMPOSITE LAYERS ----
+            utils.mode_manager(objs, set_mode=True, mode_id='composite_layers')
+            layers.add_layer(objs, name='Composite', layer_type='CMP')
+            comp_layers = utils.find_color_layers(objs[0])
+            layers.blend_layers(objs, comp_layers, comp_layers[0], objs[0].sx2layers['Composite'])
+            # setup.update_sx2material(context)
+            utils.mode_manager(objs, revert=True, mode_id='composite_layers')
             refresh_swatches(self, context)
-        return {'FINISHED'}
 
+        return {'FINISHED'}
 
 
 # ------------------------------------------------------------------------
@@ -5522,7 +5522,7 @@ classes = (
     SXTOOLS2_OT_delpalettecategory,
     SXTOOLS2_OT_applypalette,
     SXTOOLS2_OT_applymaterial,
-    SXTOOLS2_OT_linear_alphas)
+    SXTOOLS2_OT_test_button)
 
 addon_keymaps = []
 
@@ -5555,3 +5555,8 @@ if __name__ == '__main__':
     except:
         pass
     register()
+
+
+# TODO:
+# - Debug multiply by alpha
+
