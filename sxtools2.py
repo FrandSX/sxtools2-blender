@@ -922,7 +922,7 @@ class SXTOOLS2_generate(object):
 
             for modifier in obj.modifiers:
                 if modifier.type == 'SUBSURF':
-                    modifier.show_viewport = obj.sx2.modifiervisibility
+                    modifier.show_viewport = True  # obj.sx2.modifiervisibility
 
             vert_occ_list = generate.vert_dict_to_loop_list(obj, vert_occ_dict, 1, 4)
             return self.mask_list(obj, vert_occ_list, masklayer)
@@ -1110,8 +1110,6 @@ class SXTOOLS2_generate(object):
     def color_list(self, obj, color, masklayer=None, as_tuple=False):
         count = len(obj.data.color_attributes[0].data)
         colors = [color[0], color[1], color[2], color[3]] * count
-        print('color list len:', count)
-
         return self.mask_list(obj, colors, masklayer, as_tuple)
 
 
@@ -1313,12 +1311,8 @@ class SXTOOLS2_layers(object):
 
                 obj.data.attributes.new(name=item.name, type='FLOAT_COLOR', domain='CORNER')
                 item.index = utils.insert_layer_at_index(obj, item, obj.sx2layers[obj.sx2.selectedlayer].index + 1)
-                print('added at:', item.index)
-                print('new attr len:', len(obj.data.attributes[item.name].data))
 
                 colors = generate.color_list(obj, item.default_color)
-                print('layerslen:', len(obj.sx2layers) - 1)
-                print('layer:', obj.sx2layers[len(obj.sx2layers) - 1])
                 layers.set_layer(obj, colors, obj.sx2layers[len(obj.sx2layers) - 1])
 
                 obj.sx2.selectedlayer = len(obj.sx2layers) - 1
@@ -2203,6 +2197,7 @@ class SXTOOLS2_setup(object):
 
     def create_sx2material(self, objs):
         blend_mode_dict = {'ALPHA': 'MIX', 'OVR': 'OVERLAY', 'MUL': 'MULTIPLY', 'ADD': 'ADD'}
+        prefs = bpy.context.preferences.addons['sxtools2'].preferences
 
         layercount = 0
         for obj in objs:
@@ -2407,9 +2402,14 @@ class SXTOOLS2_setup(object):
                             sxmaterial.node_tree.links.new(input, output)
 
                         if material_layers[i][2] == 'TRN':
-                            output = opacity_and_alpha.outputs[0]
-                            input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission']
-                            sxmaterial.node_tree.links.new(input, output)
+                            if prefs.materialsubsurface:
+                                output = opacity_and_alpha.outputs[0]
+                                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface']
+                                sxmaterial.node_tree.links.new(input, output)
+                            if prefs.materialtransmission:
+                                output = opacity_and_alpha.outputs[0]
+                                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission']
+                                sxmaterial.node_tree.links.new(input, output)
 
                         if material_layers[i][2] == 'EMI':
                             layer_blend.blend_type = 'MIX'
@@ -2704,7 +2704,7 @@ def refresh_swatches(self, context):
         objs = selection_validator(self, context)
         # mode = objs[0].sx2.shadingmode
 
-        utils.mode_manager(objs, set_mode=True, mode_id='refresh_actives')
+        utils.mode_manager(objs, set_mode=True, mode_id='refresh_swatches')
 
         if (len(objs) > 0) and (len(objs[0].sx2layers) > 0):
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
@@ -2724,11 +2724,11 @@ def refresh_swatches(self, context):
             sat = max(sArray)
             lightness = max(lArray)
 
-            sxglobals.hslUpdate = True
+            sxglobals.hsl_update = True
             objs[0].sx2.huevalue = hue
             objs[0].sx2.saturationvalue = sat
             objs[0].sx2.lightnessvalue = lightness
-            sxglobals.hslUpdate = False
+            sxglobals.hsl_update = False
 
             # 2) Update layer palette elements
             for i, pcol in enumerate(colors):
@@ -2747,7 +2747,7 @@ def refresh_swatches(self, context):
             if layer.paletted:
                 bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(layer.palette_index)].outputs[0].default_value = colors[0]
 
-        utils.mode_manager(objs, revert=True, mode_id='refresh_actives')
+        utils.mode_manager(objs, revert=True, mode_id='refresh_swatches')
         sxglobals.refreshInProgress = False
 
 
@@ -4306,7 +4306,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 split3_fill.prop(scene, 'toolblend', text='')
                 split3_fill.prop(scene, 'toolopacity', slider=True)
             
-            layout.operator('sx2.linear_alphas')
+            # layout.operator('sx2.linear_alphas')
 
         else:
             col = layout.column()
@@ -4952,7 +4952,6 @@ class SXTOOLS2_OT_layer_up(bpy.types.Operator):
                     utils.mode_manager(objs, set_mode=True, mode_id='layer_up')
                     new_index = obj.sx2layers[idx].index + 1 if obj.sx2layers[idx].index + 1 < len(obj.sx2layers) else obj.sx2layers[idx].index
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
-                    print('added at:', obj.sx2layers[idx].index)
                     updated = True
                     utils.mode_manager(objs, revert=True, mode_id='layer_up')
 
@@ -4994,7 +4993,6 @@ class SXTOOLS2_OT_layer_down(bpy.types.Operator):
                     utils.mode_manager(objs, set_mode=True, mode_id='layer_down')
                     new_index = obj.sx2layers[idx].index - 1 if obj.sx2layers[idx].index -1 >= 0 else 0
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
-                    print('added at:', obj.sx2layers[idx].index)
                     updated = True
                     utils.mode_manager(objs, revert=True, mode_id='layer_down')
 
@@ -5023,14 +5021,6 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
             ('TRN', 'Transmission', ''),
             ('EMI', 'Emission', '')],
         default = 'COLOR')
-
-    paletted: bpy.props.BoolProperty(
-        name ='Paletted Layer')
-
-    palette_index: bpy.props.IntProperty(
-        min = 0,
-        max = 4,
-        name = 'Palette Color Index')
 
 
     @classmethod
@@ -5068,11 +5058,6 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
         col = layout.column()
         col.prop(self, 'layer_name', text='Layer Name')
         col.prop(self, 'layer_type', text='Layer Type')
-        col_split = col.split()
-        col_split.prop(self, 'paletted', text='Paletted')
-        col_split.prop(self, 'palette_index', text='Palette Color')
-        if self.layer_type != 'COLOR':
-            col_split.enabled = False
         return None
 
 
