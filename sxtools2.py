@@ -2897,11 +2897,12 @@ def update_selected_layer(self, context):
         # utils.sort_stack_indices(obj)
 
     areas = bpy.context.workspace.screens[0].areas
-    shading = 'MATERIAL'  # 'WIREFRAME' 'SOLID' 'MATERIAL' 'RENDERED'
+    shading_types = ['MATERIAL', 'RENDERED']  # 'WIREFRAME' 'SOLID' 'MATERIAL' 'RENDERED'
     for area in areas:
         for space in area.spaces:
             if space.type == 'VIEW_3D':
-                space.shading.type = shading
+                if space.shading.type not in shading_types:
+                    space.shading.type = 'MATERIAL'
 
     if objs[0].sx2.shadingmode != 'FULL':
         update_material(self, context)
