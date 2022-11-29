@@ -361,22 +361,23 @@ class SXTOOLS2_files(object):
 
     def export_palette_texture(self, colors):
         swatch_size = 16
-        n = 1 if len(colors) == 0 else 2**math.ceil(math.log2(math.sqrt(len(colors))))
-        pixels = [0.0, 0.0, 0.0, 0.1] * n * n * swatch_size * swatch_size
+        grid = 1 if len(colors) == 0 else 2**math.ceil(math.log2(math.sqrt(len(colors))))
+        pixels = [0.0, 0.0, 0.0, 0.1] * grid * grid * swatch_size * swatch_size
 
         z = 0
-        for y in range(n):
-            row = [0.0, 0.0, 0.0, 1.0] * n * swatch_size
-            row_length = 4 * n * swatch_size
-            for x in range(n):
+        for y in range(grid):
+            row = [0.0, 0.0, 0.0, 1.0] * grid * swatch_size
+            row_length = 4 * grid * swatch_size
+            for x in range(grid):
                 color = colors[z] if z < len(colors) else (0.0, 0.0, 0.0, 1.0)
+                color = convert.linear_to_srgb(color)
                 z += 1
                 for i in range(swatch_size):
                     row[x*swatch_size*4+i*4:x*swatch_size*4+i*4+4] = [color[0], color[1], color[2], color[3]]
             for j in range(swatch_size):
                 pixels[y*swatch_size*row_length+j*row_length:y*swatch_size*row_length+(j+1)*row_length] = row
 
-        image = bpy.data.images.new('palette_atlas', alpha=True, width=n*swatch_size, height=n*swatch_size)
+        image = bpy.data.images.new('palette_atlas', alpha=True, width=grid*swatch_size, height=grid*swatch_size)
         image.alpha_mode = 'STRAIGHT'
         image.pixels = pixels
         image.filepath_raw = '/tmp/palette_atlas.png'
@@ -1493,7 +1494,7 @@ class SXTOOLS2_layers(object):
 
     def get_uvs(self, obj, sourcelayer, channel=None):
         channels = {'U': 0, 'V': 1}
-        sourceUVs = obj.data.uv_layers[sourcelayer].data
+        sourceUVs = obj.data.uv_layers[sourcelayer.name].data
         count = len(sourceUVs)
         source_uvs = [None] * count * 2
         sourceUVs.foreach_get('uv', source_uvs)
@@ -1512,7 +1513,7 @@ class SXTOOLS2_layers(object):
     # when targetchannel is None, sourceuvs is expected to contain data for both U and V
     def set_uvs(self, obj, targetlayer, sourceuvs, targetchannel=None):
         channels = {'U': 0, 'V': 1}
-        targetUVs = obj.data.uv_layers[targetlayer].data
+        targetUVs = obj.data.uv_layers[targetlayer.name].data
 
         if targetchannel is None:
             targetUVs.foreach_set('uv', sourceuvs)
@@ -5463,16 +5464,42 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
         #     layers.linear_alphas(objs)
         #     refresh_swatches(self, context)
 
-        # ---- PALETTE TEXTURE TEST ----
-        # colors = [(1.0, 0.0, 0.0, 1.0), (0.0, 1.0, 0.0, 1.0), (0.0, 0.0, 1.0, 1.0), (1.0, 1.0, 0.0, 1.0), (0.0, 1.0, 1.0, 1.0), (1.0, 0.0, 1.0, 1.0)]
-        # files.export_palette_texture(colors)
 
         # ---- COMPOSITE LAYERS ----
             utils.mode_manager(objs, set_mode=True, mode_id='composite_layers')
             layers.add_layer(objs, name='Composite', layer_type='CMP')
             comp_layers = utils.find_color_layers(objs[0])
             layers.blend_layers(objs, comp_layers, comp_layers[0], objs[0].sx2layers['Composite'])
-            # setup.update_sx2material(context)
+            palette = utils.find_colors_by_frequency(objs, objs[0].sx2layers['Composite'])
+            grid = 1 if len(palette) == 0 else 2**math.ceil(math.log2(math.sqrt(len(palette))))
+
+            for obj in objs:
+                if len(obj.data.uv_layers) == 0:
+                    obj.data.uv_layers.new(name='UVMap')
+
+            color_uv_coords = {}
+            offset = 1.0/grid * 0.5
+            j = -1
+            for i, color in enumerate(palette):
+                a = i%grid
+                if a == 0:
+                    j += 1
+                u = a*offset*2 + offset
+                v = j*offset*2 + offset
+                color_uv_coords[color] = [u, v]
+
+            colors = layers.get_layer(obj, obj.sx2layers['Composite'], as_tuple=True)
+            uvs = layers.get_uvs(obj, obj.data.uv_layers.active)
+            count = len(colors)
+
+            for i in range(count):
+                color = colors[i]
+                for key in color_uv_coords.keys():
+                    if utils.color_compare(color, key, 0.01):
+                        uvs[i*2:i*2+2] = color_uv_coords[color]
+
+            layers.set_uvs(obj, obj.data.uv_layers.active, uvs)
+            files.export_palette_texture(palette)
             utils.mode_manager(objs, revert=True, mode_id='composite_layers')
             refresh_swatches(self, context)
 
