@@ -1201,7 +1201,6 @@ class SXTOOLS2_generate(object):
 
     def vertex_id_list(self, obj):
         mesh = obj.data
-
         count = len(mesh.vertices)
         ids = [None] * count
         mesh.vertices.foreach_get('index', ids)
@@ -1211,7 +1210,6 @@ class SXTOOLS2_generate(object):
     def empty_list(self, obj, channelcount):
         count = len(obj.data.uv_layers[0].data)
         looplist = [0.0] * count * channelcount
-
         return looplist
 
 
@@ -1289,8 +1287,7 @@ class SXTOOLS2_generate(object):
 
     def selection_mask(self, obj):
         mesh = obj.data
-        count = len(mesh.uv_layers[0].data)
-        mask = [0.0] * count
+        mask = self.empty_list(obj, 1)
 
         pre_check = [None] * len(mesh.vertices)
         mesh.vertices.foreach_get('select', pre_check)
@@ -5468,6 +5465,7 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
         # ---- COMPOSITE LAYERS ----
             utils.mode_manager(objs, set_mode=True, mode_id='composite_layers')
             layers.add_layer(objs, name='Composite', layer_type='CMP')
+
             comp_layers = utils.find_color_layers(objs[0])
             layers.blend_layers(objs, comp_layers, comp_layers[0], objs[0].sx2layers['Composite'])
             palette = utils.find_colors_by_frequency(objs, objs[0].sx2layers['Composite'])
