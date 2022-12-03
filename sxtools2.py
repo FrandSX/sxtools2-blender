@@ -37,7 +37,7 @@ class SXTOOLS2_sxglobals(object):
         self.hsl_update = False
         self.matUpdate = False
         self.curvatureUpdate = False
-        self.modalStatus = False
+        self.modal_status = False
         self.composite = False
         self.copyLayer = None
         self.prevMode = 'OBJECT'
@@ -2156,6 +2156,12 @@ class SXTOOLS2_setup(object):
         return None
 
 
+    def start_modal(self):
+        # bpy.ops.sxtools2.selectionmonitor('EXEC_DEFAULT')
+        bpy.ops.sx2.keymonitor('EXEC_DEFAULT')
+        sxglobals.modal_status = True
+
+
     def create_sxtoolmaterial(self):
         sxmaterial = bpy.data.materials.new(name='SXToolMaterial')
         sxmaterial.use_nodes = True
@@ -2533,7 +2539,7 @@ def refresh_actives(self, context):
                     bpy.data.materials['SXMaterial'].use_backface_culling = False
 
         # Verify selectionMonitor is running
-        if not sxglobals.modalStatus:
+        if not sxglobals.modal_status:
             setup.start_modal()
 
         utils.mode_manager(objs, revert=True, mode_id='refresh_actives')
@@ -2890,6 +2896,10 @@ def update_selected_layer(self, context):
     if 'SXToolMaterial' not in bpy.data.materials:
         setup.create_sxtoolmaterial()
     refresh_swatches(self, context)
+
+    # Verify selectionMonitor and keyMonitor are running
+    if not sxglobals.modal_status:
+        setup.start_modal()
 
 
 def update_material_props(self, context):
@@ -4371,7 +4381,7 @@ class SXTOOLS_OT_selectionmonitor(bpy.types.Operator):
     def modal(self, context, event):
         if not context.area:
             print('Selection Monitor: Context Lost')
-            sxglobals.modalStatus = False
+            sxglobals.modal_status = False
             return {'CANCELLED'}
 
         if (len(sxglobals.masterPaletteArray) == 0) or (len(sxglobals.materialArray) == 0) or (len(sxglobals.rampDict) == 0) or (len(sxglobals.categoryDict) == 0):
@@ -4431,7 +4441,7 @@ class SXTOOLS_OT_selectionmonitor(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
-class SXTOOLS_OT_keymonitor(bpy.types.Operator):
+class SXTOOLS2_OT_keymonitor(bpy.types.Operator):
     bl_idname = 'sx2.keymonitor'
     bl_label = 'Key Monitor'
 
@@ -4444,7 +4454,7 @@ class SXTOOLS_OT_keymonitor(bpy.types.Operator):
     def modal(self, context, event):
         if not context.area:
             print('Key Monitor: Context Lost')
-            sxglobals.modalStatus = False
+            sxglobals.modal_status = False
             return {'CANCELLED'}
 
         scene = context.scene.sx2
@@ -5526,6 +5536,7 @@ classes = (
     SXTOOLS2_rampcolor,
     SXTOOLS2_PT_panel,
     SXTOOLS2_UL_layerlist,
+    SXTOOLS2_OT_keymonitor,
     SXTOOLS2_OT_layerinfo,
     SXTOOLS2_OT_applytool,
     SXTOOLS2_OT_add_layer,
