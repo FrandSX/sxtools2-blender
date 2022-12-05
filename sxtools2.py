@@ -1578,15 +1578,7 @@ class SXTOOLS2_layers(object):
                 setattr(obj.sx2layers[layer.name], 'visibility', True)
                 setattr(obj.sx2layers[layer.name], 'locked', False)
                 if reset:
-                    if layer == obj.sx2layers['overlay']:
-                        setattr(obj.sx2layers[layer.name], 'blend_mode', 'OVR')
-                        default_color = (0.5, 0.5, 0.5, 1.0)
-                    else:
-                        setattr(obj.sx2layers[layer.name], 'blend_mode', 'ALPHA')
-                        if layer.index == 1 and obj.sx2.category != 'TRANSPARENT':
-                            default_color = (0.5, 0.5, 0.5, 1.0)
-                        elif layer.layer_type == 'COLOR':
-                            default_color = (0.0, 0.0, 0.0, 0.0)
+                    setattr(obj.sx2layers[layer.name], 'blend_mode', 'ALPHA')
                 colors = generate.color_list(obj, default_color)
                 layers.set_layer(obj, colors, layer)
             else:
@@ -1606,11 +1598,9 @@ class SXTOOLS2_layers(object):
                 for sxlayer in obj.sx2layers:
                     sxlayer.locked = False
                     clear_layer(obj, sxlayer, reset=True)
-                # obj.data.update()
         else:
             for obj in objs:
                 clear_layer(obj, obj.sx2layers[targetlayer.name])
-                # obj.data.update()
 
 
     def blend_layers(self, objs, topLayerArray, baseLayer, resultLayer, uv_as_alpha=False):
@@ -4886,9 +4876,6 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         enabled = False
-        if sxglobals.mode == 'EDIT':
-            return enabled
-
         objs = context.view_layer.objects.selected
         mesh_objs = []
         for obj in objs:
@@ -4985,9 +4972,6 @@ class SXTOOLS2_OT_mergeup(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         enabled = False
-        if sxglobals.mode == 'EDIT':
-            return enabled
-
         objs = context.view_layer.objects.selected
         mesh_objs = []
         for obj in objs:
@@ -5032,8 +5016,6 @@ class SXTOOLS2_OT_mergedown(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         enabled = False
-        if sxglobals.mode == 'EDIT':
-            return enabled
         objs = context.view_layer.objects.selected
         mesh_objs = []
         for obj in objs:
@@ -5072,9 +5054,6 @@ class SXTOOLS2_OT_copylayer(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         enabled = False
-        if sxglobals.mode == 'EDIT':
-            return enabled
-
         objs = context.view_layer.objects.selected
         mesh_objs = []
         for obj in objs:
@@ -5089,10 +5068,12 @@ class SXTOOLS2_OT_copylayer(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = selection_validator(self, context)
+        utils.mode_manager(objs, set_mode=True, mode_id='copy_layer')
         if len(objs) > 0:
             for obj in objs:
                 colors = layers.get_layer(obj, obj.sx2layers[objs[0].sx2.selectedlayer])
                 sxglobals.copy_buffer[obj.name] = generate.mask_list(obj, colors)
+        utils.mode_manager(objs, revert=True, mode_id='copy_layer')
         return {'FINISHED'}
 
  
@@ -5106,9 +5087,6 @@ class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         enabled = False
-        if sxglobals.mode == 'EDIT':
-            return enabled
-
         objs = context.view_layer.objects.selected
         mesh_objs = []
         for obj in objs:
@@ -5133,12 +5111,12 @@ class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
                     mode = False
 
                 if obj.name not in sxglobals.copy_buffer:
-                    message_box('Nothing to paste!')
-                    return {'FINISHED'}
+                    message_box('Nothing to paste to ' + obj.name + '!')
+                    # return {'FINISHED'}
                 else:
-                    layers.paste_layer(objs, target_layer, mode)
+                    layers.paste_layer([obj, ], target_layer, mode)
                     refresh_swatches(self, context)
-                    return {'FINISHED'}
+                    # return {'FINISHED'}
         return {'FINISHED'}
 
 
@@ -5152,9 +5130,6 @@ class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         enabled = False
-        if sxglobals.mode == 'EDIT':
-            return enabled
-
         objs = context.view_layer.objects.selected
         mesh_objs = []
         for obj in objs:
@@ -5202,9 +5177,6 @@ class SXTOOLS2_OT_selmask(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         enabled = False
-        if sxglobals.mode == 'EDIT':
-            return enabled
-
         objs = context.view_layer.objects.selected
         mesh_objs = []
         for obj in objs:
@@ -5448,5 +5420,5 @@ if __name__ == '__main__':
 
 
 # TODO:
-# - Debug multiply by alpha
-
+# - Multiple object support
+# 
