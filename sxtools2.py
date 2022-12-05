@@ -35,11 +35,12 @@ class SXTOOLS2_sxglobals(object):
         self.librariesLoaded = False
         self.refreshInProgress = False
         self.hsl_update = False
-        self.matUpdate = False
+        self.mat_update = False
         self.curvatureUpdate = False
         self.modal_status = False
         self.composite = False
         self.copyLayer = None
+        self.copy_buffer = {}
         self.prevMode = 'OBJECT'
         self.prevShadingMode = 'FULL'
         self.mode = None
@@ -266,7 +267,7 @@ class SXTOOLS2_files(object):
                 empty = False
 
                 # Create palette masks
-                layers.generate_masks(objArray)
+                layers.generate_palette_masks(objArray)
 
                 for obj in objArray:
                     bpy.context.view_layer.objects.active = obj
@@ -1603,9 +1604,8 @@ class SXTOOLS2_layers(object):
             scene.toolblend = 'ALPHA'
             for obj in objs:
                 for sxlayer in obj.sx2layers:
-                    if sxlayer.enabled:
-                        sxlayer.locked = False
-                        clear_layer(obj, sxlayer, reset=True)
+                    sxlayer.locked = False
+                    clear_layer(obj, sxlayer, reset=True)
                 # obj.data.update()
         else:
             for obj in objs:
@@ -1633,7 +1633,7 @@ class SXTOOLS2_layers(object):
 
     # Generate 1-bit layer masks for color layers
     # so the faces can be re-colored in a game engine
-    def generate_masks(self, objs):
+    def generate_palette_masks(self, objs):
         channels = {'R': 0, 'G': 1, 'B': 2, 'A': 3, 'U': 0, 'V': 1}
 
         for obj in objs:
@@ -1734,47 +1734,25 @@ class SXTOOLS2_layers(object):
             self.clear_layers(objs, toplayer)
 
 
-    def paste_layer(self, objs, sourceLayer, targetLayer, fillMode):
+    def paste_layer(self, objs, targetlayer, fillmode):
         utils.mode_manager(objs, set_mode=True, mode_id='paste_layer')
 
-        sourceMode = sourceLayer.layer_type
-        targetMode = targetLayer.layer_type
-
-        if (sourceMode == 'COLOR' or sourceMode == 'UV4') and (targetMode == 'COLOR' or targetMode == 'UV4'):
+        if fillmode == 'mask':
             for obj in objs:
-                sourceBlend = getattr(obj.sx2layers[sourceLayer.name], 'blend_mode')[:]
-                targetBlend = getattr(obj.sx2layers[targetLayer.name], 'blend_mode')[:]
-                sourceAlpha = getattr(obj.sx2layers[sourceLayer.name], 'opacity')
-                targetAlpha = getattr(obj.sx2layers[targetLayer.name], 'opacity')
-
-                if fillMode == 'swap':
-                    setattr(obj.sx2layers[sourceLayer.name], 'blend_mode', targetBlend)
-                    setattr(obj.sx2layers[targetLayer.name], 'blend_mode', sourceBlend)
-                    setattr(obj.sx2layers[sourceLayer.name], 'opacity', targetAlpha)
-                    setattr(obj.sx2layers[targetLayer.name], 'opacity', sourceAlpha)
-                else:
-                    setattr(obj.sx2layers[targetLayer.name], 'blend_mode', sourceBlend)
-                    setattr(obj.sx2layers[targetLayer.name], 'opacity', sourceAlpha)
-
-        if fillMode == 'swap':
-            for obj in objs:
-                layer1_colors = layers.get_layer(obj, sourceLayer)
-                layer2_colors = layers.get_layer(obj, targetLayer)
-                layers.set_layer(obj, layer1_colors, targetLayer)
-                layers.set_layer(obj, layer2_colors, sourceLayer)
-        elif fillMode == 'mask':
-            for obj in objs:
-                colors = layers.get_layer(obj, targetLayer)
-                sourcevalues = generate.mask_list(obj, colors, sourceLayer, override_mask=True)
-                layers.set_layer(obj, sourcevalues, targetLayer)
+                colors = layers.get_layer(obj, targetlayer)
+                alphas = sxglobals.copy_buffer[obj.name]
+                count = len(colors)//4
+                for i in range(count):
+                    colors[(3+i*4):(4+i*4)] = alphas[(3+i*4):(4+i*4)]
+                layers.set_layer(obj, colors, targetlayer)
         else:
             for obj in objs:
-                colors = self.get_layer(obj, sourceLayer)
+                colors = sxglobals.copy_buffer[obj.name]
+                targetvalues = self.get_layer(obj, targetlayer)
                 if sxglobals.mode == 'EDIT':
-                    targetvalues = self.get_layer(obj, targetLayer)
                     colors = generate.mask_list(obj, colors)
-                    colors = tools.blend_values(colors, targetvalues, 'ALPHA', 1.0)
-                layers.set_layer(obj, colors, targetLayer)
+                colors = tools.blend_values(colors, targetvalues, 'ALPHA', 1.0)
+                layers.set_layer(obj, colors, targetlayer)
 
         utils.mode_manager(objs, revert=True, mode_id='paste_layer')
 
@@ -2434,10 +2412,51 @@ class SXTOOLS2_setup(object):
                     base_color.layer_name = obj.sx2layers[obj.sx2.selectedlayer].color_attribute
                     base_color.location = (-1000, 0)
 
+                    layer_opacity = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
+                    layer_opacity.name = 'Layer Opacity'
+                    layer_opacity.label = 'Layer Opacity'
+                    layer_opacity.attribute_name = 'sx2layers["' + str(obj.sx2layers[obj.sx2.selectedlayer].name) + '"].opacity'
+                    layer_opacity.attribute_type = 'OBJECT'
+                    layer_opacity.location = (-1000, -400)
+
+                    opacity_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
+                    opacity_and_alpha.name = 'Opacity and Alpha'
+                    opacity_and_alpha.label = 'Opacity and Alpha'
+                    opacity_and_alpha.operation = 'MULTIPLY'
+                    opacity_and_alpha.use_clamp = True
+                    opacity_and_alpha.inputs[0].default_value = 1
+                    opacity_and_alpha.location = (-800, -400)
+
+                    debug_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
+                    debug_blend.name = 'Debug Mix'
+                    debug_blend.label = 'Debug Mix'
+                    debug_blend.inputs[0].default_value = 1
+                    debug_blend.inputs[1].default_value = [0.0, 0.0, 0.0, 0.0]
+                    debug_blend.inputs[2].default_value = [0.0, 0.0, 0.0, 0.0]
+                    debug_blend.blend_type = 'MIX'
+                    debug_blend.use_clamp = True
+                    debug_blend.location = (-600, 0)
+
+                    output = layer_opacity.outputs[2]
+                    input = opacity_and_alpha.inputs[0]
+                    sxmaterial.node_tree.links.new(input, output)
+
+                    output = base_color.outputs['Alpha']
+                    input = opacity_and_alpha.inputs[1]
+                    sxmaterial.node_tree.links.new(input, output)
+
+                    output = opacity_and_alpha.outputs[0]
+                    input = debug_blend.inputs[0]
+                    sxmaterial.node_tree.links.new(input, output)
+
                     if obj.sx2.shadingmode == 'DEBUG':
                         output = base_color.outputs['Color']
                     else:
                         output = base_color.outputs['Alpha']
+                    input = debug_blend.inputs['Color2']
+                    sxmaterial.node_tree.links.new(input, output)
+
+                    output = debug_blend.outputs['Color']
                     input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission']
                     sxmaterial.node_tree.links.new(input, output)
 
@@ -2546,142 +2565,6 @@ def refresh_actives(self, context):
         sxglobals.refreshInProgress = False
 
 
-def shading_mode(self, context):
-    prefs = bpy.context.preferences.addons['sxtools'].preferences
-    mode = context.scene.sxtools.shadingmode
-    objs = selection_validator(self, context)
-
-    if len(objs) > 0:
-        sxmaterial = bpy.data.materials['SXMaterial']
-
-        if prefs.materialtype == 'SMP':
-            context.scene.eevee.use_bloom = False
-            context.scene.eevee.use_ssr = False
-            areas = bpy.context.workspace.screens[0].areas
-            shading = 'MATERIAL'  # 'WIREFRAME' 'SOLID' 'MATERIAL' 'RENDERED'
-            for area in areas:
-                for space in area.spaces:
-                    if space.type == 'VIEW_3D':
-                        space.shading.type = shading
-
-        else:
-            occlusion = objs[0].sxlayers['occlusion'].enabled
-            metallic = objs[0].sxlayers['metallic'].enabled
-            smoothness = objs[0].sxlayers['smoothness'].enabled
-            transmission = objs[0].sxlayers['transmission'].enabled
-            emission = objs[0].sxlayers['emission'].enabled
-
-            materialsubsurface = prefs.materialsubsurface
-            materialtransmission = prefs.materialtransmission
-
-            if mode == 'FULL':
-                if emission:
-                    context.scene.eevee.use_bloom = True
-                if metallic or smoothness:
-                    context.scene.eevee.use_ssr = True
-                areas = bpy.context.workspace.screens[0].areas
-                shading = 'MATERIAL'  # 'WIREFRAME' 'SOLID' 'MATERIAL' 'RENDERED'
-                for area in areas:
-                    for space in area.spaces:
-                        if space.type == 'VIEW_3D':
-                            if ((space.shading.type == 'WIREFRAME') or
-                               (space.shading.type == 'SOLID')):
-                                space.shading.type = shading
-
-                sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = 0.5
-
-                # Disconnect vertex color output from emission
-                attrLink = sxmaterial.node_tree.nodes['Composite Color'].outputs[0].links[0]
-                sxmaterial.node_tree.links.remove(attrLink)
-
-                # Reconnect vertex color to mixer
-                output = sxmaterial.node_tree.nodes['Composite Color'].outputs['Color']
-                input = sxmaterial.node_tree.nodes['Mix'].inputs['Color1']
-                sxmaterial.node_tree.links.new(input, output)
-
-                # Reconnect mixer to base color
-                output = sxmaterial.node_tree.nodes['Mix'].outputs['Color']
-                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color']
-                sxmaterial.node_tree.links.new(input, output)
-
-                if metallic:
-                    # Reconnect metallic and roughness
-                    output = sxmaterial.node_tree.nodes['VisMix 2'].outputs['Color']
-                    input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Metallic']
-                    sxmaterial.node_tree.links.new(input, output)
-
-                if smoothness:
-                    output = sxmaterial.node_tree.nodes['VisMix 3'].outputs['Color']
-                    input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Roughness']
-                    sxmaterial.node_tree.links.new(input, output)
-
-                if transmission:
-                    if materialtransmission:
-                        # Reconnect transmission
-                        output = sxmaterial.node_tree.nodes['VisMix 4'].outputs['Color']
-                        input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission']
-                        sxmaterial.node_tree.links.new(input, output)
-
-                    if materialsubsurface:
-                        output = sxmaterial.node_tree.nodes['VisMix 4'].outputs['Color']
-                        input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface']
-                        sxmaterial.node_tree.links.new(input, output)
-
-                if emission:
-                    # Reconnect emission
-                    output = sxmaterial.node_tree.nodes['VisMix 5'].outputs['Color']
-                    input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission']
-                    sxmaterial.node_tree.links.new(input, output)
-
-                    # Reconnect base mix
-                    output = sxmaterial.node_tree.nodes['Mix'].outputs['Color']
-                    input = sxmaterial.node_tree.nodes['Mix.001'].inputs['Color1']
-                    sxmaterial.node_tree.links.new(input, output)
-
-            else:
-                if emission:
-                    context.scene.eevee.use_bloom = False
-                if metallic or smoothness:
-                    context.scene.eevee.use_ssr = False
-                areas = bpy.context.workspace.screens[0].areas
-                shading = 'MATERIAL'  # 'WIREFRAME' 'SOLID' 'MATERIAL' 'RENDERED'
-                for area in areas:
-                    for space in area.spaces:
-                        if space.type == 'VIEW_3D':
-                            space.shading.type = shading
-
-                sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = 0.0
-
-                # Disconnect base color, metallic and roughness
-                attrLink = sxmaterial.node_tree.nodes['Composite Color'].outputs[0].links[0]
-                sxmaterial.node_tree.links.remove(attrLink)
-
-                # Check if already debug
-                if sxglobals.prevShadingMode == 'FULL':
-                    attrLink = sxmaterial.node_tree.nodes['Mix'].outputs[0].links[0]
-                    sxmaterial.node_tree.links.remove(attrLink)
-                    if metallic:
-                        attrLink = sxmaterial.node_tree.nodes['VisMix 2'].outputs[0].links[0]
-                        sxmaterial.node_tree.links.remove(attrLink)
-                    if smoothness:
-                        attrLink = sxmaterial.node_tree.nodes['VisMix 3'].outputs[0].links[0]
-                        sxmaterial.node_tree.links.remove(attrLink)
-                    if transmission:
-                        if materialtransmission and materialsubsurface:
-                            attrLink = sxmaterial.node_tree.nodes['VisMix 4'].outputs[0].links[1]
-                            sxmaterial.node_tree.links.remove(attrLink)
-                        if materialtransmission or materialsubsurface:
-                            attrLink = sxmaterial.node_tree.nodes['VisMix 4'].outputs[0].links[0]
-                            sxmaterial.node_tree.links.remove(attrLink)
-
-                # Connect vertex color source to emission
-                output = sxmaterial.node_tree.nodes['Composite Color'].outputs['Color']
-                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission']
-                sxmaterial.node_tree.links.new(input, output)
-
-            sxglobals.prevShadingMode = mode
-
-
 def refresh_swatches(self, context):
     if not sxglobals.refreshInProgress:
         sxglobals.refreshInProgress = True
@@ -2756,7 +2639,7 @@ def update_layers(self, context):
         if 'SXMaterial' not in bpy.data.materials:
             setup.create_sxmaterial()
 
-        shading_mode(self, context)
+        # shading_mode(self, context)
         objs = selection_validator(self, context)
 
         if len(objs) > 0:
@@ -2815,15 +2698,12 @@ def update_palette_layer(self, context, index):
                     if colors is not None:
                         layers.set_layer(obj, colors, layer)
 
-        # obj.data.update()
-    # sxglobals.composite = True
-    # refresh_actives(self, context)
     refresh_swatches(self, context)
 
 
 def update_material_layer(self, context, index):
-    if not sxglobals.matUpdate:
-        sxglobals.matUpdate = True
+    if not sxglobals.mat_update:
+        sxglobals.mat_update = True
 
         scene = context.scene.sx2
         objs = selection_validator(self, context)
@@ -2865,15 +2745,12 @@ def update_material_layer(self, context, index):
             setattr(scene, 'newmaterial' + str(index), pbr_values[index])
 
         utils.mode_manager(objs, revert=True, mode_id='update_material_layer')
-        sxglobals.matUpdate = False
+        sxglobals.mat_update = False
 
-        # if index == 0:
-        #     sxglobals.composite = True
-    # refresh_actives(self, context)
     refresh_swatches(self, context)
 
 
-# TODO: This only works with identical layersets
+# TODO: This only works correctly with identical layersets
 def update_selected_layer(self, context):
     objs = selection_validator(self, context)
     for obj in objs:
@@ -2895,6 +2772,7 @@ def update_selected_layer(self, context):
 
     if 'SXToolMaterial' not in bpy.data.materials:
         setup.create_sxtoolmaterial()
+
     refresh_swatches(self, context)
 
     # Verify selectionMonitor and keyMonitor are running
@@ -2959,11 +2837,7 @@ def adjust_hsl(self, context, hslmode):
         if len(objs) > 0:
             hslvalues = [objs[0].sx2.huevalue, objs[0].sx2.saturationvalue, objs[0].sx2.lightnessvalue]
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-
             tools.apply_hsl(objs, layer, hslmode, hslvalues[hslmode])
-
-            # sxglobals.composite = True
-            # refresh_actives(self, context)
             refresh_swatches(self, context)
 
 
@@ -2989,7 +2863,7 @@ def ext_category_lister(self, context, category):
     enumItems = list(set(categories))
     return enumItems
 
-
+# TODO: This function should be replaced so a preset layer stack is generated with specific export layers and channels
 def load_category(self, context):
     if not sxglobals.refreshInProgress:
         objs = selection_validator(self, context)
@@ -3691,10 +3565,6 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
 class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
     # name: from PropertyGroup
 
-    enabled: bpy.props.BoolProperty(
-        name='Layer Enabled',
-        default=True)
-
     index: bpy.props.IntProperty(
         name='Layer Index',
         min=0,
@@ -4080,10 +3950,10 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
             if scene.shift:
                 clr_text = 'Reset All'
-                paste_text = 'Swap'
+                paste_text = 'Paste'
                 sel_text = 'Select Inverse'
             elif scene.alt:
-                paste_text = 'Merge Into'
+                paste_text = 'Paste'
             elif scene.ctrl:
                 clr_text = 'Flatten'
                 sel_text = 'Select Color'
@@ -4353,9 +4223,6 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
             flt_flags = [self.bitflag_filter_item] * len(objs[0].sx2layers)
             for layer in objs[0].sx2layers:
                 flt_neworder.append(layer.index)
-
-                # if not layer.enabled:
-                #     flt_flags[idx] |= ~self.bitflag_filter_item
 
             return flt_flags, flt_neworder
 
@@ -5151,8 +5018,7 @@ class SXTOOLS2_OT_mergeup(bpy.types.Operator):
 
             setup.update_sx2material(context)
             refresh_swatches(self, context)
-            # sxglobals.composite = True
-            # refresh_actives(self, context)
+
         return {'FINISHED'}
 
 
@@ -5192,15 +5058,14 @@ class SXTOOLS2_OT_mergedown(bpy.types.Operator):
             layers.del_layer(objs, topLayer)
             setup.update_sx2material(context)
             refresh_swatches(self, context)
-            # sxglobals.composite = True
-            # refresh_actives(self, context)
+
         return {'FINISHED'}
 
 
 class SXTOOLS2_OT_copylayer(bpy.types.Operator):
     bl_idname = 'sx2.copylayer'
-    bl_label = 'Copy Layer'
-    bl_description = 'Mark the selected layer for copying'
+    bl_label = 'Copy'
+    bl_description = 'Copy layer or selection'
     bl_options = {'UNDO'}
 
 
@@ -5225,14 +5090,16 @@ class SXTOOLS2_OT_copylayer(bpy.types.Operator):
     def invoke(self, context, event):
         objs = selection_validator(self, context)
         if len(objs) > 0:
-            sxglobals.copyLayer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            for obj in objs:
+                colors = layers.get_layer(obj, obj.sx2layers[objs[0].sx2.selectedlayer])
+                sxglobals.copy_buffer[obj.name] = generate.mask_list(obj, colors)
         return {'FINISHED'}
 
  
 class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
     bl_idname = 'sx2.pastelayer'
-    bl_label = 'Paste Layer'
-    bl_description = 'Shift-click to swap with copied layer\nAlt-click to merge into the target layer'
+    bl_label = 'Paste'
+    bl_description = 'Ctrl-click to paste alpha only'
     bl_options = {'UNDO'}
 
 
@@ -5257,32 +5124,21 @@ class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
     def invoke(self, context, event):
         objs = selection_validator(self, context)
         if len(objs) > 0:
-            sourceLayer = sxglobals.copyLayer
-            targetLayer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            for obj in objs:
+                target_layer = obj.sx2layers[objs[0].sx2.selectedlayer]
 
-            if event.alt and sourceLayer is not None:
-                layers.merge_layers(objs, sourceLayer, targetLayer, targetLayer)
-                refresh_swatches(self, context)
-                # sxglobals.composite = True
-                # refresh_actives(self, context)
-                return {'FINISHED'}
+                if event.ctrl:
+                    mode = 'mask'
+                else:
+                    mode = False
 
-            elif event.shift:
-                mode = 'swap'
-            elif event.ctrl:
-                mode = 'mask'
-            else:
-                mode = False
-
-            if sourceLayer is None:
-                message_box('Nothing to paste!')
-                return {'FINISHED'}
-            else:
-                layers.paste_layer(objs, sourceLayer, targetLayer, mode)
-                refresh_swatches(self, context)
-                # sxglobals.composite = True
-                # refresh_actives(self, context)
-                return {'FINISHED'}
+                if obj.name not in sxglobals.copy_buffer:
+                    message_box('Nothing to paste!')
+                    return {'FINISHED'}
+                else:
+                    layers.paste_layer(objs, target_layer, mode)
+                    refresh_swatches(self, context)
+                    return {'FINISHED'}
         return {'FINISHED'}
 
 
@@ -5431,8 +5287,6 @@ class SXTOOLS2_OT_applypalette(bpy.types.Operator):
 
             if not bpy.app.background:
                 refresh_swatches(self, context)
-            #     sxglobals.composite = True
-            #     refresh_actives(self, context)
         return {'FINISHED'}
 
 
