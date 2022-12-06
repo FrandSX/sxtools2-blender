@@ -1340,19 +1340,22 @@ class SXTOOLS2_layers(object):
                 colors = generate.color_list(obj, item.default_color)
                 layers.set_layer(obj, colors, obj.sx2layers[len(obj.sx2layers) - 1])
 
+            # Second loop needed for proper operation in multi-object cases
+            # selectedlayer needs to point to an existing layer on all objs
+            for obj in objs:
                 obj.sx2.selectedlayer = len(obj.sx2layers) - 1
                 obj.sx2.layercount += 1
 
-            # refresh_actives(self, context)
-
 
     def del_layer(self, objs, layer_to_delete):
+        layer_name = layer_to_delete.name
         for obj in objs:
-            bottom_layer_index = obj.sx2layers[layer_to_delete.name].index - 1 if obj.sx2layers[layer_to_delete.name].index - 1 > 0 else 0
-            obj.data.attributes.remove(obj.data.attributes[layer_to_delete.name])
-            idx = utils.find_layer_index_by_name(obj, layer_to_delete.name)
+            bottom_layer_index = obj.sx2layers[layer_name].index - 1 if obj.sx2layers[layer_name].index - 1 > 0 else 0
+            obj.data.attributes.remove(obj.data.attributes[layer_name])
+            idx = utils.find_layer_index_by_name(obj, layer_name)
             obj.sx2layers.remove(idx)
 
+        for obj in objs:
             utils.sort_stack_indices(obj)
             for i, layer in enumerate(obj.sx2layers):
                 if layer.index == bottom_layer_index:
@@ -2565,58 +2568,58 @@ def refresh_actives(self, context):
 
 
 def refresh_swatches(self, context):
-    if not sxglobals.refresh_in_progress:
-        sxglobals.refresh_in_progress = True
+    # if not sxglobals.refresh_in_progress:
+    #     sxglobals.refresh_in_progress = True
 
-        scene = context.scene.sx2
-        objs = mesh_selection_validator(self, context)
-        # mode = objs[0].sx2.shadingmode
+    scene = context.scene.sx2
+    objs = mesh_selection_validator(self, context)
+    # mode = objs[0].sx2.shadingmode
 
-        utils.mode_manager(objs, set_mode=True, mode_id='refresh_swatches')
+    utils.mode_manager(objs, set_mode=True, mode_id='refresh_swatches')
 
-        if (len(objs) > 0) and (len(objs[0].sx2layers) > 0):
-            layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-            colors = utils.find_colors_by_frequency(objs, layer, 8)
+    if (len(objs) > 0) and (len(objs[0].sx2layers) > 0):
+        layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+        colors = utils.find_colors_by_frequency(objs, layer, 8)
 
-            # Refresh SX Tools UI to latest selection
-            # 1) Update layer HSL elements
-            hArray = []
-            sArray = []
-            lArray = []
-            for color in colors:
-                hsl = convert.rgb_to_hsl(color)
-                hArray.append(hsl[0])
-                sArray.append(hsl[1])
-                lArray.append(hsl[2])
-            hue = max(hArray)
-            sat = max(sArray)
-            lightness = max(lArray)
+        # Refresh SX Tools UI to latest selection
+        # 1) Update layer HSL elements
+        hArray = []
+        sArray = []
+        lArray = []
+        for color in colors:
+            hsl = convert.rgb_to_hsl(color)
+            hArray.append(hsl[0])
+            sArray.append(hsl[1])
+            lArray.append(hsl[2])
+        hue = max(hArray)
+        sat = max(sArray)
+        lightness = max(lArray)
 
-            sxglobals.hsl_update = True
-            objs[0].sx2.huevalue = hue
-            objs[0].sx2.saturationvalue = sat
-            objs[0].sx2.lightnessvalue = lightness
-            sxglobals.hsl_update = False
+        sxglobals.hsl_update = True
+        objs[0].sx2.huevalue = hue
+        objs[0].sx2.saturationvalue = sat
+        objs[0].sx2.lightnessvalue = lightness
+        sxglobals.hsl_update = False
 
-            # 2) Update layer palette elements
-            for i, pcol in enumerate(colors):
-                palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
-                setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
-
-
-            # 3) update Palettes-tab color values
-            if scene.toolmode == 'PAL':
-                layers.color_layers_to_values(objs)
-            # elif (scene.toolmode == 'MAT'):
-            #     layers.material_layers_to_values(objs)
+        # 2) Update layer palette elements
+        for i, pcol in enumerate(colors):
+            palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
+            setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
 
 
-            # 4) Update SXToolMaterial color
-            if layer.paletted:
-                bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(layer.palette_index)].outputs[0].default_value = colors[0]
+        # 3) update Palettes-tab color values
+        if scene.toolmode == 'PAL':
+            layers.color_layers_to_values(objs)
+        # elif (scene.toolmode == 'MAT'):
+        #     layers.material_layers_to_values(objs)
 
-        utils.mode_manager(objs, revert=True, mode_id='refresh_swatches')
-        sxglobals.refresh_in_progress = False
+
+        # 4) Update SXToolMaterial color
+        if layer.paletted:
+            bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(layer.palette_index)].outputs[0].default_value = colors[0]
+
+    utils.mode_manager(objs, revert=True, mode_id='refresh_swatches')
+    #     sxglobals.refresh_in_progress = False
 
 
 def message_box(message='', title='SX Tools', icon='INFO'):
@@ -2749,7 +2752,7 @@ def update_material_layer(self, context, index):
     refresh_swatches(self, context)
 
 
-# TODO: This only works correctly with identical layersets
+# TODO: This only works correctly on multi-object selection with identical layersets
 def update_selected_layer(self, context):
     objs = mesh_selection_validator(self, context)
     for obj in objs:
@@ -2814,15 +2817,14 @@ def update_material_props(self, context):
                     opacity_vector.append(1.0)
                 setattr(obj.sx2, 'material_opacity_list_' + str(i), opacity_vector)
 
-    if 'SX2Material' in bpy.data.materials:
-        for obj in objs:
-            bpy.data.materials['SX2Material'].blend_method = 'OPAQUE'
-            bpy.data.materials['SX2Material'].use_backface_culling = False
+            if 'SX2Material_'+obj.name in bpy.data.materials:
+                bpy.data.materials['SX2Material_'+obj.name].blend_method = 'OPAQUE'
+                bpy.data.materials['SX2Material_'+obj.name].use_backface_culling = False
 
-            for layer in obj.sx2layers:
-                if (layer.index == 0) and (layer.opacity < 1.0):
-                    bpy.data.materials['SX2Material'].blend_method = 'BLEND'
-                    bpy.data.materials['SX2Material'].use_backface_culling = True
+                for layer in obj.sx2layers:
+                    if (layer.index == 0) and (layer.opacity < 1.0):
+                        bpy.data.materials['SX2Material_'+obj.name].blend_method = 'BLEND'
+                        bpy.data.materials['SX2Material_'+obj.name].use_backface_culling = True
 
 
 def update_material(self, context):
@@ -2935,6 +2937,10 @@ def update_obj_props(self, context, prop):
         mat_props = ['shadingmode', 'visibility', 'opacity']
         if prop in mat_props:
             setup.update_sx2material(context)
+
+        elif prop == 'selectedlayer':
+            update_selected_layer(self, context)
+
         sxglobals.refresh_in_progress = False
 
 
@@ -2947,7 +2953,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         name='Selected Layer',
         min=0,
         default=0,
-        update=update_selected_layer)
+        update=lambda self, context: update_obj_props(self, context, 'selectedlayer'))
 
     shadingmode: bpy.props.EnumProperty(
         name='Shading Mode',
@@ -3899,7 +3905,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 row_layer.label(text='No layers')
             elif not layer_validator(self, context):
                 box_layer.enabled = False
-                row_layer.label(text='Mismatching layers on selected objects')
+                row_layer.label(text='Mismatching layers sets!')
             else:
                 row_layer.prop(
                     scene, 'expandlayer',
@@ -5447,4 +5453,5 @@ if __name__ == '__main__':
 
 # TODO:
 # - Multiple object support
-# 
+# - load-post op to clear tool globals
+
