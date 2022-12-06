@@ -2770,7 +2770,7 @@ def update_selected_layer(self, context):
                     space.shading.type = 'MATERIAL'
 
     if objs[0].sx2.shadingmode != 'FULL':
-        update_material(self, context)
+        setup.update_sx2material(context)
 
     if 'SXToolMaterial' not in bpy.data.materials:
         setup.create_sxtoolmaterial()
@@ -2821,14 +2821,10 @@ def update_material_props(self, context):
                 bpy.data.materials['SX2Material_'+obj.name].blend_method = 'OPAQUE'
                 bpy.data.materials['SX2Material_'+obj.name].use_backface_culling = False
 
-                for layer in obj.sx2layers:
-                    if (layer.index == 0) and (layer.opacity < 1.0):
-                        bpy.data.materials['SX2Material_'+obj.name].blend_method = 'BLEND'
-                        bpy.data.materials['SX2Material_'+obj.name].use_backface_culling = True
-
-
-def update_material(self, context):
-    setup.update_sx2material(context)
+                # for layer in obj.sx2layers:
+                #     if (layer.index == 0) and (layer.opacity < 1.0):
+                #         bpy.data.materials['SX2Material_'+obj.name].blend_method = 'BLEND'
+                #         bpy.data.materials['SX2Material_'+obj.name].use_backface_culling = True
 
 
 def adjust_hsl(self, context, hslmode):
@@ -2934,14 +2930,26 @@ def update_obj_props(self, context, prop):
             if getattr(obj.sx2, prop) != getattr(objs[0].sx2, prop):
                 setattr(obj.sx2, prop, getattr(objs[0].sx2, prop))
 
-        mat_props = ['shadingmode', 'visibility', 'opacity']
-        if prop in mat_props:
+        if prop == 'shadingmode':
             setup.update_sx2material(context)
 
         elif prop == 'selectedlayer':
             update_selected_layer(self, context)
 
         sxglobals.refresh_in_progress = False
+
+
+def update_layer_props(self, context, prop):
+    objs = mesh_selection_validator(self, context)
+    for obj in objs:
+        if getattr(obj.sx2layers[self.name], prop) != getattr(objs[0].sx2layers[self.name], prop):
+            setattr(obj.sx2layers[self.name], prop, getattr(objs[0].sx2layers[self.name], prop))
+
+    mat_props = ['visibility', 'blend_mode']
+    if prop in mat_props:
+        setup.update_sx2material(context)
+    elif prop == 'opacity':
+        update_material_props(self, context)
 
 
 # ------------------------------------------------------------------------
@@ -3621,14 +3629,14 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
     visibility: bpy.props.BoolProperty(
         name='Layer Visibility',
         default=True,
-        update=lambda self, context: update_material(self, context))
+        update=lambda self, context: update_layer_props(self, context, 'visibility'))
 
     opacity: bpy.props.FloatProperty(
         name='Layer Opacity',
         min=0.0,
         max=1.0,
         default=1.0,
-        update=lambda self, context: update_material_props(self, context))
+        update=lambda self, context: update_layer_props(self, context, 'opacity'))
 
     blend_mode: bpy.props.EnumProperty(
         name='Layer Blend Mode',
@@ -3638,7 +3646,7 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
             ('MUL', 'Multiply', ''),
             ('OVR', 'Overlay', '')],
         default='ALPHA',
-        update=lambda self, context: update_material(self, context))
+        update=lambda self, context: update_layer_props(self, context, 'blend_mode'))
 
     color_attribute: bpy.props.StringProperty(
         name='Vertex Color Layer',
@@ -5144,11 +5152,10 @@ class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
 
                 if obj.name not in sxglobals.copy_buffer:
                     message_box('Nothing to paste to ' + obj.name + '!')
-                    # return {'FINISHED'}
                 else:
                     layers.paste_layer([obj, ], target_layer, mode)
                     refresh_swatches(self, context)
-                    # return {'FINISHED'}
+
         return {'FINISHED'}
 
 
@@ -5454,4 +5461,6 @@ if __name__ == '__main__':
 # TODO:
 # - Multiple object support
 # - load-post op to clear tool globals
+# - HSL update with multi-object selection
+
 
