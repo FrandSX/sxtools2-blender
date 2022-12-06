@@ -1349,6 +1349,7 @@ class SXTOOLS2_layers(object):
 
     def del_layer(self, objs, layer_to_delete):
         layer_name = layer_to_delete.name
+        print(layer_to_delete, layer_name)
         for obj in objs:
             bottom_layer_index = obj.sx2layers[layer_name].index - 1 if obj.sx2layers[layer_name].index - 1 > 0 else 0
             obj.data.attributes.remove(obj.data.attributes[layer_name])
@@ -5162,7 +5163,7 @@ class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
 class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
     bl_idname = 'sx2.clear'
     bl_label = 'Clear Layer'
-    bl_description = 'Shift-click to clear all layers\non selected objects or components\nCtrl-click to flatten all color layers to Layer 1'
+    bl_description = 'Shift-click to clear all layers\non selected objects or components\nCtrl-click to flatten all color layers'
     bl_options = {'UNDO'}
 
 
@@ -5186,12 +5187,24 @@ class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
         if len(objs) > 0:
             utils.mode_manager(objs, set_mode=True, mode_id='clearlayers')
             if event.ctrl:
-                compLayers = utils.find_comp_layers(objs[0])
-                layer0 = utils.find_layer_by_stack_index(objs[0], 1)
-                layer1 = utils.find_layer_by_stack_index(objs[0], 1)
-                layers.blend_layers(objs, compLayers, layer1, layer0, uv_as_alpha=True)
-                for layer in compLayers:
-                    layers.clear_layers(objs, layer)
+                for obj in objs:
+                    comp_layers = utils.find_color_layers(obj)
+                    layer_attributes = []
+                    for layer in comp_layers:
+                        layer_attributes.append((layer.color_attribute, layer.name))
+
+                    layers.add_layer([obj, ], name='Composite', layer_type='COLOR')
+                    layers.blend_layers([obj, ], comp_layers, comp_layers[0], obj.sx2layers['Composite'])
+
+                    for attribute in layer_attributes:
+                        obj.data.attributes.remove(obj.data.attributes[attribute[0]])
+                        idx = utils.find_layer_index_by_name(obj, attribute[1])
+                        obj.sx2layers.remove(idx)
+
+                    obj.sx2.selectedlayer = len(obj.sx2layers) - 1
+                    utils.sort_stack_indices(obj)
+
+                setup.update_sx2material(context)
             else:
                 if event.shift:
                     layer = None
