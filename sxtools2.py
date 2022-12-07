@@ -39,14 +39,13 @@ class SXTOOLS2_sxglobals(object):
         self.curvatureUpdate = False
         self.modal_status = False
         self.copy_buffer = {}
-        self.prevMode = 'OBJECT'
-        self.prevShadingMode = 'FULL'
+        self.prev_mode = 'OBJECT'
         self.mode = None
         self.modeID = None
         self.randomseed = 42
 
-        self.prevSelection = []
-        self.prevComponentSelection = []
+        self.prev_selection = []
+        self.prev_component_selection = []
         self.rampDict = {}
         self.categoryDict = {}
         self.presetLookup = {}
@@ -2126,7 +2125,7 @@ class SXTOOLS2_setup(object):
 
 
     def start_modal(self):
-        # bpy.ops.sxtools2.selectionmonitor('EXEC_DEFAULT')
+        bpy.ops.sx2.selectionmonitor('EXEC_DEFAULT')
         bpy.ops.sx2.keymonitor('EXEC_DEFAULT')
         sxglobals.modal_status = True
 
@@ -2558,8 +2557,10 @@ def refresh_swatches(self, context):
             palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
             setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
 
-        # 3) update Palettes-tab color values
-        if scene.toolmode == 'PAL':
+        # 3) update tool palettes
+        if scene.toolmode == 'COL':
+            update_fillcolor(self, context)
+        elif scene.toolmode == 'PAL':
             layers.color_layers_to_values(objs)
         # elif (scene.toolmode == 'MAT'):
         #     layers.material_layers_to_values(objs)
@@ -2567,10 +2568,6 @@ def refresh_swatches(self, context):
         # 4) Update SXToolMaterial color
         if layer.paletted:
             bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(layer.palette_index)].outputs[0].default_value = colors[0]
-
-    # update Color Tool according to selected layer
-    if scene.toolmode == 'COL':
-        update_fillcolor(self, context)
 
     # Verify selectionMonitor is running
     if not sxglobals.modal_status:
@@ -4190,7 +4187,9 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
 # ------------------------------------------------------------------------
 #   Operators
 # ------------------------------------------------------------------------
-class SXTOOLS_OT_selectionmonitor(bpy.types.Operator):
+
+# The selectionmonitor tracks shading mode and selection changes, triggering a refresh of palette swatches and other UI elements
+class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
     bl_idname = 'sx2.selectionmonitor'
     bl_label = 'Selection Monitor'
     bl_description = 'Refreshes the UI on selection change'
@@ -4219,11 +4218,11 @@ class SXTOOLS_OT_selectionmonitor(bpy.types.Operator):
         objs = mesh_selection_validator(self, context)
         if len(objs) > 0:
             mode = objs[0].mode
-            if mode != sxglobals.prevMode:
+            if mode != sxglobals.prev_mode:
                 # print('selectionmonitor: mode change')
-                sxglobals.prevMode = mode
+                sxglobals.prev_mode = mode
                 sxglobals.mode = mode
-                # refresh_actives(self, context)
+                refresh_swatches(self, context)
                 return {'PASS_THROUGH'}
 
             if (objs[0].mode == 'EDIT'):
@@ -4233,10 +4232,10 @@ class SXTOOLS_OT_selectionmonitor(bpy.types.Operator):
                 mesh.vertices.foreach_get('select', selection)
                 # print('selectionmonitor: componentselection ', selection)
 
-                if selection != sxglobals.prevComponentSelection:
+                if selection != sxglobals.prev_component_selection:
                     # print('selectionmonitor: component selection changed')
-                    sxglobals.prevComponentSelection = selection
-                    # refresh_actives(self, context)
+                    sxglobals.prev_component_selection = selection
+                    refresh_swatches(self, context)
                     return {'PASS_THROUGH'}
                 else:
                     return {'PASS_THROUGH'}
@@ -4244,11 +4243,11 @@ class SXTOOLS_OT_selectionmonitor(bpy.types.Operator):
                 selection = context.view_layer.objects.selected.keys()
                 # print('selectionmonitor: selection ', selection)
 
-                if selection != sxglobals.prevSelection:
+                if selection != sxglobals.prev_selection:
                     # print('selectionmonitor: object selection changed')
-                    sxglobals.prevSelection = selection[:]
-                    # if (selection is not None) and (len(selection) > 0) and (len(context.view_layer.objects[selection[0]].sxlayers) > 0):
-                    #     refresh_actives(self, context)
+                    sxglobals.prev_selection = selection[:]
+                    if (selection is not None) and (len(selection) > 0) and (len(context.view_layer.objects[selection[0]].sx2layers) > 0):
+                        refresh_swatches(self, context)
                     return {'PASS_THROUGH'}
                 else:
                     return {'PASS_THROUGH'}
@@ -4262,7 +4261,7 @@ class SXTOOLS_OT_selectionmonitor(bpy.types.Operator):
 
     def invoke(self, context, event):
         # bpy.app.timers.register(lambda: 0.01 if 'PASS_THROUGH' in self.modal(context, event) else None)
-        sxglobals.prevSelection = context.view_layer.objects.selected.keys()[:]
+        sxglobals.prev_selection = context.view_layer.objects.selected.keys()[:]
         context.window_manager.modal_handler_add(self)
         print('SX Tools: Starting selection monitor')
         return {'RUNNING_MODAL'}
@@ -5339,6 +5338,7 @@ classes = (
     SXTOOLS2_rampcolor,
     SXTOOLS2_PT_panel,
     SXTOOLS2_UL_layerlist,
+    SXTOOLS2_OT_selectionmonitor,
     SXTOOLS2_OT_keymonitor,
     SXTOOLS2_OT_layerinfo,
     SXTOOLS2_OT_applytool,
