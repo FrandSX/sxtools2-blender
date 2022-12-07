@@ -2,7 +2,7 @@ bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
     'version': (0, 0, 1),
-    'blender': (3, 3, 0),
+    'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
     'doc_url': 'https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6',
@@ -210,12 +210,12 @@ class SXTOOLS2_files(object):
 
 
     # In paletted export mode, gradients and overlays are
-    # not composited to VertexColor0 as that will be
+    # not composited as that will be
     # done by the shader on the game engine side
     def export_files(self, groups):
         scene = bpy.context.scene.sx2
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
-        exportspace = prefs.exportspace
+        export_dict = {'LIN': 'LINEAR', 'SRGB': 'SRGB'}
         empty = True
 
         if 'ExportObjects' not in bpy.data.collections:
@@ -248,7 +248,7 @@ class SXTOOLS2_files(object):
                 for collider in colliders:
                     if collider_id in collider.name:
                         collider_array.append(collider)
-                        collider['sxToolsVersion'] = 'SX Tools for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
+                        collider['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
 
             # Only groups with meshes and armatures as children are exported
             objArray = []
@@ -256,8 +256,8 @@ class SXTOOLS2_files(object):
                 if sel.type == 'MESH':
                     objArray.append(sel)
                     sel['staticVertexColors'] = sel.sx2.staticvertexcolors
-                    sel['sxToolsVersion'] = 'SX Tools for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
-                    sel['colorSpace'] = prefs.exportspace
+                    sel['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
+                    sel['colorSpace'] = export_dict[prefs.exportspace]
 
             if len(objArray) > 0:
                 empty = False
@@ -273,12 +273,12 @@ class SXTOOLS2_files(object):
                     layers.blend_layers([obj, ], compLayers, layer1, layer0, uv_as_alpha=True)
 
                     # Temporary fix for Blender 3.x not supporting exporting of float color attributes
-                    color_layers = utils.find_color_layers(obj)
-                    for layer in color_layers:
-                        colors = layers.get_layer(obj, layer)
-                        obj.data.attributes.remove(obj.data.attributes[layer.vertexColorLayer])
-                        obj.data.attributes.new(name=layer.vertexColorLayer, type='BYTE_COLOR', domain='CORNER')
-                        layers.set_layer(obj, colors, layer)
+                    # color_layers = utils.find_color_layers(obj)
+                    # for layer in color_layers:
+                    #     colors = layers.get_layer(obj, layer)
+                    #     obj.data.attributes.remove(obj.data.attributes[layer.vertexColorLayer])
+                    #     obj.data.attributes.new(name=layer.vertexColorLayer, type='BYTE_COLOR', domain='CORNER')
+                    #     layers.set_layer(obj, colors, layer)
 
                     obj.data.attributes.active_color = obj.data.attributes[layer0.vertexColorLayer]
                     bpy.ops.geometry.color_attribute_render_set(name=layer0.vertexColorLayer)
@@ -295,23 +295,20 @@ class SXTOOLS2_files(object):
 
                 # If linear colorspace exporting is selected
                 # vertex colors pre-multiplied against Blender's unwanted sRGB export conversion
-                if exportspace == 'LIN':
-                    export.export_to_linear(objArray)
+                # if exportspace == 'LIN':
+                #     export.export_to_linear(objArray)
 
-                if prefs.materialtype == 'SMP':
-                    path = scene.exportfolder
-                else:
-                    category = objArray[0].sx2.category.lower()
-                    print(f'Determining path: {objArray[0].name} {category}')
-                    path = scene.exportfolder + category + os.path.sep
-                    pathlib.Path(path).mkdir(exist_ok=True)
+                category = objArray[0].sx2.category.lower()
+                print(f'Determining path: {objArray[0].name} {category}')
+                path = scene.exportfolder + category + os.path.sep
+                pathlib.Path(path).mkdir(exist_ok=True)
 
                 if len(collider_array) > 0:
                     for collider in collider_array:
                         collider.select_set(True)
 
                 exportPath = path + group.name + '.' + 'fbx'
-                export_settings = ['FBX_SCALE_UNITS', False, False, False, 'Z', '-Y', '-Y', '-X']
+                export_settings = ['FBX_SCALE_UNITS', False, False, False, 'Z', '-Y', '-Y', '-X', export_dict[prefs.exportspace]]
 
                 bpy.ops.export_scene.fbx(
                     filepath=exportPath,
@@ -329,7 +326,8 @@ class SXTOOLS2_files(object):
                     secondary_bone_axis=export_settings[7],
                     object_types={'ARMATURE', 'EMPTY', 'MESH'},
                     use_custom_props=True,
-                    use_metadata=False)
+                    use_metadata=False,
+                    colors_type=export_settings[8])
 
                 groupNames.append(group.name)
                 group.location = org_loc
@@ -338,13 +336,13 @@ class SXTOOLS2_files(object):
                 tools.add_modifiers(objArray)
 
                 # Clean-up of temporary fix for Blender 3.x not supporting exporting of float color attributes
-                for obj in objArray:
-                    color_layers = utils.find_color_layers(obj)
-                    for layer in color_layers:
-                        colors = layers.get_layer(obj, layer)
-                        obj.data.attributes.remove(obj.data.attributes[layer.color_attribute])
-                        obj.data.attributes.new(name=layer.color_attribute, type='FLOAT_COLOR', domain='CORNER')
-                        layers.set_layer(obj, colors, layer)
+                # for obj in objArray:
+                #     color_layers = utils.find_color_layers(obj)
+                #     for layer in color_layers:
+                #         colors = layers.get_layer(obj, layer)
+                #         obj.data.attributes.remove(obj.data.attributes[layer.color_attribute])
+                #         obj.data.attributes.new(name=layer.color_attribute, type='FLOAT_COLOR', domain='CORNER')
+                #         layers.set_layer(obj, colors, layer)
 
                 bpy.context.view_layer.objects.active = group
 
