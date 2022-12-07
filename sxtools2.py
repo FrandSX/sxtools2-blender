@@ -3813,6 +3813,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
 
     def draw(self, context):
+        prefs = context.preferences.addons['sxtools2'].preferences
         objs = mesh_selection_validator(self, context)
         layout = self.layout
 
@@ -4124,8 +4125,15 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 split3_fill = box_fill.split(factor=0.3)
                 split3_fill.prop(scene, 'toolblend', text='')
                 split3_fill.prop(scene, 'toolopacity', slider=True)
-            
-            layout.operator('sx2.test_button')
+
+            # Modifiers Module ----------------------------------------------
+            if prefs.enable_modifiers:
+                pass
+
+            # Export Module -------------------------------------------------
+            if prefs.enable_export:
+                box_export = layout.box()          
+                box_export.operator('sx2.test_button', text='Composite and Export Atlas')
 
         else:
             col = layout.column()
@@ -5278,8 +5286,10 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
             utils.mode_manager(objs, set_mode=True, mode_id='composite_layers')
             layers.add_layer(objs, name='Composite', layer_type='CMP')
 
-            comp_layers = utils.find_color_layers(objs[0])
-            layers.blend_layers(objs, comp_layers, comp_layers[0], objs[0].sx2layers['Composite'])
+            for obj in objs:
+                comp_layers = utils.find_color_layers(obj)
+                layers.blend_layers([obj, ], comp_layers, comp_layers[0], obj.sx2layers['Composite'])
+
             palette = utils.find_colors_by_frequency(objs, objs[0].sx2layers['Composite'])
             grid = 1 if len(palette) == 0 else 2**math.ceil(math.log2(math.sqrt(len(palette))))
 
@@ -5287,28 +5297,29 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
                 if len(obj.data.uv_layers) == 0:
                     obj.data.uv_layers.new(name='UVMap')
 
-            color_uv_coords = {}
-            offset = 1.0/grid * 0.5
-            j = -1
-            for i, color in enumerate(palette):
-                a = i%grid
-                if a == 0:
-                    j += 1
-                u = a*offset*2 + offset
-                v = j*offset*2 + offset
-                color_uv_coords[color] = [u, v]
+                color_uv_coords = {}
+                offset = 1.0/grid * 0.5
+                j = -1
+                for i, color in enumerate(palette):
+                    a = i%grid
+                    if a == 0:
+                        j += 1
+                    u = a*offset*2 + offset
+                    v = j*offset*2 + offset
+                    color_uv_coords[color] = [u, v]
 
-            colors = layers.get_layer(obj, obj.sx2layers['Composite'], as_tuple=True)
-            uvs = layers.get_uvs(obj, obj.data.uv_layers.active)
-            count = len(colors)
+                colors = layers.get_layer(obj, obj.sx2layers['Composite'], as_tuple=True)
+                uvs = layers.get_uvs(obj, obj.data.uv_layers.active)
+                count = len(colors)
 
-            for i in range(count):
-                color = colors[i]
-                for key in color_uv_coords.keys():
-                    if utils.color_compare(color, key, 0.01):
-                        uvs[i*2:i*2+2] = color_uv_coords[color]
+                for i in range(count):
+                    color = colors[i]
+                    for key in color_uv_coords.keys():
+                        if utils.color_compare(color, key, 0.01):
+                            uvs[i*2:i*2+2] = color_uv_coords[color]
 
-            layers.set_uvs(obj, obj.data.uv_layers.active, uvs)
+                layers.set_uvs(obj, obj.data.uv_layers.active, uvs)
+
             files.export_palette_texture(palette)
             utils.mode_manager(objs, revert=True, mode_id='composite_layers')
             refresh_swatches(self, context)
