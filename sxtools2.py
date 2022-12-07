@@ -1345,7 +1345,6 @@ class SXTOOLS2_layers(object):
 
     def del_layer(self, objs, layer_to_delete):
         layer_name = layer_to_delete.name
-        print(layer_to_delete, layer_name)
         for obj in objs:
             bottom_layer_index = obj.sx2layers[layer_name].index - 1 if obj.sx2layers[layer_name].index - 1 > 0 else 0
             obj.data.attributes.remove(obj.data.attributes[layer_name])
@@ -2153,7 +2152,6 @@ class SXTOOLS2_setup(object):
         blend_mode_dict = {'ALPHA': 'MIX', 'OVR': 'OVERLAY', 'MUL': 'MULTIPLY', 'ADD': 'ADD'}
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
 
-        print('sx2mat:', objs)
         for obj in objs:
             if len(obj.sx2layers) > 0:
                 layercount = len(obj.sx2layers)
@@ -2451,7 +2449,6 @@ class SXTOOLS2_setup(object):
 
 
     def update_sx2material(self, context):
-        print('update sx2mat called')
         sx_mat_objs = []
         sx_mats = [mat for mat in bpy.data.materials.keys() if 'SX2Material' in mat]
         if len(sx_mats) > 0:
@@ -2826,6 +2823,23 @@ def load_libraries(self, context):
     if status1 and status2 and status3 and status4:
         message_box('Libraries loaded successfully')
         sxglobals.librariesLoaded = True
+
+
+# Fillcolor is automatically converted to grayscale on specific material layers
+def update_fillcolor(self, context):
+    scene = context.scene.sx2
+    objs = selection_validator(self, context)
+    layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+
+    gray_types = ['MET', 'SMH', 'OCC', 'TRN']
+    if layer.layer_type in gray_types:
+        color = scene.fillcolor[:]
+        hsl = convert.rgb_to_hsl(color)
+        hsl = [0.0, 0.0, hsl[2]]
+        rgb = convert.hsl_to_rgb(hsl)
+        new_color = (rgb[0], rgb[1], rgb[2], 1.0)
+        if color != new_color:
+            scene.fillcolor = new_color
 
 
 def update_obj_props(self, context, prop):
@@ -3232,8 +3246,8 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         size=4,
         min=0.0,
         max=1.0,
-        default=(1.0, 1.0, 1.0, 1.0))
-        # update=update_fillcolor)
+        default=(1.0, 1.0, 1.0, 1.0),
+        update=update_fillcolor)
 
     noiseamplitude: bpy.props.FloatProperty(
         name='Amplitude',
