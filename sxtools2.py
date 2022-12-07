@@ -38,8 +38,6 @@ class SXTOOLS2_sxglobals(object):
         self.mat_update = False
         self.curvatureUpdate = False
         self.modal_status = False
-        self.composite = False
-        self.copyLayer = None
         self.copy_buffer = {}
         self.prevMode = 'OBJECT'
         self.prevShadingMode = 'FULL'
@@ -58,7 +56,6 @@ class SXTOOLS2_sxglobals(object):
 
         # {stack_layer_index: (layer.name, layer.color_attribute, layer.layer_type)}
         self.layer_stack_dict = {}
-
 
         # Brush tools may leave low alpha values that break
         # palettemasks, alphaTolerance can be used to fix this.
@@ -2518,56 +2515,6 @@ def layer_validator(self, context):
         return True
 
 
-def refresh_actives(self, context):
-    if not sxglobals.refresh_in_progress:
-        sxglobals.refresh_in_progress = True
-
-        scene = context.scene.sx2
-        objs = mesh_selection_validator(self, context)
-        mode = objs[0].sx2.shadingmode
-
-        utils.mode_manager(objs, set_mode=True, mode_id='refresh_actives')
-
-        if len(objs) > 0:
-            layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-            vcols = layer.color_attribute
-
-            # update Color Tool according to selected layer
-            if scene.toolmode == 'COL':
-                update_fillcolor(self, context)
-
-            # update Palettes-tab color values
-            if scene.toolmode == 'PAL':
-                layers.color_layers_to_values(objs)
-            elif (scene.toolmode == 'MAT'):
-                layers.material_layers_to_values(objs)
-
-            for obj in objs:
-                setattr(obj.sx2, 'selectedlayer', idx)
-                if vcols != '':
-                    obj.data.attributes.active = obj.data.attributes[vcols]
-
-            # Refresh SX Tools UI to latest selection
-            layers.update_layer_panel(objs, layer)
-
-            # Update SX Material to latest selection
-            if objs[0].sx2.category == 'TRANSPARENT':
-                if bpy.data.materials['SXMaterial'].blend_method != 'BLEND':
-                    bpy.data.materials['SXMaterial'].blend_method = 'BLEND'
-                    bpy.data.materials['SXMaterial'].use_backface_culling = True
-            else:
-                if bpy.data.materials['SXMaterial'].blend_method != 'OPAQUE':
-                    bpy.data.materials['SXMaterial'].blend_method = 'OPAQUE'
-                    bpy.data.materials['SXMaterial'].use_backface_culling = False
-
-        # Verify selectionMonitor is running
-        if not sxglobals.modal_status:
-            setup.start_modal()
-
-        utils.mode_manager(objs, revert=True, mode_id='refresh_actives')
-        sxglobals.refresh_in_progress = False
-
-
 def refresh_swatches(self, context):
     # if not sxglobals.refresh_in_progress:
     #     sxglobals.refresh_in_progress = True
@@ -2578,35 +2525,38 @@ def refresh_swatches(self, context):
 
     utils.mode_manager(objs, set_mode=True, mode_id='refresh_swatches')
 
-    if (len(objs) > 0) and (len(objs[0].sx2layers) > 0):
-        layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-        colors = utils.find_colors_by_frequency(objs, layer, 8)
+    if len(objs) > 0:
+        for obj in objs:
+            if len(obj.sx2layers) > 0:
+                layer = obj.sx2layers[obj.sx2.selectedlayer]
+                colors = utils.find_colors_by_frequency([obj, ], layer, 8)
 
-        # Refresh SX Tools UI to latest selection
-        # 1) Update layer HSL elements
-        hArray = []
-        sArray = []
-        lArray = []
-        for color in colors:
-            hsl = convert.rgb_to_hsl(color)
-            hArray.append(hsl[0])
-            sArray.append(hsl[1])
-            lArray.append(hsl[2])
-        hue = max(hArray)
-        sat = max(sArray)
-        lightness = max(lArray)
+                # Refresh SX Tools UI to latest selection
+                # 1) Update layer HSL elements
+                hArray = []
+                sArray = []
+                lArray = []
+                for color in colors:
+                    hsl = convert.rgb_to_hsl(color)
+                    hArray.append(hsl[0])
+                    sArray.append(hsl[1])
+                    lArray.append(hsl[2])
+                hue = max(hArray)
+                sat = max(sArray)
+                lightness = max(lArray)
 
-        sxglobals.hsl_update = True
-        objs[0].sx2.huevalue = hue
-        objs[0].sx2.saturationvalue = sat
-        objs[0].sx2.lightnessvalue = lightness
-        sxglobals.hsl_update = False
+                sxglobals.hsl_update = True
+                obj.sx2.huevalue = hue
+                obj.sx2.saturationvalue = sat
+                obj.sx2.lightnessvalue = lightness
+                sxglobals.hsl_update = False
 
         # 2) Update layer palette elements
+        layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+        colors = utils.find_colors_by_frequency(objs, layer, 8)
         for i, pcol in enumerate(colors):
             palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
             setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
-
 
         # 3) update Palettes-tab color values
         if scene.toolmode == 'PAL':
@@ -2614,10 +2564,17 @@ def refresh_swatches(self, context):
         # elif (scene.toolmode == 'MAT'):
         #     layers.material_layers_to_values(objs)
 
-
         # 4) Update SXToolMaterial color
         if layer.paletted:
             bpy.data.materials['SXToolMaterial'].node_tree.nodes['PaletteColor'+str(layer.palette_index)].outputs[0].default_value = colors[0]
+
+    # update Color Tool according to selected layer
+    if scene.toolmode == 'COL':
+        update_fillcolor(self, context)
+
+    # Verify selectionMonitor is running
+    if not sxglobals.modal_status:
+        setup.start_modal()
 
     utils.mode_manager(objs, revert=True, mode_id='refresh_swatches')
     #     sxglobals.refresh_in_progress = False
@@ -2633,55 +2590,6 @@ def message_box(message='', title='SX Tools', icon='INFO'):
 
     if not bpy.app.background:
         bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
-
-
-def update_layers(self, context):
-    if not sxglobals.refresh_in_progress:
-        update_gpu_props(self, context)
-
-        if 'SXMaterial' not in bpy.data.materials:
-            setup.create_sxmaterial()
-
-        # shading_mode(self, context)
-        objs = mesh_selection_validator(self, context)
-
-        if len(objs) > 0:
-            utils.mode_manager(objs, set_mode=True, mode_id='update_layers')
-            idx = objs[0].sxtools.selectedlayer
-            alphaVal = getattr(objs[0].sxtools, 'activeLayerAlpha')
-            blendVal = getattr(objs[0].sxtools, 'activeLayerBlendMode')
-
-            vis_array = []
-            for layer in objs[0].sxlayers:
-                vis_array.append(layer.visibility)
-
-            for obj in objs:
-                setattr(obj.sxlayers[idx], 'alpha', alphaVal)
-                setattr(obj.sxlayers[idx], 'blendMode', blendVal)
-                sxglobals.refresh_in_progress = True
-                for i, layer in enumerate(obj.sxlayers):
-                    layer.visibility = vis_array[i]
-                sxglobals.refresh_in_progress = False
-
-                if blendVal == 'OVR':
-                    setattr(obj.sxlayers[idx], 'defaultColor', (0.5, 0.5, 0.5, 1.0))
-                elif (idx == 1) and (obj.sxtools.category != 'TRANSPARENT'):
-                    setattr(obj.sxlayers[idx], 'defaultColor', (0.5, 0.5, 0.5, 1.0))
-                else:
-                    setattr(obj.sxlayers[idx], 'defaultColor', utils.find_default_color(obj, obj.sxlayers[idx]))
-
-                sxglobals.refresh_in_progress = True
-                setattr(obj.sxtools, 'selectedlayer', idx)
-                setattr(obj.sxtools, 'activeLayerAlpha', alphaVal)
-                setattr(obj.sxtools, 'activeLayerBlendMode', blendVal)
-                sxglobals.refresh_in_progress = False
-
-            # setup.setup_geometry(objs)
-            if not context.scene.sxtools.gpucomposite:
-                sxglobals.composite = True
-                layers.composite_layers(objs)
-
-            utils.mode_manager(objs, revert=True, mode_id='update_layers')
 
 
 def update_palette_layer(self, context, index):
@@ -2887,7 +2795,7 @@ def load_category(self, context):
                     bpy.data.materials['SX2Material_' + obj.name].use_backface_culling = False
 
             sxglobals.refresh_in_progress = False
-        update_layers(self, context)
+        # update_layers(self, context)
 
 
 def load_ramp(self, context):
@@ -2951,6 +2859,27 @@ def update_layer_props(self, context, prop):
         setup.update_sx2material(context)
     elif prop == 'opacity':
         update_material_props(self, context)
+
+
+@persistent
+def load_post_handler(dummy):
+    sxglobals.layer_stack_dict.clear()
+    sxglobals.librariesLoaded = False
+
+    if bpy.data.scenes['Scene'].sx2.rampmode == '':
+        bpy.data.scenes['Scene'].sx2.rampmode = 'X'
+
+    # active = bpy.context.view_layer.objects.active
+    # for obj in bpy.data.objects:
+    #     bpy.context.view_layer.objects.active = obj
+
+    #     if (len(obj.sx2.keys()) > 0):
+    #         if obj.sx2.hardmode == '':
+    #             obj.sx2.hardmode = 'SHARP'
+
+    # bpy.context.view_layer.objects.active = active
+
+    setup.start_modal()
 
 
 # ------------------------------------------------------------------------
@@ -4746,7 +4675,6 @@ class SXTOOLS2_OT_applytool(bpy.types.Operator):
                 tools.apply_tool(objs, layer)
 
             refresh_swatches(self, context)
-        #     refresh_actives(self, context)
         return {'FINISHED'}
 
 
@@ -5201,9 +5129,9 @@ class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
                         idx = utils.find_layer_index_by_name(obj, attribute[1])
                         obj.sx2layers.remove(idx)
 
-                    obj.sx2.selectedlayer = len(obj.sx2layers) - 1
                     utils.sort_stack_indices(obj)
 
+                objs[0].sx2.selectedlayer = len(objs[0].sx2layers) - 1
                 setup.update_sx2material(context)
             else:
                 if event.shift:
@@ -5215,7 +5143,6 @@ class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
 
             utils.mode_manager(objs, revert=True, mode_id='clearlayers')
             refresh_swatches(self, context)
-            # refresh_actives(self, context)
         return {'FINISHED'}
 
 
@@ -5329,8 +5256,6 @@ class SXTOOLS2_OT_applymaterial(bpy.types.Operator):
             material = self.label
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             tools.apply_material(objs, layer, material)
-
-            # refresh_actives(self, context)
         return {'FINISHED'}
 
 
@@ -5452,6 +5377,8 @@ def register():
     bpy.types.Scene.sxpalettes = bpy.props.CollectionProperty(type=SXTOOLS2_masterpalette)
     bpy.types.Scene.sxmaterials = bpy.props.CollectionProperty(type=SXTOOLS2_material)
 
+    bpy.app.handlers.load_post.append(load_post_handler)
+
 
 def unregister():
     from bpy.utils import unregister_class
@@ -5461,6 +5388,8 @@ def unregister():
     del bpy.types.Object.sx2
     del bpy.types.Object.sx2layers
     del bpy.types.Scene.sx2
+
+    bpy.app.handlers.load_post.remove(load_post_handler)
 
 
 if __name__ == '__main__':
@@ -5474,6 +5403,4 @@ if __name__ == '__main__':
 # TODO:
 # - Multiple object support
 # - load-post op to clear tool globals
-# - HSL update with multi-object selection
-
 
