@@ -539,6 +539,15 @@ class SXTOOLS2_utils(object):
         return difference.length <= tolerance
 
 
+    def calculate_triangles(self, objs):
+        count = 0
+        for obj in objs:
+            if 'sxDecimate2' in obj.modifiers:
+                count += obj.modifiers['sxDecimate2'].face_count
+
+        return str(count)
+
+
     def __del__(self):
         print('SX Tools: Exiting utils')
 
@@ -2109,6 +2118,313 @@ class SXTOOLS2_tools(object):
                 setattr(scene, 'fillpalette' + str(i + 1), colorArray[i])
 
 
+    def assign_set(self, objs, setvalue, setmode):
+        mode = objs[0].mode[:]
+        mode_dict = {'CRS': 'crease', 'BEV': 'bevel_weight'}
+        weight = setvalue
+        if (setmode == 'CRS') and (weight == -1.0):
+            weight = 0.0 
+
+        utils.mode_manager(objs, set_mode=True, mode_id='assign_set')
+        active = bpy.context.view_layer.objects.active
+
+        # Create necessary data layers
+        for obj in objs:
+            bpy.context.view_layer.objects.active = obj
+            mesh = obj.data
+            if not mesh.has_crease_vertex:
+                bpy.ops.mesh.customdata_crease_vertex_add()
+            if not mesh.has_crease_edge:
+                bpy.ops.mesh.customdata_crease_edge_add()
+            if not mesh.has_bevel_weight_edge:
+                bpy.ops.mesh.customdata_bevel_weight_edge_add()
+            if not mesh.has_bevel_weight_vertex:
+                bpy.ops.mesh.customdata_bevel_weight_vertex_add()
+
+            if (mode == 'EDIT'):
+                # EDIT mode vertex creasing
+                # vertex beveling not supported
+                if (bpy.context.tool_settings.mesh_select_mode[0]):
+                    weight_values = [None] * len(mesh.vertices)
+                    select_values = [None] * len(mesh.vertices)
+                    mesh.vertices.foreach_get('select', select_values)
+                    if setmode == 'CRS':
+                        mesh.vertex_creases[0].data.foreach_get('value', weight_values)
+                        for i, sel in enumerate(select_values):
+                            if sel:
+                                weight_values[i] = weight
+
+                    mesh.vertex_creases[0].data.foreach_set('value', weight_values)
+
+                # EDIT mode edge creasing and beveling
+                elif (bpy.context.tool_settings.mesh_select_mode[1] or bpy.context.tool_settings.mesh_select_mode[2]):
+                    weight_values = [None] * len(mesh.edges)
+                    sharp_values = [None] * len(mesh.edges)
+                    select_values = [None] * len(mesh.edges)
+                    mesh.edges.foreach_get(mode_dict[setmode], weight_values)
+                    mesh.edges.foreach_get('use_edge_sharp', sharp_values)
+                    mesh.edges.foreach_get('select', select_values)
+
+                    for i, sel in enumerate(select_values):
+                        if sel:
+                            weight_values[i] = weight
+                            if setmode == 'CRS':
+                                if weight == 1.0:
+                                    sharp_values[i] = True
+                                else:
+                                    sharp_values[i] = False
+
+                    mesh.edges.foreach_set(mode_dict[setmode], weight_values)
+                    mesh.edges.foreach_set('use_edge_sharp', sharp_values)
+
+            # OBJECT mode
+            else:
+                # vertex creasing
+                if (bpy.context.tool_settings.mesh_select_mode[0]):
+                    if setmode == 'CRS':
+                        weight_values = [weight] * len(mesh.vertices)
+                        mesh.vertex_creases[0].data.foreach_set('value', weight_values)
+
+                # edge creasing and beveling
+                else:
+                    if setmode == 'CRS':
+                        if weight == 1.0:
+                            sharp_values = [True] * len(mesh.edges)
+                        else:
+                            sharp_values = [False] * len(mesh.edges)
+                        mesh.edges.foreach_set('use_edge_sharp', sharp_values)
+
+                    weight_values = [weight] * len(mesh.edges)
+                    mesh.edges.foreach_set(mode_dict[setmode], weight_values)
+
+            mesh.update()
+        utils.mode_manager(objs, revert=True, mode_id='assign_set')
+        bpy.context.view_layer.objects.active = active
+
+
+    def select_set(self, objs, setvalue, setmode, clearsel=False):
+        modeDict = {
+            'CRS': 'SubSurfCrease',
+            'BEV': 'BevelWeight'}
+        weight = setvalue
+        modename = modeDict[setmode]
+
+        bpy.context.view_layer.objects.active = objs[0]
+
+        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+        if bpy.context.tool_settings.mesh_select_mode[0]:
+            bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='VERT')
+        else:
+            bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='EDGE')
+        if clearsel:
+            bpy.ops.mesh.select_all(action='DESELECT')
+
+        for obj in objs:
+            mesh = obj.data
+
+            if bpy.context.tool_settings.mesh_select_mode[0]:
+                utils.mode_manager(objs, set_mode=True, mode_id='select_set')
+                for vert in mesh.vertices:
+                    creaseweight = mesh.vertex_creases[0].data[vert.index].value
+                    if math.isclose(creaseweight, weight, abs_tol=0.1):
+                        vert.select = True
+                utils.mode_manager(objs, revert=True, mode_id='select_set')
+            else:
+                bm = bmesh.from_edit_mesh(mesh)
+
+                if setmode == 'CRS':
+                    if modename in bm.edges.layers.crease:
+                        bmlayer = bm.edges.layers.crease[modename]
+                    else:
+                        bmlayer = bm.edges.layers.crease.new(modename)
+                else:
+                    if modename in bm.edges.layers.bevel_weight:
+                        bmlayer = bm.edges.layers.bevel_weight[modename]
+                    else:
+                        bmlayer = bm.edges.layers.bevel_weight.new(modename)
+
+                for edge in bm.edges:
+                    if math.isclose(edge[bmlayer], weight, abs_tol=0.1):
+                        edge.select = True
+
+                bmesh.update_edit_mesh(mesh)
+                bm.free()
+
+
+    def add_modifiers(self, objs):
+        for obj in objs:
+            obj.data.use_auto_smooth = True
+            obj.data.auto_smooth_angle = math.radians(obj.sx2.smoothangle)
+
+            if 'sxMirror' not in obj.modifiers:
+                obj.modifiers.new(type='MIRROR', name='sxMirror')
+                if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror:
+                    obj.modifiers['sxMirror'].show_viewport = True
+                else:
+                    obj.modifiers['sxMirror'].show_viewport = False
+                obj.modifiers['sxMirror'].show_expanded = False
+                obj.modifiers['sxMirror'].use_axis[0] = obj.sx2.xmirror
+                obj.modifiers['sxMirror'].use_axis[1] = obj.sx2.ymirror
+                obj.modifiers['sxMirror'].use_axis[2] = obj.sx2.zmirror
+                if obj.sx2.mirrorobject is not None:
+                    obj.modifiers['sxMirror'].mirror_object = obj.sx2.mirrorobject
+                else:
+                    obj.modifiers['sxMirror'].mirror_object = None
+                obj.modifiers['sxMirror'].use_clip = True
+                obj.modifiers['sxMirror'].use_mirror_merge = True
+            if 'sxTiler' not in obj.modifiers:
+                if 'sx_tiler' not in bpy.data.node_groups:
+                    setup.create_tiler()
+                tiler = obj.modifiers.new(type='NODES', name='sxTiler')
+                tiler.node_group = bpy.data.node_groups['sx_tiler']
+                tiler['Input_1'] = obj.sx2.tile_offset
+                tiler['Input_2'] = obj.sx2.tile_neg_x
+                tiler['Input_3'] = obj.sx2.tile_pos_x
+                tiler['Input_4'] = obj.sx2.tile_neg_y
+                tiler['Input_5'] = obj.sx2.tile_pos_y
+                tiler['Input_6'] = obj.sx2.tile_neg_z
+                tiler['Input_7'] = obj.sx2.tile_pos_z
+                tiler.show_viewport = obj.sx2.modifiervisibility
+                tiler.show_expanded = False
+                obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
+            if 'sxSubdivision' not in obj.modifiers:
+                obj.modifiers.new(type='SUBSURF', name='sxSubdivision')
+                obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
+                obj.modifiers['sxSubdivision'].show_expanded = False
+                obj.modifiers['sxSubdivision'].quality = 6
+                obj.modifiers['sxSubdivision'].levels = obj.sx2.subdivisionlevel
+                obj.modifiers['sxSubdivision'].uv_smooth = 'NONE'
+                obj.modifiers['sxSubdivision'].show_only_control_edges = True
+                obj.modifiers['sxSubdivision'].show_on_cage = True
+            if 'sxBevel' not in obj.modifiers:
+                obj.modifiers.new(type='BEVEL', name='sxBevel')
+                obj.modifiers['sxBevel'].show_viewport = obj.sx2.modifiervisibility
+                obj.modifiers['sxBevel'].show_expanded = False
+                obj.modifiers['sxBevel'].width = obj.sx2.bevelwidth
+                obj.modifiers['sxBevel'].width_pct = obj.sx2.bevelwidth
+                obj.modifiers['sxBevel'].segments = obj.sx2.bevelsegments
+                obj.modifiers['sxBevel'].use_clamp_overlap = True
+                obj.modifiers['sxBevel'].loop_slide = True
+                obj.modifiers['sxBevel'].mark_sharp = False
+                obj.modifiers['sxBevel'].harden_normals = True
+                obj.modifiers['sxBevel'].offset_type = obj.sx2.beveltype
+                obj.modifiers['sxBevel'].limit_method = 'WEIGHT'
+                obj.modifiers['sxBevel'].miter_outer = 'MITER_ARC'
+            if 'sxWeld' not in obj.modifiers:
+                obj.modifiers.new(type='WELD', name='sxWeld')
+                if obj.sx2.weldthreshold == 0:
+                    obj.modifiers['sxWeld'].show_viewport = False
+                else:
+                    obj.modifiers['sxWeld'].show_viewport = obj.sx2.modifiervisibility
+                obj.modifiers['sxWeld'].show_viewport = obj.sx2.modifiervisibility
+                obj.modifiers['sxWeld'].show_expanded = False
+                obj.modifiers['sxWeld'].merge_threshold = obj.sx2.weldthreshold
+            if 'sxDecimate' not in obj.modifiers:
+                obj.modifiers.new(type='DECIMATE', name='sxDecimate')
+                if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
+                    obj.modifiers['sxDecimate'].show_viewport = False
+                else:
+                    obj.modifiers['sxDecimate'].show_viewport = obj.sx2.modifiervisibility
+                obj.modifiers['sxDecimate'].show_expanded = False
+                obj.modifiers['sxDecimate'].decimate_type = 'DISSOLVE'
+                obj.modifiers['sxDecimate'].angle_limit = math.radians(obj.sx2.decimation)
+                obj.modifiers['sxDecimate'].use_dissolve_boundaries = True
+                obj.modifiers['sxDecimate'].delimit = {'SHARP', 'UV'}
+            if 'sxDecimate2' not in obj.modifiers:
+                obj.modifiers.new(type='DECIMATE', name='sxDecimate2')
+                if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
+                    obj.modifiers['sxDecimate2'].show_viewport = False
+                else:
+                    obj.modifiers['sxDecimate2'].show_viewport = obj.sx2.modifiervisibility
+                obj.modifiers['sxDecimate2'].show_expanded = False
+                obj.modifiers['sxDecimate2'].decimate_type = 'COLLAPSE'
+                obj.modifiers['sxDecimate2'].ratio = 0.99
+                obj.modifiers['sxDecimate2'].use_collapse_triangulate = True
+            if 'sxWeightedNormal' not in obj.modifiers:
+                obj.modifiers.new(type='WEIGHTED_NORMAL', name='sxWeightedNormal')
+                if not obj.sx2.weightednormals:
+                    obj.modifiers['sxWeightedNormal'].show_viewport = False
+                else:
+                    obj.modifiers['sxWeightedNormal'].show_viewport = obj.sx2.modifiervisibility
+                obj.modifiers['sxWeightedNormal'].show_expanded = False
+                obj.modifiers['sxWeightedNormal'].mode = 'FACE_AREA_WITH_ANGLE'
+                obj.modifiers['sxWeightedNormal'].weight = 50
+                if obj.sx2.hardmode == 'SMOOTH':
+                    obj.modifiers['sxWeightedNormal'].keep_sharp = False
+                else:
+                    obj.modifiers['sxWeightedNormal'].keep_sharp = True
+
+
+    def apply_modifiers(self, objs):
+        for obj in objs:
+            bpy.context.view_layer.objects.active = obj
+            if 'sxMirror' in obj.modifiers:
+                if obj.modifiers['sxMirror'].show_viewport is False:
+                    bpy.ops.object.modifier_remove(modifier='sxMirror')
+                else:
+                    bpy.ops.object.modifier_apply(modifier='sxMirror')
+            if 'sxTiler' in obj.modifiers:
+                bpy.ops.object.modifier_remove(modifier='sxTiler')
+            if 'sxSubdivision' in obj.modifiers:
+                if obj.modifiers['sxSubdivision'].levels == 0:
+                    bpy.ops.object.modifier_remove(modifier='sxSubdivision')
+                else:
+                    bpy.ops.object.modifier_apply(modifier='sxSubdivision')
+            if 'sxBevel' in obj.modifiers:
+                if obj.sx2.bevelsegments == 0:
+                    bpy.ops.object.modifier_remove(modifier='sxBevel')
+                else:
+                    bpy.ops.object.modifier_apply(modifier='sxBevel')
+            if 'sxWeld' in obj.modifiers:
+                if obj.sx2.weldthreshold == 0:
+                    bpy.ops.object.modifier_remove(modifier='sxWeld')
+                else:
+                    bpy.ops.object.modifier_apply(modifier='sxWeld')
+            if 'sxDecimate' in obj.modifiers:
+                if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
+                    bpy.ops.object.modifier_remove(modifier='sxDecimate')
+                else:
+                    bpy.ops.object.modifier_apply(modifier='sxDecimate')
+            if 'sxDecimate2' in obj.modifiers:
+                if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
+                    bpy.ops.object.modifier_remove(modifier='sxDecimate2')
+                else:
+                    bpy.ops.object.modifier_apply(modifier='sxDecimate2')
+            if 'sxWeightedNormal' in obj.modifiers:
+                if not obj.sx2.weightednormals:
+                    bpy.ops.object.modifier_remove(modifier='sxWeightedNormal')
+                else:
+                    bpy.ops.object.modifier_apply(modifier='sxWeightedNormal')
+
+
+    def remove_modifiers(self, objs, reset=False):
+        modifiers = ['sxMirror', 'sxTiler', 'sxGeometryNodes', 'sxSubdivision', 'sxBevel', 'sxWeld', 'sxDecimate', 'sxDecimate2', 'sxEdgeSplit', 'sxWeightedNormal']
+        if reset and ('sx_tiler' in bpy.data.node_groups):
+            bpy.data.node_groups.remove(bpy.data.node_groups['sx_tiler'], do_unlink=True)
+
+        for obj in objs:
+            for modifier in modifiers:
+                if modifier in obj.modifiers:
+                    obj.modifiers.remove(obj.modifiers.get(modifier))
+
+            obj.data.use_auto_smooth = True
+
+            if reset:
+                obj.sx2.xmirror = False
+                obj.sx2.ymirror = False
+                obj.sx2.zmirror = False
+                obj.sx2.mirrorobject = None
+                obj.sx2.autocrease = True
+                obj.sx2.hardmode = 'SHARP'
+                obj.sx2.beveltype = 'WIDTH'
+                obj.sx2.bevelsegments = 2
+                obj.sx2.bevelwidth = 0.05
+                obj.sx2.subdivisionlevel = 1
+                obj.sx2.smoothangle = 180.0
+                obj.sx2.weldthreshold = 0.0
+                obj.sx2.decimation = 0.0
+
+
     def __del__(self):
         print('SX Tools: Exiting tools')
 
@@ -2125,6 +2441,193 @@ class SXTOOLS2_setup(object):
         bpy.ops.sx2.selectionmonitor('EXEC_DEFAULT')
         bpy.ops.sx2.keymonitor('EXEC_DEFAULT')
         sxglobals.modal_status = True
+
+
+    def create_tiler(self):
+        nodetree = bpy.data.node_groups.new(type='GeometryNodeTree', name='sx_tiler')
+        group_in = nodetree.nodes.new(type='NodeGroupInput')
+        group_in.name = 'group_input'
+        group_in.location = (-800, 0)
+        group_out = nodetree.nodes.new(type='NodeGroupOutput')
+        group_out.name = 'group_output'
+        group_out.location = (1200, 0)
+
+        bbx = nodetree.nodes.new(type='GeometryNodeBoundBox')
+        bbx.name = 'bbx'
+        bbx.location = (-600, 400)
+
+        flip = nodetree.nodes.new(type='GeometryNodeFlipFaces')
+        flip.name = 'flip'
+        flip.location = (-400, 0)
+
+        # offset multiplier for mirror objects
+        offset = nodetree.nodes.new(type='ShaderNodeValue')
+        offset.name = 'offset'
+        offset.location = (-600, 300)
+        offset.outputs[0].default_value = 4.0
+
+        # join all mirror copies prior to output
+        join = nodetree.nodes.new(type='GeometryNodeJoinGeometry')
+        join.name = 'join'
+        join.location = (1000, 0)
+
+        # link base mesh to bbx and flip faces
+        output = group_in.outputs[0]
+        input = nodetree.nodes['bbx'].inputs['Geometry']
+        nodetree.links.new(input, output)
+        output = group_in.outputs[0]
+        input = nodetree.nodes['flip'].inputs[0]
+        nodetree.links.new(input, output)
+        output = group_in.outputs[0]
+        input = join.inputs[0]
+        nodetree.links.new(input, output)
+
+        for i in range(2): 
+            # bbx offset multipliers for mirror objects
+            multiply = nodetree.nodes.new(type='ShaderNodeVectorMath')
+            multiply.name = 'multiply'+str(i)
+            multiply.location = (-400, 400-100*i)
+            multiply.operation = 'MULTIPLY'
+
+            # bbx min and max separators
+            separate = nodetree.nodes.new(type='ShaderNodeSeparateXYZ')
+            separate.name = 'separate'+str(i)
+            separate.location = (0, 400-100*i)
+
+            # link offset to multipliers
+            output = offset.outputs[0]
+            input = multiply.inputs[1]
+            nodetree.links.new(input, output)
+
+            # link bbx bounds to multipliers
+            output = bbx.outputs[i+1]
+            input = multiply.inputs[0]
+            nodetree.links.new(input, output)
+
+        bbx_subtract = nodetree.nodes.new(type='ShaderNodeVectorMath')
+        bbx_subtract.name = 'bbx_subtract'
+        bbx_subtract.location = (-200, 400)
+        bbx_subtract.operation = 'SUBTRACT'
+
+        bbx_add = nodetree.nodes.new(type='ShaderNodeVectorMath')
+        bbx_add.name = 'bbx_add'
+        bbx_add.location = (-200, 300)
+        bbx_add.operation = 'ADD'
+
+        # combine node for offset
+        combine_offset = nodetree.nodes.new(type='ShaderNodeCombineXYZ')
+        combine_offset.name = 'combine_offset'
+        combine_offset.location = (-600, 100)
+
+        # expose offset, connect to bbx offsets
+        nodetree.inputs.new('NodeSocketFloat', 'New')
+        output = group_in.outputs[1]
+        input = combine_offset.inputs[0]
+        nodetree.links.new(output, input)
+        output = group_in.outputs[1]
+        input = combine_offset.inputs[1]
+        nodetree.links.new(output, input)
+        output = group_in.outputs[1]
+        input = combine_offset.inputs[2]
+        nodetree.links.new(output, input)
+
+        output = combine_offset.outputs[0]
+        input = bbx_subtract.inputs[1]
+        nodetree.links.new(output, input)
+        input = bbx_add.inputs[1]
+        nodetree.links.new(output, input)
+
+        # link multipliers to bbx offsets
+        output = nodetree.nodes['multiply0'].outputs[0]
+        input = nodetree.nodes['bbx_subtract'].inputs[0]
+        nodetree.links.new(input, output)
+        output = nodetree.nodes['multiply1'].outputs[0]
+        input = nodetree.nodes['bbx_add'].inputs[0]
+        nodetree.links.new(input, output)
+
+        # bbx to separate min and max
+        output = nodetree.nodes['bbx_subtract'].outputs[0]
+        input = nodetree.nodes['separate0'].inputs[0]
+        nodetree.links.new(input, output)
+        output = nodetree.nodes['bbx_add'].outputs[0]
+        input = nodetree.nodes['separate1'].inputs[0]
+        nodetree.links.new(input, output)
+
+        for i in range(6):
+            # combine nodes for mirror offsets
+            combine = nodetree.nodes.new(type='ShaderNodeCombineXYZ')
+            combine.name = 'combine'+str(i)
+            combine.location = (400, -100*i)
+
+            # mirror axis enable switches
+            switch = nodetree.nodes.new(type="GeometryNodeSwitch")
+            switch.name = 'switch'+str(i)
+            switch.location = (600, -100*i)
+
+            # transforms for mirror copies
+            transform = nodetree.nodes.new(type='GeometryNodeTransform')
+            transform.name = 'transform'+str(i)
+            transform.location = (800, -100*i)
+
+            # link combine to translation
+            output = combine.outputs[0]
+            input = transform.inputs[1]
+            nodetree.links.new(input, output)
+
+            # expose axis enable switches
+            nodetree.inputs.new('NodeSocketBool', 'New')
+            output = group_in.outputs[2+i]
+            input = switch.inputs[1]
+            nodetree.links.new(output, input)
+
+            # link flipped mesh to switch input
+            output = flip.outputs[0]
+            input = switch.inputs[15]
+            nodetree.links.new(input, output)
+
+            # link switch mesh output to transform
+            output = switch.outputs[6]
+            input = transform.inputs[0]
+            nodetree.links.new(input, output)
+
+            # link mirror mesh output to join node
+            output = transform.outputs[0]
+            input = join.inputs[0]
+            nodetree.links.new(input, output)
+
+        # link combined geometry to group output
+        output = nodetree.nodes['join'].outputs['Geometry']
+        input = group_out.inputs[0]
+        nodetree.links.new(input, output)
+
+        # min max pairs to combiners in -x, x, -y, y, -z, z order
+        output = nodetree.nodes['separate0'].outputs[0]
+        input = nodetree.nodes['combine0'].inputs[0]
+        nodetree.links.new(input, output)
+        output = nodetree.nodes['separate1'].outputs[0]
+        input = nodetree.nodes['combine1'].inputs[0]
+        nodetree.links.new(input, output)
+
+        output = nodetree.nodes['separate0'].outputs[1]
+        input = nodetree.nodes['combine2'].inputs[1]
+        nodetree.links.new(input, output)
+        output = nodetree.nodes['separate1'].outputs[1]
+        input = nodetree.nodes['combine3'].inputs[1]
+        nodetree.links.new(input, output)
+
+        output = nodetree.nodes['separate0'].outputs[2]
+        input = nodetree.nodes['combine4'].inputs[2]
+        nodetree.links.new(input, output)
+        output = nodetree.nodes['separate1'].outputs[2]
+        input = nodetree.nodes['combine5'].inputs[2]
+        nodetree.links.new(input, output)
+
+        nodetree.nodes['transform0'].inputs[3].default_value[0] = -3.0
+        nodetree.nodes['transform1'].inputs[3].default_value[0] = -3.0
+        nodetree.nodes['transform2'].inputs[3].default_value[1] = -3.0
+        nodetree.nodes['transform3'].inputs[3].default_value[1] = -3.0
+        nodetree.nodes['transform4'].inputs[3].default_value[2] = -3.0
+        nodetree.nodes['transform5'].inputs[3].default_value[2] = -3.0
 
 
     def create_sxtoolmaterial(self):
@@ -2728,6 +3231,172 @@ def update_material_props(self, context):
                 #         bpy.data.materials['SX2Material_'+obj.name].use_backface_culling = True
 
 
+def update_modifiers(self, context, prop):
+    update_custom_props(self, context, prop)
+    objs = mesh_selection_validator(self, context)
+    if len(objs) > 0:
+        if prop == 'modifiervisibility':
+            for obj in objs:
+                if 'sxMirror' in obj.modifiers:
+                    obj.modifiers['sxMirror'].show_viewport = obj.sx2.modifiervisibility
+                if 'sxTiler' in obj.modifiers:
+                    if not obj.sx2.tiling:
+                        obj.modifiers['sxTiler'].show_viewport = False
+                        obj.data.use_auto_smooth = True
+                    else:
+                        obj.modifiers['sxTiler'].show_viewport = obj.sx2.modifiervisibility
+                        obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
+                if 'sxSubdivision' in obj.modifiers:
+                    if (obj.sx2.subdivisionlevel == 0):
+                        obj.modifiers['sxSubdivision'].show_viewport = False
+                    else:
+                        obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
+                if 'sxDecimate' in obj.modifiers:
+                    if (obj.sx2.subdivisionlevel == 0.0):
+                        obj.modifiers['sxDecimate'].show_viewport = False
+                    else:
+                        obj.modifiers['sxDecimate'].show_viewport = obj.sx2.modifiervisibility
+                if 'sxDecimate2' in obj.modifiers:
+                    if (obj.sx2.subdivisionlevel == 0.0):
+                        obj.modifiers['sxDecimate2'].show_viewport = False
+                    else:
+                        obj.modifiers['sxDecimate2'].show_viewport = obj.sx2.modifiervisibility
+                if 'sxBevel' in obj.modifiers:
+                    if obj.sx2.bevelsegments == 0:
+                        obj.modifiers['sxBevel'].show_viewport = False
+                    else:
+                        obj.modifiers['sxBevel'].show_viewport = obj.sx2.modifiervisibility
+                if 'sxWeld' in obj.modifiers:
+                    if (obj.sx2.weldthreshold == 0.0):
+                        obj.modifiers['sxWeld'].show_viewport = False
+                    else:
+                        obj.modifiers['sxWeld'].show_viewport = obj.sx2.modifiervisibility
+                if 'sxWeightedNormal' in obj.modifiers:
+                    if not obj.sx2.weightednormals:
+                        obj.modifiers['sxWeightedNormal'].show_viewport = False
+                    else:
+                        obj.modifiers['sxWeightedNormal'].show_viewport = obj.sx2.modifiervisibility
+
+        elif (prop == 'xmirror') or (prop == 'ymirror') or (prop == 'zmirror') or (prop == 'mirrorobject'):
+            for obj in objs:
+                if 'sxMirror' in obj.modifiers:
+                    obj.modifiers['sxMirror'].use_axis[0] = obj.sx2.xmirror
+                    obj.modifiers['sxMirror'].use_axis[1] = obj.sx2.ymirror
+                    obj.modifiers['sxMirror'].use_axis[2] = obj.sx2.zmirror
+
+                    if obj.sx2.mirrorobject is not None:
+                        obj.modifiers['sxMirror'].mirror_object = obj.sx2.mirrorobject
+                    else:
+                        obj.modifiers['sxMirror'].mirror_object = None
+
+                    if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror or (obj.sx2.mirrorobject is not None):
+                        obj.modifiers['sxMirror'].show_viewport = True
+                    else:
+                        obj.modifiers['sxMirror'].show_viewport = False
+
+        elif prop == 'tiling':
+            for obj in objs:
+                if 'sxTiler' not in obj.modifiers:
+                    tools.remove_modifiers([obj, ])
+                    tools.add_modifiers([obj, ])
+                elif obj.modifiers['sxTiler'].node_group != bpy.data.node_groups['sx_tiler']:
+                    obj.modifiers['sxTiler'].node_group = bpy.data.node_groups['sx_tiler']
+
+                if obj.sx2.tiling:
+                    utils.round_tiling_verts([obj, ])
+
+                    tiler = obj.modifiers['sxTiler']
+                    tiler['Input_1'] = obj.sx2.tile_offset
+                    tiler['Input_2'] = obj.sx2.tile_neg_x
+                    tiler['Input_3'] = obj.sx2.tile_pos_x
+                    tiler['Input_4'] = obj.sx2.tile_neg_y
+                    tiler['Input_5'] = obj.sx2.tile_pos_y
+                    tiler['Input_6'] = obj.sx2.tile_neg_z
+                    tiler['Input_7'] = obj.sx2.tile_pos_z
+
+                obj.modifiers['sxTiler'].show_viewport = obj.sx2.tiling
+                obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
+
+        elif prop == 'hardmode':
+            for obj in objs:
+                if 'sxWeightedNormal' in obj.modifiers:
+                    if obj.sx2.hardmode == 'SMOOTH':
+                        obj.modifiers['sxWeightedNormal'].keep_sharp = False
+                    else:
+                        obj.modifiers['sxWeightedNormal'].keep_sharp = True
+
+        elif prop == 'subdivisionlevel':
+            for obj in objs:
+                if 'sxSubdivision' in obj.modifiers:
+                    obj.modifiers['sxSubdivision'].levels = obj.sx2.subdivisionlevel
+                    if obj.sx2.subdivisionlevel == 0:
+                        obj.modifiers['sxSubdivision'].show_viewport = False
+                    else:
+                        obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
+                if 'sxDecimate' in obj.modifiers:
+                    if obj.sx2.subdivisionlevel == 0:
+                        obj.modifiers['sxDecimate'].show_viewport = False
+                    else:
+                        obj.modifiers['sxDecimate'].show_viewport = obj.sx2.modifiervisibility
+                if 'sxDecimate2' in obj.modifiers:
+                    if obj.sx2.subdivisionlevel == 0:
+                        obj.modifiers['sxDecimate2'].show_viewport = False
+                    else:
+                        obj.modifiers['sxDecimate2'].show_viewport = obj.sx2.modifiervisibility
+
+        elif (prop == 'bevelwidth') or (prop == 'bevelsegments') or (prop == 'beveltype'):
+            for obj in objs:
+                if 'sxBevel' in obj.modifiers:
+                    if obj.sx2.bevelsegments == 0:
+                        obj.modifiers['sxBevel'].show_viewport = False
+                    else:
+                        obj.modifiers['sxBevel'].show_viewport = obj.sx2.modifiervisibility
+                    obj.modifiers['sxBevel'].width = obj.sx2.bevelwidth
+                    obj.modifiers['sxBevel'].width_pct = obj.sx2.bevelwidth
+                    obj.modifiers['sxBevel'].segments = obj.sx2.bevelsegments
+                    obj.modifiers['sxBevel'].offset_type = obj.sx2.beveltype
+
+        elif prop == 'weldthreshold':
+            for obj in objs:
+                if 'sxWeld' in obj.modifiers:
+                    obj.modifiers['sxWeld'].merge_threshold = obj.sx2.weldthreshold
+                    if obj.sx2.weldthreshold == 0:
+                        obj.modifiers['sxWeld'].show_viewport = False
+                    elif (obj.sx2.weldthreshold > 0) and obj.sx2.modifiervisibility:
+                        obj.modifiers['sxWeld'].show_viewport = True
+
+        elif prop == 'decimation':
+            for obj in objs:
+                if 'sxDecimate' in obj.modifiers:
+                    obj.modifiers['sxDecimate'].angle_limit = math.radians(obj.sx2.decimation)
+                    if obj.sx2.decimation == 0.0:
+                        obj.modifiers['sxDecimate'].show_viewport = False
+                        obj.modifiers['sxDecimate2'].show_viewport = False
+                    elif (obj.sx2.decimation > 0) and obj.sx2.modifiervisibility:
+                        obj.modifiers['sxDecimate'].show_viewport = True
+                        obj.modifiers['sxDecimate2'].show_viewport = True
+
+        elif prop == 'weightednormals':
+            for obj in objs:
+                if 'sxWeightedNormal' in obj.modifiers:
+                    obj.modifiers['sxWeightedNormal'].show_viewport = obj.sx2.weightednormals
+
+
+def update_custom_props(self, context, prop):
+    objs = mesh_selection_validator(self, context)
+    if len(objs) > 0:
+        value = getattr(objs[0].sx2, prop)
+
+        for obj in objs:
+            if prop == 'staticvertexcolors':
+                obj['staticVertexColors'] = int(objs[0].sx2.staticvertexcolors)
+            if getattr(obj.sx2, prop) != value:
+                setattr(obj.sx2, prop, value)
+
+        # if prop == 'category':
+        #     load_category(self, context)
+
+
 def adjust_hsl(self, context, hslmode):
     if not sxglobals.hsl_update:
         objs = mesh_selection_validator(self, context)
@@ -2791,7 +3460,7 @@ def load_category(self, context):
 
 
 def load_ramp(self, context):
-    rampName = sxglobals.presetLookup[context.scene.sxtools.ramplist]
+    rampName = sxglobals.presetLookup[context.scene.sx2.ramplist]
     ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'].color_ramp
     tempDict = sxglobals.rampDict[rampName]
 
@@ -2826,7 +3495,7 @@ def load_libraries(self, context):
 # Fillcolor is automatically converted to grayscale on specific material layers
 def update_fillcolor(self, context):
     scene = context.scene.sx2
-    objs = selection_validator(self, context)
+    objs = mesh_selection_validator(self, context)
     layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
 
     gray_types = ['MET', 'SMH', 'OCC', 'TRN']
@@ -2838,6 +3507,25 @@ def update_fillcolor(self, context):
         new_color = (rgb[0], rgb[1], rgb[2], 1.0)
         if color != new_color:
             scene.fillcolor = new_color
+
+
+def expand_element(self, context, element):
+    if not getattr(context.scene.sx2, element):
+        setattr(context.scene.sx2, element, True)
+
+
+def update_smooth_angle(self, context):
+    objs = mesh_selection_validator(self, context)
+    if len(objs) > 0:
+        smoothAngleDeg = objs[0].sx2.smoothangle
+        smoothAngle = math.radians(objs[0].sx2.smoothangle)
+        for obj in objs:
+            if obj.sx2.smoothangle != smoothAngleDeg:
+                obj.sx2.smoothangle = smoothAngleDeg
+
+            obj.data.use_auto_smooth = True
+            if obj.data.auto_smooth_angle != smoothAngle:
+                obj.data.auto_smooth_angle = smoothAngle
 
 
 def update_obj_props(self, context, prop):
@@ -2943,54 +3631,157 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         default=0.0,
         update=lambda self, context: adjust_hsl(self, context, 2))
 
+    # Modifier Module Properties ------------------
+
+    modifiervisibility: bpy.props.BoolProperty(
+        name='Modifier Visibility',
+        default=True,
+        update=lambda self, context: update_modifiers(self, context, 'modifiervisibility'))
+
+    smoothangle: bpy.props.FloatProperty(
+        name='Normal Smoothing Angle',
+        min=0.0,
+        max=180.0,
+        default=180.0,
+        update=update_smooth_angle)
+
+    xmirror: bpy.props.BoolProperty(
+        name='X-Axis',
+        default=False,
+        update=lambda self, context: update_modifiers(self, context, 'xmirror'))
+
+    ymirror: bpy.props.BoolProperty(
+        name='Y-Axis',
+        default=False,
+        update=lambda self, context: update_modifiers(self, context, 'ymirror'))
+
+    zmirror: bpy.props.BoolProperty(
+        name='Z-Axis',
+        default=False,
+        update=lambda self, context: update_modifiers(self, context, 'zmirror'))
+
+    smartseparate: bpy.props.BoolProperty(
+        name='Smart Separate',
+        default=False,
+        update=lambda self, context: update_custom_props(self, context, 'smartseparate'))
+
+    mirrorobject: bpy.props.PointerProperty(
+        name='Mirror Object',
+        type=bpy.types.Object,
+        update=lambda self, context: update_modifiers(self, context, 'mirrorobject'))
+
+    hardmode: bpy.props.EnumProperty(
+        name='Max Crease Mode',
+        description='Mode for processing edges with maximum crease',
+        items=[
+            ('SMOOTH', 'Smooth', ''),
+            ('SHARP', 'Sharp', '')],
+        default='SHARP',
+        update=lambda self, context: update_modifiers(self, context, 'hardmode'))
+
+    subdivisionlevel: bpy.props.IntProperty(
+        name='Subdivision Level',
+        min=0,
+        max=6,
+        default=1,
+        update=lambda self, context: update_modifiers(self, context, 'subdivisionlevel'))
+
+    bevelwidth: bpy.props.FloatProperty(
+        name='Bevel Width',
+        min=0.0,
+        max=100.0,
+        default=0.05,
+        update=lambda self, context: update_modifiers(self, context, 'bevelwidth'))
+
+    bevelsegments: bpy.props.IntProperty(
+        name='Bevel Segments',
+        min=0,
+        max=10,
+        default=2,
+        update=lambda self, context: update_modifiers(self, context, 'bevelsegments'))
+
+    beveltype: bpy.props.EnumProperty(
+        name='Bevel Type',
+        description='Bevel offset mode',
+        items=[
+            ('OFFSET', 'Offset', ''),
+            ('WIDTH', 'Width', ''),
+            ('DEPTH', 'Depth', ''),
+            ('PERCENT', 'Percent', ''),
+            ('ABSOLUTE', 'Absolute', '')],
+        default='WIDTH',
+        update=lambda self, context: update_modifiers(self, context, 'beveltype'))
+
+    weldthreshold: bpy.props.FloatProperty(
+        name='Weld Threshold',
+        min=0.0,
+        max=10.0,
+        default=0.0,
+        precision=3,
+        update=lambda self, context: update_modifiers(self, context, 'weldthreshold'))
+
+    decimation: bpy.props.FloatProperty(
+        name='Decimation',
+        min=0.0,
+        max=10.0,
+        default=0.0,
+        update=lambda self, context: update_modifiers(self, context, 'decimation'))
 
     tiling: bpy.props.BoolProperty(
         name='Tiling Object',
         description='Creates duplicates during occlusion rendering to fix edge values',
-        default=False)
-        # update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        default=False,
+        update=lambda self, context: update_modifiers(self, context, 'tiling'))
 
     tile_pos_x: bpy.props.BoolProperty(
         name='Tile X',
         description='Select required mirror directions',
-        default=False)
-        # update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        default=False,
+        update=lambda self, context: update_modifiers(self, context, 'tiling'))
 
     tile_neg_x: bpy.props.BoolProperty(
         name='Tile -X',
         description='Select required mirror directions',
-        default=False)
-        # update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        default=False,
+        update=lambda self, context: update_modifiers(self, context, 'tiling'))
 
     tile_pos_y: bpy.props.BoolProperty(
         name='Tile Y',
         description='Select required mirror directions',
-        default=False)
-        # update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        default=False,
+        update=lambda self, context: update_modifiers(self, context, 'tiling'))
 
     tile_neg_y: bpy.props.BoolProperty(
         name='Tile -Y',
         description='Select required mirror directions',
-        default=False)
-        # update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        default=False,
+        update=lambda self, context: update_modifiers(self, context, 'tiling'))
 
     tile_pos_z: bpy.props.BoolProperty(
         name='Tile Z',
         description='Select required mirror directions',
-        default=False)
-        # update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        default=False,
+        update=lambda self, context: update_modifiers(self, context, 'tiling'))
 
     tile_neg_z: bpy.props.BoolProperty(
         name='Tile -Z',
         description='Select required mirror directions',
-        default=False)
-        # update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        default=False,
+        update=lambda self, context: update_modifiers(self, context, 'tiling'))
 
     tile_offset: bpy.props.FloatProperty(
         name='Tile Offset',
         description='Adjust offset of mirror copies',
-        default=0.0)
-        # update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        default=0.0,
+        update=lambda self, context: update_modifiers(self, context, 'tiling'))
+
+    weightednormals: bpy.props.BoolProperty(
+        name='Weighted Normals',
+        description='Enables Weighted Normals modifier on the object',
+        default=True,
+        update=lambda self, context: update_modifiers(self, context, 'weightednormals'))
+
+    # SX2Material Properties ---------------------------
 
     layer_opacity_list_0: bpy.props.FloatVectorProperty(
         name='Layer Opacity List',
@@ -3526,6 +4317,81 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         max=1.0,
         default=(0.0, 0.0, 0.0, 1.0),
         update=lambda self, context: update_material_layer(self, context, 2))
+
+    # Modifier Module properties -------------------------------
+
+    creasemode: bpy.props.EnumProperty(
+        name='Edge Weight Mode',
+        description='Display weight tools or modifier settings',
+        items=[
+            ('CRS', 'Crease', ''),
+            ('BEV', 'Bevel', ''),
+            ('SDS', 'Modifiers', '')],
+        default='CRS',
+        update=lambda self, context: expand_element(self, context, 'expandcrease'))
+
+    autocrease: bpy.props.BoolProperty(
+        name='Auto Hard-Crease Bevel Edges',
+        default=True)
+
+    expandcrease: bpy.props.BoolProperty(
+        name='Expand Crease',
+        default=False)
+
+    expandmirror: bpy.props.BoolProperty(
+        name='Expand Mirror',
+        default=False)
+
+    expandbevel: bpy.props.BoolProperty(
+        name='Expand Bevel',
+        default=False)
+
+    # Export Module properties -------------------------------
+
+    expandexport: bpy.props.BoolProperty(
+        name='Expand Export',
+        default=False)
+
+    expanddebug: bpy.props.BoolProperty(
+        name='Expand Debug',
+        default=False)
+
+    expandcolliders: bpy.props.BoolProperty(
+        name='Expand Colliders',
+        default=False)
+
+    expandbatchexport: bpy.props.BoolProperty(
+        name='Expand Batch Export',
+        default=False)
+
+    exportmode: bpy.props.EnumProperty(
+        name='Export Mode',
+        description='Display magic processing, misc utils, or export settings',
+        items=[
+            ('MAGIC', 'Magic', ''),
+            ('UTILS', 'Utilities', ''),
+            ('EXPORT', 'Export', '')],
+        default='MAGIC',
+        update=lambda self, context: expand_element(self, context, 'expandexport'))
+
+    exportquality: bpy.props.EnumProperty(
+        name='Export Quality',
+        description='Low Detail mode uses base mesh for baking\nHigh Detail mode bakes after applying modifiers but disables decimation',
+        items=[
+            ('LO', 'Low Detail', ''),
+            ('HI', 'High Detail', '')],
+        default='LO')
+
+    exportfolder: bpy.props.StringProperty(
+        name='Export Folder',
+        description='Folder to export FBX files to',
+        default='',
+        maxlen=1024,
+        subtype='DIR_PATH')
+
+    exportcolliders: bpy.props.BoolProperty(
+        name='Export Mesh Colliders',
+        default=False)
 
 
 class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
@@ -4140,7 +5006,95 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
             # Modifiers Module ----------------------------------------------
             if prefs.enable_modifiers:
-                pass
+                box_crease = layout.box()
+                row_crease = box_crease.row()
+                row_crease.prop(
+                    scene, 'expandcrease',
+                    icon='TRIA_DOWN' if scene.expandcrease else 'TRIA_RIGHT',
+                    icon_only=True, emboss=False)
+                row_crease.prop(scene, 'creasemode', expand=True)
+                if scene.creasemode != 'SDS':
+                    if scene.expandcrease:
+                        row_sets = box_crease.row(align=True)
+                        for i in range(4):
+                            setbutton = row_sets.operator('sx2.setgroup', text=str(25*(i+1))+'%')
+                            setbutton.setmode = scene.creasemode
+                            setbutton.setvalue = 0.25 * (i+1)
+                        col_sel = box_crease.column(align=True)
+                        col_sel.prop(scene, 'curvaturelimit', slider=True, text='Curvature Selector')
+                        col_sel.prop(scene, 'curvaturetolerance', slider=True, text='Curvature Tolerance')
+                        col_sets = box_crease.column(align=True)
+                        if (bpy.context.tool_settings.mesh_select_mode[0]) and (scene.creasemode == 'CRS'):
+                            clear_text = 'Clear Vertex Weights'
+                        else:
+                            clear_text = 'Clear Edge Weights'
+                        setbutton = col_sets.operator('sx2.setgroup', text=clear_text)
+                        setbutton.setmode = scene.creasemode
+                        setbutton.setvalue = -1.0
+                elif scene.creasemode == 'SDS':
+                    if scene.expandcrease:
+                        row_mod1 = box_crease.row()
+                        row_mod1.prop(
+                            scene, 'expandmirror',
+                            icon='TRIA_DOWN' if scene.expandmirror else 'TRIA_RIGHT',
+                            icon_only=True, emboss=False)
+                        row_mod1.label(text='Mirror Modifier Settings')
+                        if scene.expandmirror:
+                            row_mirror = box_crease.row(align=True)
+                            row_mirror.label(text='Axis:')
+                            row_mirror.prop(sx2, 'xmirror', text='X', toggle=True)
+                            row_mirror.prop(sx2, 'ymirror', text='Y', toggle=True)
+                            row_mirror.prop(sx2, 'zmirror', text='Z', toggle=True)
+                            row_mirrorobj = box_crease.row()
+                            row_mirrorobj.prop_search(sx2, 'mirrorobject', context.scene, 'objects')
+
+                        row_mod2 = box_crease.row()
+                        row_mod2.prop(
+                            scene, 'expandbevel',
+                            icon='TRIA_DOWN' if scene.expandbevel else 'TRIA_RIGHT',
+                            icon_only=True, emboss=False)
+                        row_mod2.label(text='Bevel Modifier Settings')
+                        if scene.expandbevel:
+                            col2_sds = box_crease.column(align=True)
+                            col2_sds.prop(scene, 'autocrease', text='Auto Hard-Crease Bevels')
+                            split_sds = col2_sds.split()
+                            split_sds.label(text='Max Crease Mode:')
+                            split_sds.prop(sx2, 'hardmode', text='')
+                            split2_sds = col2_sds.split()
+                            split2_sds.label(text='Bevel Type:')
+                            split2_sds.prop(sx2, 'beveltype', text='')
+                            col2_sds.prop(sx2, 'bevelsegments', text='Bevel Segments')
+                            col2_sds.prop(sx2, 'bevelwidth', text='Bevel Width')
+
+                        col3_sds = box_crease.column(align=True)
+                        col3_sds.prop(sx2, 'subdivisionlevel', text='Subdivision Level')
+                        col3_sds.prop(sx2, 'smoothangle', text='Normal Smoothing Angle')
+                        col3_sds.prop(sx2, 'weldthreshold', text='Weld Threshold')
+                        col3_sds.prop(sx2, 'weightednormals', text='Weighted Normals')
+                        if obj.sx2.subdivisionlevel > 0:
+                            col3_sds.prop(sx2, 'decimation', text='Decimation Limit Angle')
+                            col3_sds.label(text='Selection Tri Count: '+utils.calculate_triangles(objs))
+                        # col3_sds.separator()
+                        col4_sds = box_crease.column(align=True)
+                        modifiers = '\t'.join(obj.modifiers.keys())
+                        if 'sx' in modifiers:
+                            if scene.shift:
+                                col4_sds.operator('sx2.removemodifiers', text='Clear Modifiers')
+                            else:
+                                if obj.sx2.modifiervisibility:
+                                    hide_text = 'Hide Modifiers'
+                                else:
+                                    hide_text = 'Show Modifiers'
+                                col4_sds.operator('sx2.hidemodifiers', text=hide_text)
+                        else:
+                            if scene.expandmirror:
+                                row_mirror.enabled = False
+                            if scene.expandbevel:
+                                col2_sds.enabled = False
+                                split_sds.enabled = False
+                            col3_sds.enabled = False
+                            col4_sds.operator('sx2.modifiers', text='Add Modifiers')
+
 
             # Export Module -------------------------------------------------
             if prefs.enable_export:
@@ -5207,7 +6161,7 @@ class SXTOOLS2_OT_selmask(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS_OT_setgroup(bpy.types.Operator):
+class SXTOOLS2_OT_setgroup(bpy.types.Operator):
     bl_idname = 'sx2.setgroup'
     bl_label = 'Set Value'
     bl_description = 'Click to apply modifier weight to selected edges\nShift-click to add edges to selection\nAlt-click to clear selection and select verts or edges'
@@ -5275,6 +6229,72 @@ class SXTOOLS2_OT_applymaterial(bpy.types.Operator):
             material = self.label
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             tools.apply_material(objs, layer, material)
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_modifiers(bpy.types.Operator):
+    bl_idname = 'sx2.modifiers'
+    bl_label = 'Add Modifiers'
+    bl_description = 'Adds Subdivision, Edge Split and Weighted Normals modifiers\nto selected objects'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if len(objs) > 0:
+            tools.add_modifiers(objs)
+
+            if objs[0].mode == 'OBJECT':
+                bpy.ops.object.shade_smooth()
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_hidemodifiers(bpy.types.Operator):
+    bl_idname = 'sx2.hidemodifiers'
+    bl_label = 'Hide Modifiers'
+    bl_description = 'Hide and show modifiers on selected objects\nShift-click to remove modifiers'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+
+        if objs[0].sx2.modifiervisibility is True:
+            objs[0].sx2.modifiervisibility = False
+        else:
+            objs[0].sx2.modifiervisibility = True
+
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_applymodifiers(bpy.types.Operator):
+    bl_idname = 'sx2.applymodifiers'
+    bl_label = 'Apply Modifiers'
+    bl_description = 'Applies modifiers to the selected objects'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if len(objs) > 0:
+            tools.apply_modifiers(objs)
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_removemodifiers(bpy.types.Operator):
+    bl_idname = 'sx2.removemodifiers'
+    bl_label = 'Remove Modifiers'
+    bl_description = 'Remove SX Tools modifiers from selected objects\nand clear their settings'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if len(objs) > 0:
+            tools.remove_modifiers(objs, reset=True)
+
+            if objs[0].mode == 'OBJECT':
+                bpy.ops.object.shade_flat()
         return {'FINISHED'}
 
 
@@ -5382,8 +6402,13 @@ classes = (
     SXTOOLS2_OT_delpalette,
     SXTOOLS2_OT_addpalettecategory,
     SXTOOLS2_OT_delpalettecategory,
+    SXTOOLS2_OT_setgroup,
     SXTOOLS2_OT_applypalette,
     SXTOOLS2_OT_applymaterial,
+    SXTOOLS2_OT_modifiers,
+    SXTOOLS2_OT_hidemodifiers,
+    SXTOOLS2_OT_applymodifiers,
+    SXTOOLS2_OT_removemodifiers,
     SXTOOLS2_OT_test_button)
 
 addon_keymaps = []
