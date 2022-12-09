@@ -36,7 +36,7 @@ class SXTOOLS2_sxglobals(object):
         self.refresh_in_progress = False
         self.hsl_update = False
         self.mat_update = False
-        self.curvatureUpdate = False
+        self.curvature_update = False
         self.modal_status = False
         self.copy_buffer = {}
         self.prev_mode = 'OBJECT'
@@ -3072,7 +3072,7 @@ def refresh_swatches(self, context):
         setup.start_modal()
 
     utils.mode_manager(objs, revert=True, mode_id='refresh_swatches')
-    #     sxglobals.refresh_in_progress = False
+    # sxglobals.refresh_in_progress = False
 
 
 def message_box(message='', title='SX Tools', icon='INFO'):
@@ -3232,7 +3232,7 @@ def update_material_props(self, context):
 
 
 def update_modifiers(self, context, prop):
-    update_custom_props(self, context, prop)
+    update_obj_props(self, context, prop)
     objs = mesh_selection_validator(self, context)
     if len(objs) > 0:
         if prop == 'modifiervisibility':
@@ -3382,21 +3382,6 @@ def update_modifiers(self, context, prop):
                     obj.modifiers['sxWeightedNormal'].show_viewport = obj.sx2.weightednormals
 
 
-def update_custom_props(self, context, prop):
-    objs = mesh_selection_validator(self, context)
-    if len(objs) > 0:
-        value = getattr(objs[0].sx2, prop)
-
-        for obj in objs:
-            if prop == 'staticvertexcolors':
-                obj['staticVertexColors'] = int(objs[0].sx2.staticvertexcolors)
-            if getattr(obj.sx2, prop) != value:
-                setattr(obj.sx2, prop, value)
-
-        # if prop == 'category':
-        #     load_category(self, context)
-
-
 def adjust_hsl(self, context, hslmode):
     if not sxglobals.hsl_update:
         objs = mesh_selection_validator(self, context)
@@ -3429,6 +3414,7 @@ def ext_category_lister(self, context, category):
         categories.append(enumItem)
     enumItems = list(set(categories))
     return enumItems
+
 
 # TODO: This function should be replaced so a preset layer stack is generated with specific export layers and channels
 def load_category(self, context):
@@ -3514,33 +3500,67 @@ def expand_element(self, context, element):
         setattr(context.scene.sx2, element, True)
 
 
-def update_smooth_angle(self, context):
-    objs = mesh_selection_validator(self, context)
-    if len(objs) > 0:
-        smoothAngleDeg = objs[0].sx2.smoothangle
-        smoothAngle = math.radians(objs[0].sx2.smoothangle)
-        for obj in objs:
-            if obj.sx2.smoothangle != smoothAngleDeg:
-                obj.sx2.smoothangle = smoothAngleDeg
+def update_curvature_selection(self, context):
+    if not sxglobals.curvature_update:
+        sxglobals.curvature_update = True
 
-            obj.data.use_auto_smooth = True
-            if obj.data.auto_smooth_angle != smoothAngle:
-                obj.data.auto_smooth_angle = smoothAngle
+        objs = mesh_selection_validator(self, context)
+        sel_mode = context.tool_settings.mesh_select_mode[:]
+        limitvalue = context.scene.sx2.curvaturelimit
+        tolerance = context.scene.sx2.curvaturetolerance
+        scene = context.scene.sx2
+        normalize = scene.curvaturenormalize
+        scene.curvaturenormalize = True
+        context.tool_settings.mesh_select_mode = (True, False, False)
+
+        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+        bpy.ops.mesh.select_all(action='DESELECT')
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+
+        for obj in objs:
+            vert_curv_dict = generate.curvature_list(obj, returndict=True)
+            mesh = obj.data
+
+            for vert in mesh.vertices:
+                if math.isclose(limitvalue, vert_curv_dict[vert.index], abs_tol=tolerance):
+                    vert.select = True
+                else:
+                    vert.select = False
+
+        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+        context.tool_settings.mesh_select_mode = sel_mode
+        scene.curvaturenormalize = normalize
+        sxglobals.curvature_update = False
 
 
 def update_obj_props(self, context, prop):
     if not sxglobals.refresh_in_progress:
         sxglobals.refresh_in_progress = True
         objs = mesh_selection_validator(self, context)
+        value = getattr(objs[0].sx2, prop)
         for obj in objs:
-            if getattr(obj.sx2, prop) != getattr(objs[0].sx2, prop):
-                setattr(obj.sx2, prop, getattr(objs[0].sx2, prop))
+            if getattr(obj.sx2, prop) != value:
+                setattr(obj.sx2, prop, value))
 
         if prop == 'shadingmode':
             setup.update_sx2material(context)
 
         elif prop == 'selectedlayer':
             update_selected_layer(self, context)
+
+        elif prop == 'smoothangle':
+            smooth_angle = math.radians(objs[0].sx2.smoothangle)
+            for obj in objs:
+                obj.data.use_auto_smooth = True
+                if obj.data.auto_smooth_angle != smooth_angle:
+                    obj.data.auto_smooth_angle = smooth_angle
+
+        elif prop == 'staticvertexcolors':
+            for obj in objs:
+                obj['staticVertexColors'] = int(objs[0].sx2.staticvertexcolors)
+
+        # elif prop == 'category':
+        #     load_category(self, context)
 
         sxglobals.refresh_in_progress = False
 
@@ -3643,7 +3663,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         min=0.0,
         max=180.0,
         default=180.0,
-        update=update_smooth_angle)
+        update=lambda self, context: update_obj_props(self, context, 'smoothangle'))
 
     xmirror: bpy.props.BoolProperty(
         name='X-Axis',
@@ -3663,7 +3683,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
     smartseparate: bpy.props.BoolProperty(
         name='Smart Separate',
         default=False,
-        update=lambda self, context: update_custom_props(self, context, 'smartseparate'))
+        update=lambda self, context: update_obj_props(self, context, 'smartseparate'))
 
     mirrorobject: bpy.props.PointerProperty(
         name='Mirror Object',
@@ -4155,15 +4175,15 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         name='Curvature Limit',
         min=0.0,
         max=1.0,
-        default=0.5)
-        # update=update_curvature_selection)
+        default=0.5,
+        update=update_curvature_selection)
 
     curvaturetolerance: bpy.props.FloatProperty(
         name='Curvature Tolerance',
         min=0.0,
         max=1.0,
-        default=0.1)
-        # update=update_curvature_selection)
+        default=0.1,
+        update=update_curvature_selection)
 
     palettecategories: bpy.props.EnumProperty(
         name='Category',
