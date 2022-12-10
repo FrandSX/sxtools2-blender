@@ -548,6 +548,31 @@ class SXTOOLS2_utils(object):
         return str(count)
 
 
+    # if vertex pos x y z is at bbx limit, and mirror axis is set, round vertex position
+    def round_tiling_verts(self, objs):
+        for obj in objs:
+            if obj.sx2.tiling:
+                vert_dict = generate.vertex_data_dict(obj)
+                xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box([obj, ], local=True)
+
+                if len(vert_dict.keys()) > 0:
+                    for vert_id in vert_dict:
+                        vertLoc = Vector(vert_dict[vert_id][0])
+
+                        if (obj.sx2.tile_neg_x and (round(vertLoc[0], 2) == round(xmin, 2))) or (obj.sx2.tile_pos_x and (round(vertLoc[0], 2) == round(xmax, 2))):
+                            vertLoc[0] = round(vertLoc[0], 2)
+                        if (obj.sx2.tile_neg_y and (round(vertLoc[1], 2) == round(ymin, 2))) or (obj.sx2.tile_pos_y and (round(vertLoc[1], 2) == round(ymax, 2))):
+                            vertLoc[1] = round(vertLoc[1], 2)
+                        if (obj.sx2.tile_neg_z and (round(vertLoc[2], 2) == round(zmin, 2))) or (obj.sx2.tile_pos_z and (round(vertLoc[2], 2) == round(zmax, 2))):
+                            vertLoc[2] = round(vertLoc[2], 2)
+
+                        if vertLoc != Vector(vert_dict[vert_id][0]):
+                            obj.data.vertices[vert_id].co = vertLoc
+                            obj.data.vertices[vert_id].select = True
+
+                obj.data.update()
+
+
     def __del__(self):
         print('SX Tools: Exiting utils')
 
@@ -2286,7 +2311,7 @@ class SXTOOLS2_tools(object):
                 tiler['Input_7'] = obj.sx2.tile_pos_z
                 tiler.show_viewport = obj.sx2.modifiervisibility
                 tiler.show_expanded = False
-                obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
+                # obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
             if 'sxSubdivision' not in obj.modifiers:
                 obj.modifiers.new(type='SUBSURF', name='sxSubdivision')
                 obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
@@ -2478,9 +2503,6 @@ class SXTOOLS2_setup(object):
         output = group_in.outputs[0]
         input = nodetree.nodes['flip'].inputs[0]
         nodetree.links.new(input, output)
-        output = group_in.outputs[0]
-        input = join.inputs[0]
-        nodetree.links.new(input, output)
 
         for i in range(2): 
             # bbx offset multipliers for mirror objects
@@ -2594,6 +2616,11 @@ class SXTOOLS2_setup(object):
             output = transform.outputs[0]
             input = join.inputs[0]
             nodetree.links.new(input, output)
+
+        # link group in as first in join node for working auto-smooth
+        output = group_in.outputs[0]
+        input = join.inputs[0]
+        nodetree.links.new(input, output)
 
         # link combined geometry to group output
         output = nodetree.nodes['join'].outputs['Geometry']
@@ -3245,19 +3272,19 @@ def update_modifiers(self, context, prop):
                         obj.data.use_auto_smooth = True
                     else:
                         obj.modifiers['sxTiler'].show_viewport = obj.sx2.modifiervisibility
-                        obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
+                        # obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
                 if 'sxSubdivision' in obj.modifiers:
                     if (obj.sx2.subdivisionlevel == 0):
                         obj.modifiers['sxSubdivision'].show_viewport = False
                     else:
                         obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
                 if 'sxDecimate' in obj.modifiers:
-                    if (obj.sx2.subdivisionlevel == 0.0):
+                    if (obj.sx2.subdivisionlevel == 0.0) or (obj.sx2.decimation == 0.0):
                         obj.modifiers['sxDecimate'].show_viewport = False
                     else:
                         obj.modifiers['sxDecimate'].show_viewport = obj.sx2.modifiervisibility
                 if 'sxDecimate2' in obj.modifiers:
-                    if (obj.sx2.subdivisionlevel == 0.0):
+                    if (obj.sx2.subdivisionlevel == 0.0) or (obj.sx2.decimation == 0.0):
                         obj.modifiers['sxDecimate2'].show_viewport = False
                     else:
                         obj.modifiers['sxDecimate2'].show_viewport = obj.sx2.modifiervisibility
@@ -3315,7 +3342,7 @@ def update_modifiers(self, context, prop):
                     tiler['Input_7'] = obj.sx2.tile_pos_z
 
                 obj.modifiers['sxTiler'].show_viewport = obj.sx2.tiling
-                obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
+                # obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
 
         elif prop == 'hardmode':
             for obj in objs:
@@ -3540,7 +3567,7 @@ def update_obj_props(self, context, prop):
         value = getattr(objs[0].sx2, prop)
         for obj in objs:
             if getattr(obj.sx2, prop) != value:
-                setattr(obj.sx2, prop, value))
+                setattr(obj.sx2, prop, value)
 
         if prop == 'shadingmode':
             setup.update_sx2material(context)
@@ -4133,6 +4160,7 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         description='Increase ray count to reduce noise',
         min=1,
         max=5000,
+        step=50,
         default=500)
 
     occlusiondistance: bpy.props.FloatProperty(
