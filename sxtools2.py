@@ -3270,8 +3270,8 @@ def update_modifiers(self, context, prop):
                     if not obj.sx2.tiling:
                         obj.modifiers['sxTiler'].show_viewport = False
                         obj.data.use_auto_smooth = True
-                    else:
-                        obj.modifiers['sxTiler'].show_viewport = obj.sx2.modifiervisibility
+                    # else:
+                        # obj.modifiers['sxTiler'].show_viewport = obj.sx2.modifiervisibility
                         # obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
                 if 'sxSubdivision' in obj.modifiers:
                     if (obj.sx2.subdivisionlevel == 0):
@@ -3341,7 +3341,7 @@ def update_modifiers(self, context, prop):
                     tiler['Input_6'] = obj.sx2.tile_neg_z
                     tiler['Input_7'] = obj.sx2.tile_pos_z
 
-                obj.modifiers['sxTiler'].show_viewport = obj.sx2.tiling
+                # obj.modifiers['sxTiler'].show_viewport = obj.sx2.tiling
                 # obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
 
         elif prop == 'hardmode':
@@ -4894,19 +4894,22 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         row_ground = col_fill.row(align=False)
                         row_ground.prop(scene, 'occlusiongroundplane', text='Ground Plane')
                         row_tiling = col_fill.row(align=False)
-                        row_tiling.prop(sx2, 'tiling', text='Tiling Object')
-                        row_tiling.prop(sx2, 'tile_offset', text='Tile Offset')
-                        row_tiling2 = col_fill.row(align=False)
-                        row_tiling2.prop(sx2, 'tile_pos_x', text='+X')
-                        row_tiling2.prop(sx2, 'tile_pos_y', text='+Y')
-                        row_tiling2.prop(sx2, 'tile_pos_z', text='+Z')
-                        row_tiling3 = col_fill.row(align=False)
-                        row_tiling3.prop(sx2, 'tile_neg_x', text='-X')
-                        row_tiling3.prop(sx2, 'tile_neg_y', text='-Y')
-                        row_tiling3.prop(sx2, 'tile_neg_z', text='-Z')
+                        row_tiling.prop(sx2, 'tiling', text='Seamless Tiling')
+                        row_tiling.prop(obj.modifiers['sxTiler'], 'show_viewport', text='Preview')
+                        row_tiling1 = col_fill.row(align=False)
+                        row_tiling1.prop(sx2, 'tile_offset', text='Tile Offset')
+                        row_tiling2 = col_fill.row(align=True)
+                        row_tiling2.prop(sx2, 'tile_pos_x', text='+X', toggle=True)
+                        row_tiling2.prop(sx2, 'tile_pos_y', text='+Y', toggle=True)
+                        row_tiling2.prop(sx2, 'tile_pos_z', text='+Z', toggle=True)
+                        row_tiling3 = col_fill.row(align=True)
+                        row_tiling3.prop(sx2, 'tile_neg_x', text='-X', toggle=True)
+                        row_tiling3.prop(sx2, 'tile_neg_y', text='-Y', toggle=True)
+                        row_tiling3.prop(sx2, 'tile_neg_z', text='-Z', toggle=True)
                         if scene.occlusionblend == 0:
                             row_ground.enabled = False
                         if not sx2.tiling:
+                            row_tiling1.enabled = False
                             row_tiling2.enabled = False
                             row_tiling3.enabled = False
 
