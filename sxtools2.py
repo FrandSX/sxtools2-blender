@@ -272,14 +272,6 @@ class SXTOOLS2_files(object):
                     layer1 = utils.find_layer_from_index(obj, 1)
                     layers.blend_layers([obj, ], compLayers, layer1, layer0, uv_as_alpha=True)
 
-                    # Temporary fix for Blender 3.x not supporting exporting of float color attributes
-                    # color_layers = utils.find_color_layers(obj)
-                    # for layer in color_layers:
-                    #     colors = layers.get_layer(obj, layer)
-                    #     obj.data.attributes.remove(obj.data.attributes[layer.vertexColorLayer])
-                    #     obj.data.attributes.new(name=layer.vertexColorLayer, type='BYTE_COLOR', domain='CORNER')
-                    #     layers.set_layer(obj, colors, layer)
-
                     obj.data.attributes.active_color = obj.data.attributes[layer0.vertexColorLayer]
                     bpy.ops.geometry.color_attribute_render_set(name=layer0.vertexColorLayer)
 
@@ -292,11 +284,6 @@ class SXTOOLS2_files(object):
 
                 # bpy.context.view_layer.update()
                 bpy.context.view_layer.objects.active = group
-
-                # If linear colorspace exporting is selected
-                # vertex colors pre-multiplied against Blender's unwanted sRGB export conversion
-                # if exportspace == 'LIN':
-                #     export.export_to_linear(objArray)
 
                 category = objArray[0].sx2.category.lower()
                 print(f'Determining path: {objArray[0].name} {category}')
@@ -334,15 +321,6 @@ class SXTOOLS2_files(object):
 
                 tools.remove_modifiers(objArray)
                 tools.add_modifiers(objArray)
-
-                # Clean-up of temporary fix for Blender 3.x not supporting exporting of float color attributes
-                # for obj in objArray:
-                #     color_layers = utils.find_color_layers(obj)
-                #     for layer in color_layers:
-                #         colors = layers.get_layer(obj, layer)
-                #         obj.data.attributes.remove(obj.data.attributes[layer.color_attribute])
-                #         obj.data.attributes.new(name=layer.color_attribute, type='FLOAT_COLOR', domain='CORNER')
-                #         layers.set_layer(obj, colors, layer)
 
                 bpy.context.view_layer.objects.active = group
 
@@ -394,13 +372,19 @@ class SXTOOLS2_utils(object):
                 sxglobals.modeID = mode_id
                 sxglobals.mode = objs[0].mode
                 if objs[0].mode != 'OBJECT':
+                    if bpy.context.view_layer.objects.active is None:
+                        bpy.context.view_layer.objects.active = objs[0]
                     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
             else:
                 if objs[0].mode != 'OBJECT':
+                    if bpy.context.view_layer.objects.active is None:
+                        bpy.context.view_layer.objects.active = objs[0]
                     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
         elif revert:
             if sxglobals.modeID == mode_id:
+                    if bpy.context.view_layer.objects.active is None:
+                        bpy.context.view_layer.objects.active = objs[0]
                 bpy.ops.object.mode_set(mode=sxglobals.mode)
                 sxglobals.modeID = None
 
@@ -2977,7 +2961,7 @@ class SXTOOLS2_setup(object):
                     input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission']
                     sxmaterial.node_tree.links.new(input, output)
 
-    # TODO: Errors when some of multiple objects are selected
+
     def update_sx2material(self, context):
         if 'SXToolMaterial' not in bpy.data.materials:
             setup.create_sxtoolmaterial()
@@ -2986,7 +2970,6 @@ class SXTOOLS2_setup(object):
         sx_mat_objs = []
         for obj in objs:
             if 'sx2layers' in obj.keys():
-                print('layers in', obj.name)
                 sx_mat_objs.append(obj)
 
         sx_mats = []
@@ -3617,15 +3600,15 @@ def load_post_handler(dummy):
     if bpy.data.scenes['Scene'].sx2.rampmode == '':
         bpy.data.scenes['Scene'].sx2.rampmode = 'X'
 
-    # active = bpy.context.view_layer.objects.active
-    # for obj in bpy.data.objects:
-    #     bpy.context.view_layer.objects.active = obj
+    active = bpy.context.view_layer.objects.active
+    for obj in bpy.data.objects:
+        bpy.context.view_layer.objects.active = obj
 
-    #     if (len(obj.sx2.keys()) > 0):
-    #         if obj.sx2.hardmode == '':
-    #             obj.sx2.hardmode = 'SHARP'
+        if (len(obj.sx2.keys()) > 0):
+            if obj.sx2.hardmode == '':
+                obj.sx2.hardmode = 'SHARP'
 
-    # bpy.context.view_layer.objects.active = active
+    bpy.context.view_layer.objects.active = active
 
     setup.start_modal()
 
@@ -6501,9 +6484,3 @@ if __name__ == '__main__':
     except:
         pass
     register()
-
-
-# TODO:
-# - Multiple object support
-# - load-post op to clear tool globals
-
