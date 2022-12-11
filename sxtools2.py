@@ -53,7 +53,7 @@ class SXTOOLS2_sxglobals(object):
         self.masterPaletteArray = []
         self.materialArray = []
 
-        # {stack_layer_index: (layer.name, layer.color_attribute, layer.layer_type)}
+        # {obj.name: {stack_layer_index: (layer.name, layer.color_attribute, layer.layer_type)}}
         self.layer_stack_dict = {}
 
         # Brush tools may leave low alpha values that break
@@ -407,9 +407,8 @@ class SXTOOLS2_utils(object):
 
     def find_layer_by_stack_index(self, obj, index):
         if len(obj.sx2layers) > 0:
-            if len(sxglobals.layer_stack_dict) == 0:
-                sxglobals.layer_stack_dict.clear()
-
+            stack_dict = sxglobals.layer_stack_dict.get(obj.name, {})
+            if len(stack_dict) == 0:
                 layers = []
                 for layer in obj.sx2layers:
                     layers.append((layer.index, layer.color_attribute))
@@ -418,9 +417,10 @@ class SXTOOLS2_utils(object):
                 for i, layer_tuple in enumerate(layers):
                     for layer in obj.sx2layers:
                         if layer.color_attribute == layer_tuple[1]:
-                            sxglobals.layer_stack_dict[i] = (layer.name, layer.color_attribute, layer.layer_type)
+                            stack_dict[i] = (layer.name, layer.color_attribute, layer.layer_type)
+                sxglobals.layer_stack_dict[obj.name] = stack_dict
 
-            return obj.sx2layers[sxglobals.layer_stack_dict[index][0]]
+            return obj.sx2layers[stack_dict[index][0]]
         else:
             return None
 
@@ -515,7 +515,9 @@ class SXTOOLS2_utils(object):
 
 
     def sort_stack_indices(self, obj, sort_layers=None):
-        sxglobals.layer_stack_dict.clear()
+        stack_dict = sxglobals.layer_stack_dict.get(obj.name, {})
+        if len(stack_dict) > 0:
+            sxglobals.layer_stack_dict[obj.name].clear()
 
         if len(obj.sx2layers) > 0:
             if sort_layers is None:
@@ -524,7 +526,9 @@ class SXTOOLS2_utils(object):
 
             for i, sort_layer in enumerate(sort_layers):
                 obj.sx2layers[sort_layer.name].index = i
-                sxglobals.layer_stack_dict[i] = (sort_layer.name, sort_layer.color_attribute, sort_layer.layer_type)
+                stack_dict[i] = (sort_layer.name, sort_layer.color_attribute, sort_layer.layer_type)
+
+            sxglobals.layer_stack_dict[obj.name] = stack_dict
 
             return sort_layers
         else:
@@ -2682,8 +2686,6 @@ class SXTOOLS2_setup(object):
 
         for obj in objs:
             if len(obj.sx2layers) > 0:
-                layercount = len(obj.sx2layers)
-
                 sxmaterial = bpy.data.materials.new(name='SX2Material_'+obj.name)
                 sxmaterial.use_nodes = True
                 sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'].default_value = [0.0, 0.0, 0.0, 1.0]
@@ -2696,8 +2698,8 @@ class SXTOOLS2_setup(object):
                     prev_color = None
                     color_layers = []
                     material_layers = []
-                    if len(sxglobals.layer_stack_dict) > 0:
-                        color_stack = [sxglobals.layer_stack_dict[key] for key in sorted(sxglobals.layer_stack_dict.keys())]
+                    if len(sxglobals.layer_stack_dict.get(obj.name, {})) > 0:
+                        color_stack = [sxglobals.layer_stack_dict[obj.name][key] for key in sorted(sxglobals.layer_stack_dict[obj.name].keys())]
                         for layer in color_stack:
                             if layer[2] == 'COLOR':
                                 color_layers.append(layer)
@@ -2724,7 +2726,7 @@ class SXTOOLS2_setup(object):
 
 
                     # Create color layers
-                    if (len(color_layers) > 0) and objs[0].sx2layers[color_layers[0][0]].visibility:
+                    if (len(color_layers) > 0) and obj.sx2layers[color_layers[0][0]].visibility:
                         base_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
                         base_color.name = 'BaseColor'
                         base_color.label = 'BaseColor'
@@ -2758,7 +2760,7 @@ class SXTOOLS2_setup(object):
                             layer_blend.inputs[0].default_value = 1
                             layer_blend.inputs[1].default_value = [0.0, 0.0, 0.0, 0.0]
                             layer_blend.inputs[2].default_value = [0.0, 0.0, 0.0, 0.0]
-                            layer_blend.blend_type = blend_mode_dict[objs[0].sx2layers[color_layers[i+1][0]].blend_mode]
+                            layer_blend.blend_type = blend_mode_dict[obj.sx2layers[color_layers[i+1][0]].blend_mode]
                             layer_blend.use_clamp = True
                             layer_blend.location = (-600, i*400+400)
 
@@ -2975,35 +2977,37 @@ class SXTOOLS2_setup(object):
                     input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission']
                     sxmaterial.node_tree.links.new(input, output)
 
-
+    # TODO: Errors when some of multiple objects are selected
     def update_sx2material(self, context):
+        if 'SXToolMaterial' not in bpy.data.materials:
+            setup.create_sxtoolmaterial()
+
+        objs = mesh_selection_validator(self, context)
         sx_mat_objs = []
-        sx_mats = [mat for mat in bpy.data.materials.keys() if 'SX2Material' in mat]
+        for obj in objs:
+            if 'sx2layers' in obj.keys():
+                print('layers in', obj.name)
+                sx_mat_objs.append(obj)
+
+        sx_mats = []
+        for obj in sx_mat_objs:
+            if obj.active_material is not None:
+                sx_mat = bpy.data.materials.get(obj.active_material.name)
+                obj.data.materials.clear()
+                if ('SX2Material_' + obj.name) == sx_mat.name:
+                    sx_mats.append(sx_mat)
+
         if len(sx_mats) > 0:
-            for mat in sx_mats:
-                sx_mat = bpy.data.materials.get(mat)
-
-                for obj in context.scene.objects:
-                    if obj.active_material == bpy.data.materials[mat]:
-                        sx_mat_objs.append(obj.name)
-                        obj.data.materials.clear()
-
+            for sx_mat in sx_mats:
                 sx_mat.user_clear()
                 bpy.data.materials.remove(sx_mat)
 
         bpy.context.view_layer.update()
 
-        objs = mesh_selection_validator(self, context)
-        if 'SXToolMaterial' not in bpy.data.materials:
-            setup.create_sxtoolmaterial()
-        setup.create_sx2material(objs)
+        setup.create_sx2material(sx_mat_objs)
 
-        for obj in objs:
-            sx_mat_objs.append(obj.name)
-
-        for obj_name in sx_mat_objs:
-            # context.scene.objects[obj_name].sx2.shadingmode = 'FULL'
-            context.scene.objects[obj_name].active_material = bpy.data.materials['SX2Material_' + obj_name]
+        for obj in sx_mat_objs:
+            obj.active_material = bpy.data.materials['SX2Material_' + obj.name]
 
 
     def __del__(self):
@@ -5973,7 +5977,7 @@ class SXTOOLS2_OT_mergeup(bpy.types.Operator):
 
         if len(mesh_objs[0].sx2layers) > 0:
             layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
-            if (layer.layer_type == 'COLOR') and (layer.index < (len(sxglobals.layer_stack_dict) - 1)):
+            if (layer.layer_type == 'COLOR') and (layer.index < (len(sxglobals.layer_stack_dict.get(mesh_objs[0].name, [])) - 1)):
                 enabled = True
         return enabled
 
