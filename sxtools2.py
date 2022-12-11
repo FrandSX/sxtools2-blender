@@ -383,8 +383,8 @@ class SXTOOLS2_utils(object):
 
         elif revert:
             if sxglobals.modeID == mode_id:
-                    if bpy.context.view_layer.objects.active is None:
-                        bpy.context.view_layer.objects.active = objs[0]
+                if bpy.context.view_layer.objects.active is None:
+                    bpy.context.view_layer.objects.active = objs[0]
                 bpy.ops.object.mode_set(mode=sxglobals.mode)
                 sxglobals.modeID = None
 
@@ -5228,6 +5228,13 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
             return {'PASS_THROUGH'}
 
         objs = mesh_selection_validator(self, context)
+        if (len(objs) == 0) and (context.object.mode == 'EDIT'):
+            objs = context.objects_in_mode
+            if len(objs) > 0:
+                for obj in objs:
+                    obj.select_set(True)
+                context.view_layer.objects.active = objs[0]
+
         if len(objs) > 0:
             mode = objs[0].mode
             if mode != sxglobals.prev_mode:
