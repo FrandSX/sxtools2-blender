@@ -5210,7 +5210,7 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         if not bpy.app.background:
-            if context.area.type == 'VIEW_3D':
+            if (context.area is not None) and (context.area.type == 'VIEW_3D'):
                 return context.active_object is not None
         else:
             return context.active_object is not None
