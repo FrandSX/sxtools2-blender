@@ -4434,7 +4434,7 @@ class SXTOOLS2_setup(object):
                                 splitter_index += 1
                                 count = 0
 
-                            if (material_layers[i][2] == 'OCC') or (material_layers[i][2] == 'SSS'):
+                            if (material_layers[i][2] == 'OCC'):
                                 output = source_color.outputs['Alpha']
                             else:
                                 output = source_color.outputs['Color']
@@ -6511,10 +6511,6 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 split_basics.prop(layer, 'blend_mode', text='')
                 split_basics.prop(layer, 'opacity', slider=True, text='Layer Opacity')
 
-                pbr_channels = ['OCC', 'MET', 'RGH', 'TRN', 'SSS', 'EMI']
-                if layer.layer_type in pbr_channels:
-                    split_basics.enabled = False
-
                 if scene.expandlayer:
                     if obj.mode == 'OBJECT':
                         hue_text = 'Layer Hue'
@@ -6533,7 +6529,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     row_lightness = col_hsl.row(align=True)
                     row_lightness.prop(sx2, 'lightnessvalue', slider=True, text=lightness_text)
 
-                    if layer.layer_type in pbr_channels:
+                    gray_channels = ['OCC', 'MET', 'RGH', 'TRN']
+                    if layer.layer_type in gray_channels:
                         row_hue.enabled = False
                         row_sat.enabled = False
 
@@ -6593,7 +6590,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
             # Color Tool --------------------------------------------------------
             if scene.toolmode == 'COL':
                 split1_fill = box_fill.split(factor=0.33)
-                if (layer is None) or (layer.layer_type == 'COLOR') or (layer.layer_type == 'EMI'):
+                if (layer is None) or (layer.layer_type == 'COLOR') or (layer.layer_type == 'EMI') or (layer.layer_type == 'SSS'):
                     fill_text = 'Fill Color'
                 else:
                     fill_text = 'Fill Value'
