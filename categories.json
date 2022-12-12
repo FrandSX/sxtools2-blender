@@ -1,0 +1,140 @@
+{
+    "Default": {
+        "color_layers": [
+            "layer1",
+            "layer2",
+            "layer3",
+            "layer4",
+            "layer5",
+            "layer6",
+            "layer7"
+        ],
+        "pbr_layers": [
+            "Occlusion",
+            "Metallic",
+            "Roughness",
+            "Transmission",
+            "Emission"
+        ],
+        "staticvertexcolors": 1,
+        "smoothness1": 0.0,
+        "smoothness2": 0.0,
+        "overlaystrength": 0.5,
+        "blend": "OPAQUE"
+    },
+    "Paletted": {
+        "color_layers": [
+            "layer1 - Palette Color 1",
+            "layer2 - Palette Color 2",
+            "layer3 - Palette Color 3",
+            "layer4 - Palette Color 4",
+            "layer5 - Palette Color 5",
+            "layer6 - Static Colors",
+            "layer7 - PBR Material"
+        ],
+        "pbr_layers": [
+            "Occlusion",
+            "Metallic",
+            "Roughness",
+            "Transmission",
+            "Emission"
+        ],
+        "staticvertexcolors": 0,
+        "smoothness1": 0.0,
+        "smoothness2": 0.0,
+        "overlaystrength": 0.6,
+        "blend": "OPAQUE"
+    },
+    "Vehicles": {
+        "color_layers": [
+            "layer1 - Paint (Primary)",
+            "layer2 - Paint (Secondary)",
+            "layer3 - Paint (Tertiary)",
+            "layer4 - Seats",
+            "layer5 - Inside Panels",
+            "layer6 - Static Colors",
+            "layer7 - Metallic Color"
+        ],
+        "pbr_layers": [
+            "Occlusion",
+            "Metallic",
+            "Roughness",
+            "Transmission",
+            "Emission"
+        ],
+        "staticvertexcolors": 0,
+        "smoothness1": 0.95,
+        "smoothness2": 0.30,
+        "overlaystrength": 0.6,
+        "blend": "OPAQUE"
+    },
+    "Buildings": {
+        "color_layers": [
+            "layer1 - Walls (Primary)",
+            "layer2 - Walls (Secondary)",
+            "layer3 - Walls (Tertiary)",
+            "layer4 - Ground Floor",
+            "layer5 - Secondary Detail",
+            "layer6 - Static Colors",
+            "layer7 - Glass"
+        ],
+        "pbr_layers": [
+            "Occlusion",
+            "Metallic",
+            "Roughness",
+            "Transmission",
+            "Emission"
+        ],
+        "staticvertexcolors": 0,
+        "smoothness1": 0.0,
+        "smoothness2": 0.0,
+        "overlaystrength": 0.5,
+        "blend": "OPAQUE"
+    },
+    "Trees": {
+        "color_layers": [
+            "layer1 - Foliage (Primary)",
+            "layer2 - Foliage (Secondary)",
+            "layer3 - Foliage (Tertiary)",
+            "layer4 - Trunk 1",
+            "layer5 - Trunk 2",
+            "layer6 - Static Colors",
+            "layer7 - Fruit, Flowers"
+        ],
+        "pbr_layers": [
+            "Occlusion",
+            "Metallic",
+            "Roughness",
+            "Transmission",
+            "Emission"
+        ],
+        "staticvertexcolors": 0,
+        "smoothness1": 0.0,
+        "smoothness2": 0.0,
+        "overlaystrength": 0.5,
+        "blend": "OPAQUE"
+    },
+    "Transparent": {
+        "color_layers": [
+            "layer1",
+            "layer2",
+            "layer3",
+            "layer4",
+            "layer5",
+            "layer6",
+            "layer7"
+        ],
+        "pbr_layers": [
+            "Occlusion",
+            "Metallic",
+            "Roughness",
+            "Transmission",
+            "Emission"
+        ],
+        "staticvertexcolors": 1,
+        "smoothness1": 0.0,
+        "smoothness2": 0.0,
+        "overlaystrength": 0.5,
+        "blend": "BLEND"
+    }
+}
