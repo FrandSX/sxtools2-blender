@@ -7755,9 +7755,10 @@ class SXTOOLS2_OT_layer_up(bpy.types.Operator):
             if obj.type == 'MESH':
                 mesh_objs.append(obj)
 
-        layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
-        if (len(mesh_objs[0].sx2layers) > 0) and (layer.index < (len(sxglobals.layer_stack_dict.get(mesh_objs[0].name, [])) - 1)):
-            enabled = True
+        if len(mesh_objs[0].sx2layers) > 0:
+            layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
+            if (layer.index < (len(sxglobals.layer_stack_dict.get(mesh_objs[0].name, [])) - 1)):
+                enabled = True
 
         return enabled
 
@@ -7797,9 +7798,10 @@ class SXTOOLS2_OT_layer_down(bpy.types.Operator):
             if obj.type == 'MESH':
                 mesh_objs.append(obj)
 
-        layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
-        if (len(mesh_objs[0].sx2layers) > 0) and (layer.index > 0):
-            enabled = True
+        if len(mesh_objs[0].sx2layers) > 0:
+            layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
+            if (layer.index > 0):
+                enabled = True
 
         return enabled
 
