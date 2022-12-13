@@ -1999,6 +1999,11 @@ class SXTOOLS2_tools(object):
         material = bpy.context.scene.sx2materials[material]
         scene = bpy.context.scene.sx2
 
+        # material library contains smoothness values, Blender uses roughness
+        invert_color = [None, None, None, 1.0]
+        for i in range(3):
+            invert_color[i] = 1 - material.color2[i]
+
         # for obj in objs:
         #     scene.toolopacity = 1.0
         #     scene.toolblend = 'ALPHA'
@@ -2013,7 +2018,7 @@ class SXTOOLS2_tools(object):
 
         setattr(scene, 'newmaterial0', material.color0)
         setattr(scene, 'newmaterial1', material.color1)
-        setattr(scene, 'newmaterial2', material.color2)
+        setattr(scene, 'newmaterial2', invert_color)
 
         sxglobals.refresh_in_progress = False
         utils.mode_manager(objs, revert=True, mode_id='apply_material')
@@ -4792,7 +4797,7 @@ def update_material_layer(self, context, index):
         objs = mesh_selection_validator(self, context)
         utils.mode_manager(objs, set_mode=True, mode_id='update_material_layer')
         layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-        layer_ids = [objs[0].sx2.selectedlayer, 'metallic', 'smoothness']
+        layer_ids = [layer.name, 'Metallic', 'Roughness']
         pbr_values = [scene.newmaterial0, scene.newmaterial1, scene.newmaterial2]
         scene.toolopacity = 1.0
         scene.toolblend = 'ALPHA'
@@ -4823,14 +4828,13 @@ def update_material_layer(self, context, index):
             if sxglobals.mode == 'EDIT':
                 tools.apply_tool(objs, objs[0].sx2layers[layer_ids[index]], color=pbr_values[index])
             else:
-                tools.apply_tool(objs, objs[0].sx2layers[layer_ids[index]], masklayer=objs[0].sxlayers[layer_ids[0]], color=pbr_values[index])
+                tools.apply_tool(objs, objs[0].sx2layers[layer_ids[index]], masklayer=objs[0].sx2layers[layer_ids[0]], color=pbr_values[index])
 
             setattr(scene, 'newmaterial' + str(index), pbr_values[index])
 
         utils.mode_manager(objs, revert=True, mode_id='update_material_layer')
         sxglobals.mat_update = False
-
-    refresh_swatches(self, context)
+        refresh_swatches(self, context)
 
 
 # TODO: This only works correctly on multi-object selection with identical layersets
@@ -9060,3 +9064,10 @@ if __name__ == '__main__':
 # - magic processing
 # - smart separate fails if object not grouped
 # - generate masks updated to dynamic layer stack
+# - keymonitor does not start without creating an empty layer
+# - Atlas export settings:
+#   - Emission atlas -> emissive color in composite
+#   - Smoothness vs. roughness
+#   - Metallic
+#   - Write any pbr atlas by iterating over color UVs
+
