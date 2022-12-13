@@ -2287,7 +2287,6 @@ class SXTOOLS2_modifiers(object):
                 tiler['Input_7'] = obj.sx2.tile_pos_z
                 tiler.show_viewport = obj.sx2.modifiervisibility
                 tiler.show_expanded = False
-                # obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
             if 'sxSubdivision' not in obj.modifiers:
                 obj.modifiers.new(type='SUBSURF', name='sxSubdivision')
                 obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
@@ -2511,7 +2510,7 @@ class SXTOOLS2_export(object):
                             exportObjects.objects.link(vlObj)
 
                     if len(newObjArray) > 1:
-                        tools.set_pivots(newObjArray)
+                        export.set_pivots(newObjArray)
                         suffixDict = {}
                         for newObj in newObjArray:
                             view_layer.objects.active = newObj
@@ -2720,7 +2719,7 @@ class SXTOOLS2_export(object):
                 obj.select_set(True)
 
         # set collider pivots
-        tools.set_pivots(colliders.objects, pivotmode=1)
+        export.set_pivots(colliders.objects, pivotmode=1)
 
         # optimize hulls
         # for obj in colliders.objects:
@@ -3314,7 +3313,7 @@ class SXTOOLS2_magic(object):
             objs = newObjs
 
         # Place pivots
-        tools.set_pivots(objs, force=True)
+        export.set_pivots(objs, force=True)
 
         # Fix transforms
         utils.clear_parent_inverse_matrix(objs)
@@ -4915,15 +4914,12 @@ def update_modifiers(self, context, prop):
     if len(objs) > 0:
         if prop == 'modifiervisibility':
             for obj in objs:
+                obj.data.use_auto_smooth = True
                 if 'sxMirror' in obj.modifiers:
                     obj.modifiers['sxMirror'].show_viewport = obj.sx2.modifiervisibility
                 if 'sxTiler' in obj.modifiers:
                     if not obj.sx2.tiling:
                         obj.modifiers['sxTiler'].show_viewport = False
-                        obj.data.use_auto_smooth = True
-                    # else:
-                        # obj.modifiers['sxTiler'].show_viewport = obj.sx2.modifiervisibility
-                        # obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
                 if 'sxSubdivision' in obj.modifiers:
                     if (obj.sx2.subdivisionlevel == 0):
                         obj.modifiers['sxSubdivision'].show_viewport = False
@@ -4991,9 +4987,6 @@ def update_modifiers(self, context, prop):
                     tiler['Input_5'] = obj.sx2.tile_pos_y
                     tiler['Input_6'] = obj.sx2.tile_neg_z
                     tiler['Input_7'] = obj.sx2.tile_pos_z
-
-                # obj.modifiers['sxTiler'].show_viewport = obj.sx2.tiling
-                # obj.data.use_auto_smooth = not obj.sx2.modifiervisibility
 
         elif prop == 'hardmode':
             for obj in objs:
@@ -9065,4 +9058,5 @@ if __name__ == '__main__':
 # - load category
 # - reset scene
 # - magic processing
-
+# - smart separate fails if object not grouped
+# - generate masks updated to dynamic layer stack
