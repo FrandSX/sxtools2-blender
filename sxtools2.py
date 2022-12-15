@@ -57,7 +57,7 @@ class SXTOOLS2_sxglobals(object):
             'COLOR': (0.0, 0.0, 0.0, 0.0),
             'OCC': (1.0, 1.0, 1.0, 1.0),
             'MET': (0.0, 0.0, 0.0, 0.0),
-            'RGH': (1.0, 1.0, 1.0, 1.0),
+            'RGH': (0.5, 0.5, 0.5, 1.0),
             'TRN': (0.0, 0.0, 0.0, 0.0),
             'SSS': (0.0, 0.0, 0.0, 0.0),
             'EMI': (0.0, 0.0, 0.0, 0.0),
@@ -4350,8 +4350,6 @@ class SXTOOLS2_setup(object):
                     rgba_mats = ['SSS', 'EMI']
                     alpha_mats = ['OCC', 'MET', 'RGH', 'TRN']
                     color_layers = []
-                    alpha_material_layers = []
-                    rgba_material_layers = []
                     material_layers = []
                     if len(sxglobals.layer_stack_dict.get(obj.name, {})) > 0:
                         color_stack = [sxglobals.layer_stack_dict[obj.name][key] for key in sorted(sxglobals.layer_stack_dict[obj.name].keys())]
@@ -4362,14 +4360,8 @@ class SXTOOLS2_setup(object):
                         for layer in color_stack:
                             if layer[2] == 'COLOR':
                                 color_layers.append(layer)
-                            elif layer[2] in alpha_mats:
-                                alpha_material_layers.append(layer)
-                                material_layers.append(layer)
-                            elif layer[2] in rgba_mats:
-                                rgba_material_layers.append(layer)
-                                material_layers.append(layer)
                             else:
-                                print('Unknown layer type!')
+                                material_layers.append(layer)
 
                     # Create layer inputs
                     paletted_shading = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
@@ -4533,111 +4525,92 @@ class SXTOOLS2_setup(object):
                     # R: Occlusion, G: Metallic, B: Roughness, A: Transmission
                     splitter_index = 0
                     count = 0
-                    if len(alpha_material_layers) > 0:
-                        alphas = False
-                        for channel in alpha_material_layers:
-                            if obj.sx2layers[channel[0]].visibility:
-                                alphas = True
-                        if alphas:
-                            source_mats = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
-                            source_mats.name = 'Alpha Materials'
-                            source_mats.label = 'Alpha Materials'
-                            source_mats.layer_name = 'Alpha Materials'
-                            source_mats.location = (-400, -400)
-
-                            source_alphas = sxmaterial.node_tree.nodes.new(type='ShaderNodeSeparateXYZ')
-                            source_alphas.name = 'Alpha Splitter'
-                            source_alphas.label = 'Alpha Splitter'
-                            source_alphas.location = (0, -400)
-
-                            output = source_mats.outputs['Color']
-                            input = source_alphas.inputs['Vector']
-                            sxmaterial.node_tree.links.new(input, output)
-
-                    for i in range(len(rgba_material_layers)):
-                        if obj.sx2layers[rgba_material_layers[i][0]].visibility:
-                            source_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
-                            source_color.name = rgba_material_layers[i][0]
-                            source_color.label = rgba_material_layers[i][0]
-                            source_color.layer_name = rgba_material_layers[i][1]
-                            source_color.location = (0, -i*400-800)
+                    source_alphas = None
 
                     for i in range(len(material_layers)):
                         if obj.sx2layers[material_layers[i][0]].visibility:
-                            if (material_layers[i][2] != 'OCC') and (material_layers[i][2] != 'EMI'):
-                                opacity_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
-                                opacity_and_alpha.name = material_layers[i][0] + ' Opacity and Alpha'
-                                opacity_and_alpha.label = material_layers[i][0] + ' Opacity and Alpha'
-                                opacity_and_alpha.operation = 'MULTIPLY'
-                                opacity_and_alpha.use_clamp = True
-                                opacity_and_alpha.inputs[0].default_value = 1
-                                opacity_and_alpha.location = (200, -i*400-400)
+                            if (material_layers[i][2] in alpha_mats) and (source_alphas is None):
+                                source_mats = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
+                                source_mats.name = 'Alpha Materials'
+                                source_mats.label = 'Alpha Materials'
+                                source_mats.layer_name = 'Alpha Materials'
+                                source_mats.location = (-400, -400)
 
-                            if (material_layers[i][2] == 'OCC') or (material_layers[i][2] == 'EMI'):
-                                layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
-                                layer_blend.name = material_layers[i][0] + ' Mix'
-                                layer_blend.label = material_layers[i][0] + ' Mix'
-                                layer_blend.inputs[0].default_value = 1
-                                layer_blend.use_clamp = True
-                                layer_blend.location = (400, -i*400-800)
+                                source_alphas = sxmaterial.node_tree.nodes.new(type='ShaderNodeSeparateXYZ')
+                                source_alphas.name = 'Alpha Splitter'
+                                source_alphas.label = 'Alpha Splitter'
+                                source_alphas.location = (0, -400)
+
+                                output = source_mats.outputs['Color']
+                                input = source_alphas.inputs['Vector']
+                                sxmaterial.node_tree.links.new(input, output)
+
+                            elif (material_layers[i][2] not in alpha_mats):
+                                source_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
+                                source_color.name = material_layers[i][0]
+                                source_color.label = material_layers[i][0]
+                                source_color.layer_name = material_layers[i][1]
+                                source_color.location = (0, -i*400-800)
+
+                            layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
+                            layer_blend.name = material_layers[i][0] + ' Mix'
+                            layer_blend.label = material_layers[i][0] + ' Mix'
+                            layer_blend.blend_type = 'MIX'
+                            layer_blend.inputs[0].default_value = 1
+                            layer_blend.inputs[1].default_value = obj.sx2layers[material_layers[i][0]].default_color
+                            layer_blend.inputs[2].default_value = [0.0, 0.0, 0.0, 0.0]
+                            layer_blend.use_clamp = True
+                            layer_blend.location = (400, -i*400-400)
 
                             # Group connections
                             output = sxmaterial.node_tree.nodes['Material Input Splitter ' + str(splitter_index)].outputs[i % 3]
-                            if material_layers[i][2] != 'OCC':
-                                input = opacity_and_alpha.inputs[0]   
-                                sxmaterial.node_tree.links.new(input, output)
-                                count += 1
-                                if count == 3:
-                                    splitter_index += 1
-                                    count = 0
+                            input = layer_blend.inputs[0]   
+                            sxmaterial.node_tree.links.new(input, output)
 
-                                if (material_layers[i][2] == 'MET'):
-                                    output = source_alphas.outputs['Y']
-                                elif (material_layers[i][2] == 'RGH'):
-                                    output = source_alphas.outputs['Z']
-                                elif (material_layers[i][2] == 'TRN'):
-                                    output = source_mats.outputs['Alpha']
-                                else:
-                                    output = source_color.outputs['Color']
-                                input = opacity_and_alpha.inputs[1]
-                                sxmaterial.node_tree.links.new(input, output)
+                            count += 1
+                            if count == 3:
+                                splitter_index += 1
+                                count = 0
 
-                            else:
-                                input = layer_blend.inputs[0]
-                                sxmaterial.node_tree.links.new(input, output)
-
+                            if (material_layers[i][2] == 'OCC'):
                                 layer_blend.blend_type = 'MULTIPLY'
-                                layer_blend.inputs[1].default_value = [0.0, 0.0, 0.0, 0.0]
-                                layer_blend.inputs[2].default_value = [1.0, 1.0, 1.0, 1.0]
-
-                                output = source_alphas.outputs['X']
-                                input = layer_blend.inputs['Color2']
-                                sxmaterial.node_tree.links.new(input, output)
-
                                 if prev_color is not None:
                                     output = prev_color
                                     input = layer_blend.inputs['Color1']
                                     sxmaterial.node_tree.links.new(input, output)
 
-                                prev_color = layer_blend.outputs['Color']
+                                    prev_color = layer_blend.outputs['Color']
 
+                                output = source_alphas.outputs['X']
+
+                            elif (material_layers[i][2] == 'MET'):
+                                output = source_alphas.outputs['Y']
+
+                            elif (material_layers[i][2] == 'RGH'):
+                                output = source_alphas.outputs['Z']
+
+                            elif (material_layers[i][2] == 'TRN'):
+                                output = source_mats.outputs['Alpha']
+
+                            else:
+                                output = source_color.outputs['Color']
+                            input = layer_blend.inputs[2]
+                            sxmaterial.node_tree.links.new(input, output)
+
+                            output = layer_blend.outputs[0]
                             if material_layers[i][2] == 'MET':
-                                output = opacity_and_alpha.outputs[0]
                                 input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Metallic']
                                 sxmaterial.node_tree.links.new(input, output)
 
                             if material_layers[i][2] == 'RGH':
-                                output = opacity_and_alpha.outputs[0]
                                 input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Roughness']
                                 sxmaterial.node_tree.links.new(input, output)
 
                             if material_layers[i][2] == 'TRN':
-                                output = opacity_and_alpha.outputs[0]
                                 input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission']
                                 sxmaterial.node_tree.links.new(input, output)
 
                             if material_layers[i][2] == 'SSS':
-                                output = opacity_and_alpha.outputs[0]
                                 input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface']
                                 sxmaterial.node_tree.links.new(input, output)
 
@@ -4646,24 +4619,10 @@ class SXTOOLS2_setup(object):
                                 sxmaterial.node_tree.links.new(input, output)
 
                             if material_layers[i][2] == 'EMI':
-                                layer_blend.blend_type = 'MIX'
-                                layer_blend.inputs[1].default_value = [0.0, 0.0, 0.0, 0.0]
-                                layer_blend.inputs[2].default_value = [0.0, 0.0, 0.0, 0.0]
                                 sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 100
-
-                                output = source_color.outputs['Color']
-                                input = layer_blend.inputs['Color2']
-                                sxmaterial.node_tree.links.new(input, output)
-
-                                output = opacity_and_alpha.outputs[0]
-                                input = layer_blend.inputs[0]
-                                sxmaterial.node_tree.links.new(input, output)
-
-                                output = layer_blend.outputs['Color']
                                 input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission']
                                 sxmaterial.node_tree.links.new(input, output)
                                 bpy.context.scene.eevee.use_bloom = True
-
 
                     if prev_color is not None:
                         output = prev_color
@@ -5048,7 +5007,7 @@ def update_material_props(self, context):
             for layer in obj.sx2layers:
                 if layer.layer_type == 'COLOR':
                     color_stack.append((layer.index, layer.opacity))
-                else:
+                elif layer.layer_type != 'CMP':
                     material_stack.append((layer.index, layer.opacity))
 
             color_stack.sort(key=lambda y: y[0])
@@ -5882,6 +5841,14 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         size=3)
 
     layer_opacity_list_5: bpy.props.FloatVectorProperty(
+        name='Layer Opacity List',
+        description='Collects layer opacity values for SX2Material',
+        default=(1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        size=3)
+
+    layer_opacity_list_6: bpy.props.FloatVectorProperty(
         name='Layer Opacity List',
         description='Collects layer opacity values for SX2Material',
         default=(1.0, 1.0, 1.0),
@@ -9330,4 +9297,5 @@ if __name__ == '__main__':
 #   - Smoothness vs. roughness
 #   - Metallic
 #   - Write any pbr atlas by iterating over color UVs
-
+# - Full shading mode pbr channels wrong
+# - Handle layer adding complexity (alphas vs rgba)
