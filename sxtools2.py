@@ -1430,7 +1430,8 @@ class SXTOOLS2_layers(object):
                 if alpha_mat_count == 1:
                     obj.data.attributes.remove(obj.data.attributes[layer_to_delete.color_attribute])
             else:
-                obj.data.attributes.remove(obj.data.attributes[layer_to_delete.color_attribute])
+                if layer_to_delete.color_attribute in obj.data.color_attributes.keys():
+                    obj.data.color_attributes.remove(obj.data.color_attributes[layer_to_delete.color_attribute])
             idx = utils.find_layer_index_by_name(obj, layer_to_delete.name)
             obj.sx2layers.remove(idx)
 
@@ -4416,9 +4417,10 @@ class SXTOOLS2_setup(object):
                         input = palette_blend.inputs['Color2']
                         sxmaterial.node_tree.links.new(input, output)
 
-                        output = paletted_shading.outputs[2]
-                        input = palette_blend.inputs[0]
-                        sxmaterial.node_tree.links.new(input, output)   
+                        if obj.sx2layers[color_layers[0][0]].paletted:
+                            output = paletted_shading.outputs[2]
+                            input = palette_blend.inputs[0]
+                            sxmaterial.node_tree.links.new(input, output)   
 
                         prev_color = palette_blend.outputs['Color']
 
@@ -4452,9 +4454,10 @@ class SXTOOLS2_setup(object):
                             input = palette_blend.inputs['Color2']
                             sxmaterial.node_tree.links.new(input, output)
 
-                            output = paletted_shading.outputs[2]
-                            input = palette_blend.inputs[0]
-                            sxmaterial.node_tree.links.new(input, output)
+                            if obj.sx2layers[color_layers[i+1][0]].paletted:
+                                output = paletted_shading.outputs[2]
+                                input = palette_blend.inputs[0]
+                                sxmaterial.node_tree.links.new(input, output)
 
                             opacity_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
                             opacity_and_alpha.name = 'Opacity ' + str(i + 1)
@@ -5385,7 +5388,7 @@ def update_layer_props(self, context, prop):
         if getattr(obj.sx2layers[self.name], prop) != getattr(objs[0].sx2layers[self.name], prop):
             setattr(obj.sx2layers[self.name], prop, getattr(objs[0].sx2layers[self.name], prop))
 
-    mat_props = ['visibility', 'blend_mode']
+    mat_props = ['paletted', 'visibility', 'blend_mode']
     if prop in mat_props:
         setup.update_sx2material(context)
     elif prop == 'opacity':
@@ -6492,7 +6495,7 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
     paletted: bpy.props.BoolProperty(
         name='Paletted Layer',
         default=True,
-        update=lambda self, context: update_paletted_layers(self, context, None))
+        update=lambda self, context: update_layer_props(self, context, 'paletted'))
 
     palette_index: bpy.props.IntProperty(
         name='Palette Color Index',
@@ -8114,9 +8117,9 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                 source_colors = layers.get_layer(obj, layer)
                 empty_check = generate.color_list(obj, layer.default_color, masklayer=layer)
 
+                layer.layer_type = self.layer_type
                 if layer.layer_type in ['OCC', 'MET', 'RGH', 'TRN', 'CMP']:
                     layer.paletted = False
-                layer.layer_type = self.layer_type
                 layer.default_color = sxglobals.default_colors[self.layer_type]
 
                 # Create a color attribute for alpha materials if not in data
@@ -9297,5 +9300,7 @@ if __name__ == '__main__':
 #   - Smoothness vs. roughness
 #   - Metallic
 #   - Write any pbr atlas by iterating over color UVs
-# - Full shading mode pbr channels wrong
 # - Handle layer adding complexity (alphas vs rgba)
+# - Palette support to SSS and EMI
+# - Handle reversal from alpha material to colorlayer
+
