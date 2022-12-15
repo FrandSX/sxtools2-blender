@@ -1,140 +1,115 @@
 {
     "Default": {
-        "color_layers": [
-            "layer1",
-            "layer2",
-            "layer3",
-            "layer4",
-            "layer5",
-            "layer6",
-            "layer7"
+        "layers": [
+            ["Layer 0", "COLOR", "ALPHA", 1.0, "None"],
+            ["Occlusion", "OCC", "ALPHA", 1.0, "None"],
+            ["Metallic", "MET", "ALPHA", 1.0, "None"],
+            ["Roughness", "RGH", "ALPHA", 1.0, "None"]
         ],
-        "pbr_layers": [
-            "Occlusion",
-            "Metallic",
-            "Roughness",
-            "Transmission",
-            "Emission"
-        ],
-        "staticvertexcolors": 1,
-        "smoothness1": 0.0,
-        "smoothness2": 0.0,
-        "overlaystrength": 0.5,
+        "smoothness_override": 0,
+        "palette_smoothness": [0.0, 0.0, 0.0, 0.0, 0.0],
+        "staticvertexcolors": "True",
         "blend": "OPAQUE"
     },
     "Paletted": {
-        "color_layers": [
-            "layer1 - Palette Color 1",
-            "layer2 - Palette Color 2",
-            "layer3 - Palette Color 3",
-            "layer4 - Palette Color 4",
-            "layer5 - Palette Color 5",
-            "layer6 - Static Colors",
-            "layer7 - PBR Material"
+        "layers": [
+            ["Layer 0 - Palette Color 0", "COLOR", "ALPHA", 1.0, 0],
+            ["Layer 1 - Palette Color 1", "COLOR", "ALPHA", 1.0, 1],
+            ["Layer 2 - Palette Color 2", "COLOR", "ALPHA", 1.0, 2],
+            ["Layer 3 - Palette Color 3", "COLOR", "ALPHA", 1.0, 3],
+            ["Layer 4 - Palette Color 4", "COLOR", "ALPHA", 1.0, 4],
+            ["Layer 5 - Static Colors", "COLOR", "ALPHA", 1.0, "None"],
+            ["Layer 6 - PBR Material Color", "COLOR", "ALPHA", 1.0, "None"],
+            ["Layer 7 - Gradient 1", "COLOR", "ALPHA", 1.0, 3],
+            ["Layer 8 - Gradient 2", "COLOR", "ALPHA", 1.0, 4],
+            ["Layer 9 - Overlay", "COLOR", "OVR", 1.0, "None"],
+            ["Occlusion", "OCC", "ALPHA", 1.0, "None"],
+            ["Metallic", "MET", "ALPHA", 1.0, "None"],
+            ["Roughness", "RGH", "ALPHA", 1.0, "None"],
+            ["Transmission", "TRN", "ALPHA", 1.0, "None"],
+            ["Emission", "EMI", "ALPHA", 1.0, "None"]
         ],
-        "pbr_layers": [
-            "Occlusion",
-            "Metallic",
-            "Roughness",
-            "Transmission",
-            "Emission"
-        ],
+        "smoothness_override": 0,
+        "palette_smoothness": [0.0, 0.0, 0.0, 0.0, 0.0],
         "staticvertexcolors": 0,
-        "smoothness1": 0.0,
-        "smoothness2": 0.0,
-        "overlaystrength": 0.6,
         "blend": "OPAQUE"
     },
     "Vehicles": {
-        "color_layers": [
-            "layer1 - Paint (Primary)",
-            "layer2 - Paint (Secondary)",
-            "layer3 - Paint (Tertiary)",
-            "layer4 - Seats",
-            "layer5 - Inside Panels",
-            "layer6 - Static Colors",
-            "layer7 - Metallic Color"
+        "layers": [
+            ["Layer 0 - Paint (Primary)", "COLOR", "ALPHA", 1.0, 0],
+            ["Layer 1 - Paint (Secondary)", "COLOR", "ALPHA", 1.0, 1],
+            ["Layer 2 - Paint (Tertiary)", "COLOR", "ALPHA", 1.0, 2],
+            ["Layer 3 - Seats", "COLOR", "ALPHA", 1.0, 3],
+            ["Layer 4 - Inside Panels", "COLOR", "ALPHA", 1.0, 4],
+            ["Layer 5 - Static Colors", "COLOR", "ALPHA", 1.0, "None"],
+            ["Layer 6 - Metallic Color", "COLOR", "ALPHA", 1.0, "None"],
+            ["Layer 7 - Gradient 1", "COLOR", "ALPHA", 1.0, 3],
+            ["Layer 8 - Gradient 2", "COLOR", "ALPHA", 1.0, 4],
+            ["Layer 9 - Overlay", "COLOR", "OVR", 1.0, "None"],
+            ["Occlusion", "OCC", "ALPHA", 1.0, "None"],
+            ["Metallic", "MET", "ALPHA", 1.0, "None"],
+            ["Roughness", "RGH", "ALPHA", 1.0, "None"],
+            ["Emission", "EMI", "ALPHA", 1.0, "None"]
         ],
-        "pbr_layers": [
-            "Occlusion",
-            "Metallic",
-            "Roughness",
-            "Transmission",
-            "Emission"
-        ],
+        "smoothness_override": 1,
+        "palette_smoothness": [0.95, 0.95, 0.95, 0.30, 0.30],
         "staticvertexcolors": 0,
-        "smoothness1": 0.95,
-        "smoothness2": 0.30,
-        "overlaystrength": 0.6,
         "blend": "OPAQUE"
     },
     "Buildings": {
-        "color_layers": [
-            "layer1 - Walls (Primary)",
-            "layer2 - Walls (Secondary)",
-            "layer3 - Walls (Tertiary)",
-            "layer4 - Ground Floor",
-            "layer5 - Secondary Detail",
-            "layer6 - Static Colors",
-            "layer7 - Glass"
+        "layers": [
+            ["Layer 0 - Walls (Primary)", "COLOR", "ALPHA", 1.0, 0],
+            ["Layer 1 - Walls (Secondary)", "COLOR", "ALPHA", 1.0, 1],
+            ["Layer 2 - Walls (Tertiary)", "COLOR", "ALPHA", 1.0, 2],
+            ["Layer 3 - Ground Floor", "COLOR", "ALPHA", 1.0, 3],
+            ["Layer 4 - Secondary Detail", "COLOR", "ALPHA", 1.0, 4],
+            ["Layer 5 - Static Colors", "COLOR", "ALPHA", 1.0, "None"],
+            ["Layer 6 - Glass", "COLOR", "ALPHA", 1.0, "None"],
+            ["Layer 7 - Gradient 1", "COLOR", "ALPHA", 1.0, 3],
+            ["Layer 8 - Gradient 2", "COLOR", "ALPHA", 1.0, 4],
+            ["Layer 9 - Overlay", "COLOR", "OVR", 1.0, "None"],
+            ["Occlusion", "OCC", "ALPHA", 1.0, "None"],
+            ["Metallic", "MET", "ALPHA", 1.0, "None"],
+            ["Roughness", "RGH", "ALPHA", 1.0, "None"],
+            ["Emission", "EMI", "ALPHA", 1.0, "None"]
         ],
-        "pbr_layers": [
-            "Occlusion",
-            "Metallic",
-            "Roughness",
-            "Transmission",
-            "Emission"
-        ],
+        "smoothness_override": 0,
+        "palette_smoothness": [0.0, 0.0, 0.0, 0.0, 0.0],
         "staticvertexcolors": 0,
-        "smoothness1": 0.0,
-        "smoothness2": 0.0,
-        "overlaystrength": 0.5,
         "blend": "OPAQUE"
     },
     "Trees": {
-        "color_layers": [
-            "layer1 - Foliage (Primary)",
-            "layer2 - Foliage (Secondary)",
-            "layer3 - Foliage (Tertiary)",
-            "layer4 - Trunk 1",
-            "layer5 - Trunk 2",
-            "layer6 - Static Colors",
-            "layer7 - Fruit, Flowers"
+        "layers": [
+            ["Layer 0 - Foliage (Primary)", "COLOR", "ALPHA", 1.0, 0],
+            ["Layer 1 - Foliage (Secondary)", "COLOR", "ALPHA", 1.0, 1],
+            ["Layer 2 - Foliage (Tertiary)", "COLOR", "ALPHA", 1.0, 2],
+            ["Layer 3 - Trunk 1", "COLOR", "ALPHA", 1.0, 3],
+            ["Layer 4 - Trunk 2", "COLOR", "ALPHA", 1.0, 4],
+            ["Layer 5 - Static Colors", "COLOR", "ALPHA", 1.0, "None"],
+            ["Layer 6 - Fruit, Flowers", "COLOR", "ALPHA", 1.0, "None"],
+            ["Layer 7 - Gradient 1", "COLOR", "ALPHA", 1.0, 3],
+            ["Layer 8 - Gradient 2", "COLOR", "ALPHA", 1.0, 4],
+            ["Layer 9 - Overlay", "COLOR", "OVR", 1.0, "None"],
+            ["Occlusion", "OCC", "ALPHA", 1.0, "None"],
+            ["Metallic", "MET", "ALPHA", 1.0, "None"],
+            ["Roughness", "RGH", "ALPHA", 1.0, "None"],
+            ["Transmission", "TRN", "ALPHA", 1.0, "None"],
+            ["Emission", "EMI", "ALPHA", 1.0, "None"]
         ],
-        "pbr_layers": [
-            "Occlusion",
-            "Metallic",
-            "Roughness",
-            "Transmission",
-            "Emission"
-        ],
+        "smoothness_override": 1,
+        "palette_smoothness": [0.3, 0.3, 0.3, 0.0, 0.0],
         "staticvertexcolors": 0,
-        "smoothness1": 0.0,
-        "smoothness2": 0.0,
-        "overlaystrength": 0.5,
         "blend": "OPAQUE"
     },
     "Transparent": {
-        "color_layers": [
-            "layer1",
-            "layer2",
-            "layer3",
-            "layer4",
-            "layer5",
-            "layer6",
-            "layer7"
+        "layers": [
+            ["Layer 0", "COLOR", "ALPHA", 1.0, 0],
+            ["Metallic", "MET", "ALPHA", 1.0, "None"],
+            ["Roughness", "RGH", "ALPHA", 1.0, "None"]
         ],
-        "pbr_layers": [
-            "Occlusion",
-            "Metallic",
-            "Roughness",
-            "Transmission",
-            "Emission"
-        ],
+        "smoothness_override": 0,
+        "palette_smoothness": [0.0, 0.0, 0.0, 0.0, 0.0],
         "staticvertexcolors": 1,
-        "smoothness1": 0.0,
-        "smoothness2": 0.0,
-        "overlaystrength": 0.5,
         "blend": "BLEND"
     }
 }
