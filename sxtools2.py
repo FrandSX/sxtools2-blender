@@ -410,7 +410,8 @@ class SXTOOLS2_utils(object):
                             stack_dict[i] = (layer.name, layer.color_attribute, layer.layer_type)
                 sxglobals.layer_stack_dict[obj.name] = stack_dict
 
-            return obj.sx2layers[stack_dict[index][0]]
+            layer_data = stack_dict.get(index, None)
+            return obj.sx2layers[layer_data[0]] if layer_data is not None else None
         else:
             return None
 
@@ -1418,6 +1419,7 @@ class SXTOOLS2_layers(object):
 
     def add_layer(self, objs, name=None, layer_type=None):
         alpha_mats = {'OCC': 'Occlusion', 'MET': 'Metallic', 'RGH': 'Roughness', 'TRN': 'Transmission'}
+        layer_dict = {}
         if len(objs) > 0:
             for obj in objs:
                 item = obj.sx2layers.add()
@@ -1437,12 +1439,15 @@ class SXTOOLS2_layers(object):
 
                 colors = generate.color_list(obj, item.default_color)
                 layers.set_layer(obj, colors, obj.sx2layers[len(obj.sx2layers) - 1])
+                layer_dict[obj] = item
 
             # Second loop needed for proper operation in multi-object cases
             # selectedlayer needs to point to an existing layer on all objs
             for obj in objs:
                 obj.sx2.selectedlayer = len(obj.sx2layers) - 1
                 obj.sx2.layercount += 1
+
+        return layer_dict
 
 
     def del_layer(self, objs, layer_to_delete):
@@ -5292,7 +5297,6 @@ def ext_category_lister(self, context, category):
     return enumItems
 
 
-# TODO: This function should be replaced so a preset layer stack is generated with specific export layers and channels
 def load_category(self, context):
     objs = mesh_selection_validator(self, context)
     if len(objs) > 0:
@@ -5301,8 +5305,13 @@ def load_category(self, context):
         for obj in objs:
             for i in range(len(category_data['layers'])):
                 layer = utils.find_layer_by_stack_index(obj, i)
-                layer.name = category_data["layers"][i][0]
-                layer.layer_type = category_data["layers"][i][1]
+                if layer is None:
+                    layer_dict = layers.add_layer([obj, ], name=category_data["layers"][i][0], layer_type=category_data["layers"][i][1])
+                    layer = layer_dict[obj]
+                else:
+                    layer.name = category_data["layers"][i][0]
+                    layer.layer_type = category_data["layers"][i][1]
+                
                 layer.blend_mode = category_data["layers"][i][2]
                 layer.opacity = category_data["layers"][i][3]
                 if category_data["layers"][i][4] == "None":
