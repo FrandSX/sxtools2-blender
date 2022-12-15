@@ -5014,7 +5014,7 @@ def update_selected_layer(self, context):
     objs = mesh_selection_validator(self, context)
     for obj in objs:
         if len(obj.sx2layers) > 0:
-            obj.data.attributes.active_color = obj.data.attributes[obj.sx2.selectedlayer]
+            obj.data.attributes.active_color = obj.data.attributes[obj.sx2layers[obj.sx2.selectedlayer].color_attribute]
 
         # utils.sort_stack_indices(obj)
 
