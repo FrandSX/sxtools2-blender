@@ -4575,11 +4575,52 @@ class SXTOOLS2_setup(object):
                                 sxmaterial.node_tree.links.new(input, output)
 
                             elif (material_layers[i][2] not in alpha_mats):
+                                name = material_layers[i][0]
+
                                 source_color = sxmaterial.node_tree.nodes.new(type='ShaderNodeVertexColor')
-                                source_color.name = material_layers[i][0]
-                                source_color.label = material_layers[i][0]
+                                source_color.name = name
+                                source_color.label = name
                                 source_color.layer_name = material_layers[i][1]
                                 source_color.location = (0, -i*400-800)
+
+                                source_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
+                                source_blend.inputs[0].default_value = 0
+                                source_blend.inputs[1].default_value = [0.0, 0.0, 0.0, 0.0]
+                                source_blend.inputs[2].default_value = [0.0, 0.0, 0.0, 0.0]
+                                source_blend.use_clamp = True
+                                source_blend.location = (200, -i*400-800)
+
+                                material_palette = sxmaterial.node_tree.nodes.new(type="ShaderNodeRGB")
+                                material_palette.name = 'PaletteColor' + name
+                                material_palette.label = 'PaletteColor' + name
+                                material_palette.outputs[0].default_value = getattr(scene, 'newpalette'+str(obj.sx2layers[material_layers[i][0]].palette_index))
+                                material_palette.location = (0, -i*400-950)
+
+                                palette_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
+                                palette_blend.inputs[0].default_value = 0
+                                palette_blend.use_clamp = True
+                                palette_blend.location = (200, -i*400-950)
+
+                                output = source_color.outputs['Alpha']
+                                input = source_blend.inputs[0]
+                                sxmaterial.node_tree.links.new(input, output)
+
+                                output = material_palette.outputs['Color']
+                                input = source_blend.inputs['Color2']
+                                sxmaterial.node_tree.links.new(input, output)
+
+                                output = source_color.outputs['Color']
+                                input = palette_blend.inputs['Color1']
+                                sxmaterial.node_tree.links.new(input, output)
+
+                                output = source_blend.outputs['Color']
+                                input = palette_blend.inputs['Color2']
+                                sxmaterial.node_tree.links.new(input, output)
+
+                                if obj.sx2layers[material_layers[i][0]].paletted:
+                                    output = paletted_shading.outputs[2]
+                                    input = palette_blend.inputs[0]
+                                    sxmaterial.node_tree.links.new(input, output)   
 
                             layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
                             layer_blend.name = material_layers[i][0] + ' Mix'
@@ -4622,7 +4663,7 @@ class SXTOOLS2_setup(object):
                                 output = source_mats.outputs['Alpha']
 
                             else:
-                                output = source_color.outputs['Color']
+                                output = palette_blend.outputs['Color']
                             input = layer_blend.inputs[2]
                             sxmaterial.node_tree.links.new(input, output)
 
@@ -4643,7 +4684,7 @@ class SXTOOLS2_setup(object):
                                 input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface']
                                 sxmaterial.node_tree.links.new(input, output)
 
-                                output = source_color.outputs['Color']
+                                output = palette_blend.outputs['Color']
                                 input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface Color']
                                 sxmaterial.node_tree.links.new(input, output)
 
@@ -6520,7 +6561,7 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
 
     paletted: bpy.props.BoolProperty(
         name='Paletted Layer',
-        default=True,
+        default=False,
         update=lambda self, context: update_layer_props(self, context, 'paletted'))
 
     palette_index: bpy.props.IntProperty(
@@ -8154,6 +8195,8 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                 layer.layer_type = self.layer_type
                 if layer.layer_type in ['OCC', 'MET', 'RGH', 'TRN', 'CMP']:
                     layer.paletted = False
+                else:
+                    layer.paletted = True
                 layer.default_color = sxglobals.default_colors[self.layer_type]
 
                 # Create a color attribute for alpha materials if not in data
@@ -9338,5 +9381,3 @@ if __name__ == '__main__':
 #   - Smoothness vs. roughness
 #   - Metallic
 #   - Write any pbr atlas by iterating over color UVs
-# - Palette support to SSS and EMI
-
