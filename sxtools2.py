@@ -520,6 +520,32 @@ class SXTOOLS2_utils(object):
         return list(set(groups))
 
 
+    def get_selection_bounding_box(self, objs):
+        vert_pos_list = []
+        for obj in objs:
+            mesh = obj.data
+            mat = obj.matrix_world
+            for vert in mesh.vertices:
+                if vert.select:
+                    vert_pos_list.append(mat @ vert.co)
+
+        bbx = [[None, None], [None, None], [None, None]]
+        for i, fvPos in enumerate(vert_pos_list):
+            # first vert
+            if i == 0:
+                bbx[0][0] = bbx[0][1] = fvPos[0]
+                bbx[1][0] = bbx[1][1] = fvPos[1]
+                bbx[2][0] = bbx[2][1] = fvPos[2]
+            else:
+                for j in range(3):
+                    if fvPos[j] < bbx[j][0]:
+                        bbx[j][0] = fvPos[j]
+                    elif fvPos[j] > bbx[j][1]:
+                        bbx[j][1] = fvPos[j]
+
+        return bbx[0][0], bbx[0][1], bbx[1][0], bbx[1][1], bbx[2][0], bbx[2][1]
+
+
     def get_object_bounding_box(self, objs, local=False):
         bbx_x = []
         bbx_y = []
@@ -7880,7 +7906,7 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
             if obj.type == 'MESH':
                 mesh_objs.append(obj)
 
-        if len(mesh_objs[0].sx2layers) < 17:
+        if len(mesh_objs[0].data.color_attributes) < 14:
             enabled = True
 
         return enabled
@@ -8084,10 +8110,16 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
         alpha_mats = ['OCC', 'MET', 'RGH', 'TRN']
         objs = mesh_selection_validator(self, context)
         for obj in objs:
-            for layer in obj.sx2layers:
-                if (self.layer_type == layer.layer_type) and (self.layer_type != 'COLOR'):
+            layer = obj.sx2layers[obj.sx2.selectedlayer]
+
+            for sx2layer in obj.sx2layers:
+                if (self.layer_type == sx2layer.layer_type) and (self.layer_type != 'COLOR'):
                     message_box('Material channel already exists!')
                     return {'FINISHED'}
+
+            if (len(obj.data.color_attributes) == 14) and (layer.layer_type in alpha_mats) and (self.layer_type not in alpha_mats):
+                message_box('Layer stack at max, delete a color layer and try again.')
+                return {'FINISHED'}
 
             if len(obj.sx2layers) > 0:
                 if self.layer_type == 'OCC':
@@ -8107,14 +8139,13 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                 else:
                     name = self.layer_name
 
-                layer = obj.sx2layers[obj.sx2.selectedlayer]
-
                 if layer.layer_type == 'COLOR':
                     layer.name = name
                 else:
                     layer.name = 'Layer ' + str(obj.sx2.layercount)
 
                 source_colors = layers.get_layer(obj, layer)
+                source_type = layer.layer_type[:]
                 empty_check = generate.color_list(obj, layer.default_color, masklayer=layer)
 
                 layer.layer_type = self.layer_type
@@ -8136,6 +8167,8 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                 else:
                     # copy luminance to correct alpha channel
                     if layer.layer_type in alpha_mats:
+                        layers.set_layer(obj, source_colors, layer)
+                    elif (source_type in alpha_mats) and (layer.layer_type not in alpha_mats):
                         layers.set_layer(obj, source_colors, layer)
 
                 utils.sort_stack_indices(obj)
@@ -9300,7 +9333,5 @@ if __name__ == '__main__':
 #   - Smoothness vs. roughness
 #   - Metallic
 #   - Write any pbr atlas by iterating over color UVs
-# - Handle layer adding complexity (alphas vs rgba)
 # - Palette support to SSS and EMI
-# - Handle reversal from alpha material to colorlayer
 
