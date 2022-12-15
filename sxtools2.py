@@ -8144,9 +8144,12 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                 else:
                     layer.name = 'Layer ' + str(obj.sx2.layercount)
 
+                # juggle layer colors in case of layer type change
                 source_colors = layers.get_layer(obj, layer)
                 source_type = layer.layer_type[:]
                 empty_check = generate.color_list(obj, layer.default_color, masklayer=layer)
+                if (source_type in alpha_mats) and (self.layer_type not in alpha_mats):
+                    layers.clear_layers([obj, ], layer)
 
                 layer.layer_type = self.layer_type
                 if layer.layer_type in ['OCC', 'MET', 'RGH', 'TRN', 'CMP']:
@@ -8169,6 +8172,8 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     if layer.layer_type in alpha_mats:
                         layers.set_layer(obj, source_colors, layer)
                     elif (source_type in alpha_mats) and (layer.layer_type not in alpha_mats):
+                        obj.data.color_attributes.new(name=layer.name, type='FLOAT_COLOR', domain='CORNER')
+                        layer.color_attribute = layer.name
                         layers.set_layer(obj, source_colors, layer)
 
                 utils.sort_stack_indices(obj)
