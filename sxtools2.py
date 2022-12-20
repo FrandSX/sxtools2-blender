@@ -8881,15 +8881,20 @@ class SXTOOLS2_OT_generatelods(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        orgObjs = []
+        org_objs = []
 
         if len(objs) > 0:
             for obj in objs:
                 if '_LOD' not in obj.name:
-                    orgObjs.append(obj)
+                    org_objs.append(obj)
 
-        if len(orgObjs) > 0:
-            export.generate_lods(orgObjs)
+        if len(org_objs) > 0:
+            for obj in org_objs:
+                if obj.parent is None:
+                    obj.hide_viewport = False
+                    if obj.type == 'MESH':
+                        export.group_objects([obj, ])
+            export.generate_lods(org_objs)
         return {'FINISHED'}
 
 
@@ -9550,7 +9555,6 @@ if __name__ == '__main__':
 
 # TODO:
 # - save-pre-handler, save-post-handler
-# - Create lod meshes fails if object not grouped
 # - load category in a non-destructive way
 # - reset scene
 # - generate masks updated to dynamic layer stack
@@ -9561,6 +9565,7 @@ if __name__ == '__main__':
 #   - Metallic
 #   - Write any pbr atlas by iterating over color UVs
 # - magic processing
+#   - fix gradients for roughness
 # - rewrite validation functions according to current data structures, validate based on category
 # - import modifier settings
 # - fix auto-smooth errors (?!!)
