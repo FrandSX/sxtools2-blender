@@ -2409,6 +2409,7 @@ class SXTOOLS2_modifiers(object):
 
     def add_modifiers(self, objs):
         for obj in objs:
+            obj.data.use_auto_smooth = True
             if 'sxMirror' not in obj.modifiers:
                 obj.modifiers.new(type='MIRROR', name='sxMirror')
                 if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror:
@@ -2439,6 +2440,7 @@ class SXTOOLS2_modifiers(object):
                 tiler['Input_7'] = obj.sx2.tile_pos_z
                 tiler.show_viewport = False
                 tiler.show_expanded = False
+                obj.data.use_auto_smooth = True
             if 'sxSubdivision' not in obj.modifiers:
                 obj.modifiers.new(type='SUBSURF', name='sxSubdivision')
                 obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
@@ -3391,7 +3393,7 @@ class SXTOOLS2_magic(object):
             if obj.parent is None:
                 obj.hide_viewport = False
                 # viewlayer.objects.active = obj
-                tools.group_objects([obj, ])
+                export.group_objects([obj, ])
 
             # Make sure auto-smooth is on
             obj.data.use_auto_smooth = True
@@ -5174,9 +5176,6 @@ def update_modifiers(self, context, prop):
                 obj.data.use_auto_smooth = True
                 if 'sxMirror' in obj.modifiers:
                     obj.modifiers['sxMirror'].show_viewport = obj.sx2.modifiervisibility
-                if 'sxTiler' in obj.modifiers:
-                    if not obj.sx2.tiling:
-                        obj.modifiers['sxTiler'].show_viewport = False
                 if 'sxSubdivision' in obj.modifiers:
                     if (obj.sx2.subdivisionlevel == 0):
                         obj.modifiers['sxSubdivision'].show_viewport = False
@@ -5225,13 +5224,15 @@ def update_modifiers(self, context, prop):
                     else:
                         obj.modifiers['sxMirror'].show_viewport = False
 
-        elif prop == 'tiling':
+        elif (prop == 'tiling') or ('tile_' in prop):
             for obj in objs:
                 if 'sxTiler' not in obj.modifiers:
                     modifiers.remove_modifiers([obj, ])
                     modifiers.add_modifiers([obj, ])
                 elif obj.modifiers['sxTiler'].node_group != bpy.data.node_groups['sx_tiler']:
                     obj.modifiers['sxTiler'].node_group = bpy.data.node_groups['sx_tiler']
+
+                obj.modifiers['sxTiler'].show_viewport = obj.sx2.tile_preview
 
                 if obj.sx2.tiling:
                     utils.round_tiling_verts([obj, ])
@@ -5347,6 +5348,7 @@ def ext_category_lister(self, context, category):
 def load_category(self, context):
     objs = mesh_selection_validator(self, context)
     if len(objs) > 0:
+        active = context.view_layer.objects.active
         category_data = sxglobals.categoryDict[sxglobals.preset_lookup[objs[0].sx2.category]]
 
         for obj in objs:
@@ -5391,6 +5393,11 @@ def load_category(self, context):
             utils.sort_stack_indices(obj)
             context.view_layer.objects.active = None
             obj.select_set(False)
+
+        for obj in objs:
+            obj.select_set(True)
+
+        context.view_layer.objects.active = active
 
 
 def load_ramp(self, context):
@@ -5790,43 +5797,49 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         name='Tile X',
         description='Select required mirror directions',
         default=False,
-        update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        update=lambda self, context: update_modifiers(self, context, 'tile_pos_x'))
 
     tile_neg_x: bpy.props.BoolProperty(
         name='Tile -X',
         description='Select required mirror directions',
         default=False,
-        update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        update=lambda self, context: update_modifiers(self, context, 'tile_neg_x'))
 
     tile_pos_y: bpy.props.BoolProperty(
         name='Tile Y',
         description='Select required mirror directions',
         default=False,
-        update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        update=lambda self, context: update_modifiers(self, context, 'tile_pos_y'))
 
     tile_neg_y: bpy.props.BoolProperty(
         name='Tile -Y',
         description='Select required mirror directions',
         default=False,
-        update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        update=lambda self, context: update_modifiers(self, context, 'tile_neg_y'))
 
     tile_pos_z: bpy.props.BoolProperty(
         name='Tile Z',
         description='Select required mirror directions',
         default=False,
-        update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        update=lambda self, context: update_modifiers(self, context, 'tile_pos_z'))
 
     tile_neg_z: bpy.props.BoolProperty(
         name='Tile -Z',
         description='Select required mirror directions',
         default=False,
-        update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        update=lambda self, context: update_modifiers(self, context, 'tile_neg_z'))
 
     tile_offset: bpy.props.FloatProperty(
         name='Tile Offset',
         description='Adjust offset of mirror copies',
         default=0.0,
-        update=lambda self, context: update_modifiers(self, context, 'tiling'))
+        update=lambda self, context: update_modifiers(self, context, 'tile_offset'))
+
+    tile_preview: bpy.props.BoolProperty(
+        name='Tiling Preview',
+        description='Preview tiling in viewport',
+        default=False,
+        update=lambda self, context: update_modifiers(self, context, 'tile_preview'))
 
     weightednormals: bpy.props.BoolProperty(
         name='Weighted Normals',
@@ -6909,7 +6922,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_tiling = col_fill.row(align=False)
                             row_tiling.prop(sx2, 'tiling', text='Seamless Tiling')
                             if 'sxTiler' in obj.modifiers:
-                                row_tiling.prop(obj.modifiers['sxTiler'], 'show_viewport', text='Preview')
+                                preview_icon_dict = {True: 'RESTRICT_VIEW_OFF', False: 'RESTRICT_VIEW_ON'}
+                                row_tiling.prop(sx2, 'tile_preview', text='Preview', toggle=True, icon=preview_icon_dict[obj.sx2.tile_preview])
                             row_tiling1 = col_fill.row(align=False)
                             row_tiling1.prop(sx2, 'tile_offset', text='Tile Offset')
                             row_tiling2 = col_fill.row(align=True)
@@ -8648,11 +8662,7 @@ class SXTOOLS2_OT_hidemodifiers(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-
-        if objs[0].sx2.modifiervisibility is True:
-            objs[0].sx2.modifiervisibility = False
-        else:
-            objs[0].sx2.modifiervisibility = True
+        objs[0].sx2.modifiervisibility = not objs[0].sx2.modifiervisibility
 
         return {'FINISHED'}
 
