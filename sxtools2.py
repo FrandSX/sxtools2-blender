@@ -8765,7 +8765,7 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
                 if obj.parent is None:
                     obj.hide_viewport = False
                     if obj.type == 'MESH':
-                        tools.group_objects([obj, ])
+                        export.group_objects([obj, ])
 
             # Batch export only those that are marked ready
             if bpy.app.background:
@@ -9227,6 +9227,11 @@ class SXTOOLS2_OT_smart_separate(bpy.types.Operator):
                     sep_objs.append(obj)
 
         if len(sep_objs) > 0:
+            for obj in sep_objs:
+                if obj.parent is None:
+                    obj.hide_viewport = False
+                    if obj.type == 'MESH':
+                        export.group_objects([obj, ])
             export.smart_separate(sep_objs)
         else:
             message_box('No objects selected with Smart Separate enabled!')
@@ -9548,7 +9553,6 @@ if __name__ == '__main__':
 # - Create lod meshes fails if object not grouped
 # - load category in a non-destructive way
 # - reset scene
-# - smart separate fails if object not grouped
 # - generate masks updated to dynamic layer stack
 # - keymonitor does not start without creating an empty layer
 # - Atlas export settings:
