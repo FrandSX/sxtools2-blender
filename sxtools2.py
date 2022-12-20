@@ -9554,10 +9554,7 @@ if __name__ == '__main__':
     register()
 
 # TODO:
-# - save-pre-handler, save-post-handler
-# - load category in a non-destructive way
 # - reset scene
-# - generate masks updated to dynamic layer stack
 # - keymonitor does not start without creating an empty layer
 # - Atlas export settings:
 #   - Emission atlas -> emissive color in composite
@@ -9569,4 +9566,8 @@ if __name__ == '__main__':
 # - rewrite validation functions according to current data structures, validate based on category
 # - import modifier settings
 # - fix auto-smooth errors (?!!)
+# - generate masks updated to dynamic layer stack
+# - save-pre-handler, save-post-handler
+# - load category in a non-destructive way
+# - vertex bevel modifier?
 
