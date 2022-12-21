@@ -7180,9 +7180,6 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 # Export Module -------------------------------------------------
                 if prefs.enable_export:
                     box_export = layout.box()          
-                    box_export.operator('sx2.test_button', text='Composite and Export Atlas')
-                    box_export.operator('sx2.sxtosx2')
-
                     row_export = box_export.row()
                     row_export.prop(
                         scene, 'expandexport',
@@ -7191,10 +7188,12 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     row_export.prop(scene, 'exportmode', expand=True)
                     if scene.exportmode == 'MAGIC':
                         if scene.expandexport:
-                            row_cat = box_export.row(align=True)
+                            col_export = box_export.column(align=True)
+                            row_cat = col_export.row(align=True)
                             row_cat.label(text='Category:')
                             row_cat.prop(sx2, 'category', text='')
-                            col_export = box_export.column(align=False)
+
+                            col_export.separator()
                             col_export.prop(sx2, 'roughnessoverride', text='Override Palette Roughness', toggle=True)
                             if obj.sx2.roughnessoverride:
                                 row_override = col_export.row(align=True)
@@ -7203,13 +7202,29 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 row_override.prop(sx2, 'roughness2', text='Palette Color 2 Roughness')
                                 row_override.prop(sx2, 'roughness3', text='Palette Color 3 Roughness')
                                 row_override.prop(sx2, 'roughness4', text='Palette Color 4 Roughness')
-                            col_export.separator()
-                            split_export = col_export.split()
-                            split_export.label(text='Auto-pivot:')
-                            split_export.prop(sx2, 'pivotmode', text='')
-                            col_export.prop(sx2, 'smartseparate', text='Smart Separate on Export', toggle=True)
-                            col_export.prop(sx2, 'lodmeshes', text='Generate LOD Meshes', toggle=True)
+
+                            row_static = col_export.row(align=True)
+                            row_static.label(text='Vertex Colors:')
+                            row_static.prop(sx2, 'staticvertexcolors', text='')
+
+                            row_quality = col_export.row(align=True)
+                            row_quality.label(text='Bake Detail:')
+                            row_quality.prop(scene, 'exportquality', text='')
+
+                            row_pivot = col_export.row(align=True)
+                            row_pivot.label(text='Auto-Pivot:')
+                            row_pivot.prop(sx2, 'pivotmode', text='')
+
+                            row_separate = col_export.row(align=True)
+                            row_separate.label(text='Smart Separate on Export:')
+                            row_separate.prop(sx2, 'smartseparate', text='', toggle=False)
+
+                            row_lod = col_export.row(align=True)
+                            row_lod.label(text='Generate LOD Meshes:')
+                            row_lod.prop(sx2, 'lodmeshes', text='', toggle=False)
+
                             if hasattr(bpy.types, bpy.ops.object.vhacd.idname()):
+                                col_export.separator()
                                 col_export.prop(scene, 'exportcolliders', text='Generate Mesh Colliders (V-HACD)')
                                 if scene.exportcolliders:
                                     box_colliders = box_export.box()
@@ -7237,20 +7252,18 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                         col_colliders.prop(scene, 'minvolumeperhull', text='Min Volume Per Convex Hull', slider=True)
 
                             col_export.separator()
-                            row2_export = box_export.row(align=True)
-                            row2_export.prop(sx2, 'staticvertexcolors', text='')
-                            row2_export.prop(scene, 'exportquality', text='')
-                            col2_export = box_export.column(align=True)
                             if scene.shift:
-                                col2_export.operator('sx2.revertobjects', text='Revert to Control Cages')
+                                col_export.operator('sx2.revertobjects', text='Revert to Control Cages')
                             else:
-                                col2_export.operator('sx2.macro', text='Magic Button')
+                                col_export.operator('sx2.macro', text='Magic Button')
                             if ('ExportObjects' in bpy.data.collections.keys()) and (len(bpy.data.collections['ExportObjects'].objects) > 0):
-                                col2_export.operator('sx2.removeexports', text='Remove LODs and Parts')
+                                col_export.operator('sx2.removeexports', text='Remove LODs and Parts')
 
                     elif scene.exportmode == 'UTILS':
                         if scene.expandexport:
                             col_utils = box_export.column(align=False)
+                            col_utils.operator('sx2.test_button', text='Composite and Export Atlas')
+                            col_utils.operator('sx2.sxtosx2')
                             if scene.shift:
                                 group_text = 'Group Under World Origin'
                                 pivot_text = 'Set Pivots to Bbox Center'
