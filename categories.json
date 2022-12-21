@@ -39,8 +39,8 @@
             ["Transmission", "TRN", "ALPHA", 1.0, "None"],
             ["Emission", "EMI", "ALPHA", 1.0, "None"]
         ],
-        "roughness_override": 0,
-        "palette_roughness": [0.0, 0.0, 0.0, 0.0, 0.0],
+        "roughness_override": 1,
+        "palette_roughness": [1.0, 1.0, 1.0, 1.0, 1.0],
         "staticvertexcolors": 0,
         "blend": "OPAQUE",
         "uv_texture": "UVSet0",
@@ -106,7 +106,7 @@
             ["Emission", "EMI", "ALPHA", 1.0, "None"]
         ],
         "roughness_override": 1,
-        "palette_roughness": [0.0, 0.0, 0.0, 0.0, 0.0],
+        "palette_roughness": [0.8, 0.8, 0.8, 0.9, 0.9],
         "staticvertexcolors": 0,
         "blend": "OPAQUE",
         "uv_texture": "UVSet0",
