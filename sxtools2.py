@@ -48,7 +48,7 @@ class SXTOOLS2_sxglobals(object):
         self.prev_selection = []
         self.prev_component_selection = []
         self.ramp_dict = {}
-        self.categoryDict = {}
+        self.category_dict = {}
         self.preset_lookup = {}
         self.paletteDict = {}
         self.masterPaletteArray = []
@@ -111,8 +111,8 @@ class SXTOOLS2_files(object):
                         sxglobals.ramp_dict.clear()
                         sxglobals.ramp_dict = temp_dict
                     elif mode == 'categories':
-                        sxglobals.categoryDict.clear()
-                        sxglobals.categoryDict = temp_dict
+                        sxglobals.category_dict.clear()
+                        sxglobals.category_dict = temp_dict
 
                     input.close()
                 print(f'SX Tools: {mode} loaded from {filePath}')
@@ -173,9 +173,9 @@ class SXTOOLS2_files(object):
             swatchcount = 5
             sxlist = bpy.context.scene.sx2palettes
 
-        for categoryDict in swatcharray:
-            for category in categoryDict:
-                if len(categoryDict[category]) == 0:
+        for category_dict in swatcharray:
+            for category in category_dict:
+                if len(category_dict[category]) == 0:
                     item = sxlist.add()
                     item.name = 'Empty'
                     item.category = category
@@ -183,15 +183,15 @@ class SXTOOLS2_files(object):
                         incolor = [0.0, 0.0, 0.0, 1.0]
                         setattr(item, 'color'+str(i), incolor[:])
                 else:
-                    for entry in categoryDict[category]:
+                    for entry in category_dict[category]:
                         item = sxlist.add()
                         item.name = entry
                         item.category = category
                         for i in range(swatchcount):
                             incolor = [0.0, 0.0, 0.0, 1.0]
-                            incolor[0] = categoryDict[category][entry][i][0]
-                            incolor[1] = categoryDict[category][entry][i][1]
-                            incolor[2] = categoryDict[category][entry][i][2]
+                            incolor[0] = category_dict[category][entry][i][0]
+                            incolor[1] = category_dict[category][entry][i][1]
+                            incolor[2] = category_dict[category][entry][i][2]
                             setattr(item, 'color'+str(i), convert.srgb_to_linear(incolor))
 
 
@@ -793,8 +793,6 @@ class SXTOOLS2_convert(object):
 
 
     def uvs_to_colors(self, obj, layer_name, channel, invert=False, as_alpha=False, with_mask=False):
-
-        print('layer name:', layer_name, 'channel:', channel)
         uvs = layers.get_uvs(obj, layer_name, channel)
         if invert:
             for i, uv in enumerate(uvs):
@@ -1679,7 +1677,6 @@ class SXTOOLS2_layers(object):
 
     def get_uvs(self, obj, source, channel=None):
         channels = {'U': 0, 'V': 1}
-        print('source:', source)
         source_uvs = obj.data.uv_layers[source].data
         count = len(source_uvs)
         source_values = [None] * count * 2
@@ -3495,7 +3492,7 @@ class SXTOOLS2_magic(object):
         # Mandatory to update visibility?
         viewlayer.update()
 
-        categoryList = list(sxglobals.categoryDict.keys())
+        categoryList = list(sxglobals.category_dict.keys())
         categories = []
         for category in categoryList:
             categories.append(category.replace(" ", "_").upper())
@@ -3848,7 +3845,7 @@ class SXTOOLS2_magic(object):
             colors1 = generate.curvature_list(obj)
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
-            colors = tools.blend_values(colors1, colors, 'MUL', 1.0)
+            colors = tools.blend_values(colors1, colors, 'ADD', 0.1)
             # Combine previous mix with directional dust
             scene.ramplist = 'DIRECTIONALDUST'
             scene.dirAngle = 0.0
@@ -3857,7 +3854,7 @@ class SXTOOLS2_magic(object):
             colors1 = generate.direction_list(obj)
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
-            colors = tools.blend_values(colors1, colors, 'MUL', 1.0)
+            colors = tools.blend_values(colors1, colors, 'ADD', 0.2)
             # Emissives are smooth
             color = (0.0, 0.0, 0.0, 1.0)
             colors1 = generate.color_list(obj, color, obj.sx2layers['Emission'])
@@ -3969,7 +3966,7 @@ class SXTOOLS2_magic(object):
             colors1 = generate.direction_list(obj)
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
-            colors = tools.blend_values(colors1, colors, 'ADD', 0.1)
+            colors = tools.blend_values(colors1, colors, 'ADD', 0.2)
             # Emissives are smooth
             color = (0.0, 0.0, 0.0, 1.0)
             colors1 = generate.color_list(obj, color, obj.sx2layers['Emission'])
@@ -4056,6 +4053,11 @@ class SXTOOLS2_magic(object):
             bpy.context.scene.sx2materials[material].color1,
             bpy.context.scene.sx2materials[material].color2]
 
+        inverted_color = [None, None, None, 1.0]
+        for i in range(3):
+            inverted_color[i] = 1 - palette[2][i]
+        palette[2] = inverted_color
+
         for obj in objs:
             # Construct layer1-7 roughness base mask
             color = (obj.sx2.roughness0, obj.sx2.roughness0, obj.sx2.roughness0, 1.0)
@@ -4080,7 +4082,7 @@ class SXTOOLS2_magic(object):
             colors1 = generate.curvature_list(obj)
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
-            colors = tools.blend_values(colors1, colors, 'MUL', 1.0)
+            colors = tools.blend_values(colors1, colors, 'ADD', 0.1)
             # Combine previous mix with directional dust
             scene.ramplist = 'DIRECTIONALDUST'
             scene.dirAngle = 0.0
@@ -4089,7 +4091,7 @@ class SXTOOLS2_magic(object):
             colors1 = generate.direction_list(obj)
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
-            colors = tools.blend_values(colors1, colors, 'MUL', 1.0)
+            colors = tools.blend_values(colors1, colors, 'ADD', 0.2)
             # Emissives are smooth
             color = (0.0, 0.0, 0.0, 1.0)
             colors1 = generate.color_list(obj, color, obj.sx2layers['Emission'])
@@ -4194,7 +4196,7 @@ class SXTOOLS2_magic(object):
             colors1 = generate.direction_list(obj)
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
-            colors = tools.blend_values(colors1, colors, 'MUL', 1.0)
+            colors = tools.blend_values(colors1, colors, 'ADD', 0.2)
             # Write roughness
             layer = obj.sx2layers['Roughness']
             layers.set_layer(obj, colors, layer)
@@ -5349,7 +5351,7 @@ def load_category(self, context):
     objs = mesh_selection_validator(self, context)
     if len(objs) > 0:
         active = context.view_layer.objects.active
-        category_data = sxglobals.categoryDict[sxglobals.preset_lookup[objs[0].sx2.category]]
+        category_data = sxglobals.category_dict[sxglobals.preset_lookup[objs[0].sx2.category]]
 
         for obj in objs:
             obj.select_set(False)
@@ -5853,7 +5855,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
     category: bpy.props.EnumProperty(
         name='Category Presets',
         description='Select object category\nRenames layers to match',
-        items=lambda self, context: dict_lister(self, context, sxglobals.categoryDict),
+        items=lambda self, context: dict_lister(self, context, sxglobals.category_dict),
         update=lambda self, context: update_obj_props(self, context, 'category'))
 
     staticvertexcolors: bpy.props.EnumProperty(
@@ -6105,14 +6107,14 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         items=[
             ('COL', 'Color', ''),
             ('GRD', 'Gradient', ''),
+            ('PAL', 'Palette', ''),
+            ('MAT', 'Material', ''),
             ('NSE', 'Noise', ''),
             ('CRV', 'Curvature', ''),
             ('OCC', 'Ambient Occlusion', ''),
             ('THK', 'Mesh Thickness', ''),
             ('DIR', 'Directional', ''),
-            ('LUM', 'Luminance Remap', ''),
-            ('PAL', 'Palette', ''),
-            ('MAT', 'Material', '')],
+            ('LUM', 'Luminance Remap', '')],
         default='COL')
         # update=lambda self, context: expand_element(self, context, 'expandfill'))
 
@@ -6559,6 +6561,14 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
             ('LO', 'Low Detail', ''),
             ('HI', 'High Detail', '')],
         default='LO')
+
+    exportroughness: bpy.props.EnumProperty(
+        name='Roughness Mode',
+        description='Game engines may expect roughness or smoothness',
+        items=[
+            ('ROUGH', 'Roughness', ''),
+            ('SMOOTH', 'Smoothness', '')],
+        default='SMOOTH')
 
     exportfolder: bpy.props.StringProperty(
         name='Export Folder',
@@ -7033,9 +7043,9 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
                 # PBR Materials -------------------------------------------------
                 elif scene.toolmode == 'MAT':
-                    if sx2.selectedlayer > 7:
+                    if obj.sx2layers[sx2.selectedlayer].layer_type != 'COLOR':
                         if scene.expandfill:
-                            box_fill.label(text='Select Layer 1-7 to apply PBR materials')
+                            box_fill.label(text='Select a Color Layer to apply PBR materials')
                     else:
                         materials = context.scene.sx2materials
 
@@ -7203,6 +7213,10 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 row_override.prop(sx2, 'roughness3', text='Palette Color 3 Roughness')
                                 row_override.prop(sx2, 'roughness4', text='Palette Color 4 Roughness')
 
+                            row_smooth = col_export.row(align=True)
+                            row_smooth.label(text='Export roughness as:')
+                            row_smooth.prop(scene, 'exportroughness', text='')
+
                             row_static = col_export.row(align=True)
                             row_static.label(text='Vertex Colors:')
                             row_static.prop(sx2, 'staticvertexcolors', text='')
@@ -7328,6 +7342,10 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                         col_cataloguebuttons.enabled = False
 
                             col2_export = box_export.column(align=True)
+                            row_smooth = col2_export.row(align=True)
+                            row_smooth.label(text='Export roughness as:')
+                            row_smooth.prop(scene, 'exportroughness', text='')
+
                             col2_export.label(text='Export Folder:')
                             col2_export.prop(scene, 'exportfolder', text='')
 
@@ -7539,7 +7557,7 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
             sxglobals.modal_status = False
             return {'CANCELLED'}
 
-        if (len(sxglobals.masterPaletteArray) == 0) or (len(sxglobals.materialArray) == 0) or (len(sxglobals.ramp_dict) == 0) or (len(sxglobals.categoryDict) == 0):
+        if (len(sxglobals.masterPaletteArray) == 0) or (len(sxglobals.materialArray) == 0) or (len(sxglobals.ramp_dict) == 0) or (len(sxglobals.category_dict) == 0):
             sxglobals.librariesLoaded = False
             load_libraries(self, context)
             return {'PASS_THROUGH'}
@@ -7744,8 +7762,8 @@ class SXTOOLS2_OT_addpalettecategory(bpy.types.Operator):
 
     def execute(self, context):
         found = False
-        for i, categoryDict in enumerate(sxglobals.masterPaletteArray):
-            for category in categoryDict:
+        for i, category_dict in enumerate(sxglobals.masterPaletteArray):
+            for category in category_dict:
                 if category == self.paletteCategoryName.replace(" ", ""):
                     message_box('Palette Category Exists!')
                     found = True
@@ -7754,9 +7772,9 @@ class SXTOOLS2_OT_addpalettecategory(bpy.types.Operator):
         if not found:
             categoryName = self.paletteCategoryName.replace(" ", "")
             categoryEnum = categoryName.upper()
-            categoryDict = {categoryName: {}}
+            category_dict = {categoryName: {}}
 
-            sxglobals.masterPaletteArray.append(categoryDict)
+            sxglobals.masterPaletteArray.append(category_dict)
             files.save_file('palettes')
             files.load_file('palettes')
             context.scene.sx2.palettecategories = categoryEnum
@@ -7773,10 +7791,10 @@ class SXTOOLS2_OT_delpalettecategory(bpy.types.Operator):
         categoryEnum = context.scene.sx2.palettecategories[:]
         categoryName = sxglobals.preset_lookup[context.scene.sx2.palettecategories]
 
-        for i, categoryDict in enumerate(sxglobals.masterPaletteArray):
-            for category in categoryDict:
+        for i, category_dict in enumerate(sxglobals.masterPaletteArray):
+            for category in category_dict:
                 if category == categoryName:
-                    sxglobals.masterPaletteArray.remove(categoryDict)
+                    sxglobals.masterPaletteArray.remove(category_dict)
                     del sxglobals.preset_lookup[categoryEnum]
                     break
 
@@ -7805,8 +7823,8 @@ class SXTOOLS2_OT_addmaterialcategory(bpy.types.Operator):
 
     def execute(self, context):
         found = False
-        for i, categoryDict in enumerate(sxglobals.materialArray):
-            for category in categoryDict:
+        for i, category_dict in enumerate(sxglobals.materialArray):
+            for category in category_dict:
                 if category == self.materialCategoryName.replace(" ", ""):
                     message_box('Palette Category Exists!')
                     found = True
@@ -7815,9 +7833,9 @@ class SXTOOLS2_OT_addmaterialcategory(bpy.types.Operator):
         if not found:
             categoryName = self.materialCategoryName.replace(" ", "")
             categoryEnum = categoryName.upper()
-            categoryDict = {categoryName: {}}
+            category_dict = {categoryName: {}}
 
-            sxglobals.materialArray.append(categoryDict)
+            sxglobals.materialArray.append(category_dict)
             files.save_file('materials')
             files.load_file('materials')
             context.scene.sx2.materialcategories = categoryEnum
@@ -7834,10 +7852,10 @@ class SXTOOLS2_OT_delmaterialcategory(bpy.types.Operator):
         categoryEnum = context.scene.sx2.materialcategories[:]
         categoryName = sxglobals.preset_lookup[context.scene.sx2.materialcategories]
 
-        for i, categoryDict in enumerate(sxglobals.materialArray):
-            for category in categoryDict:
+        for i, category_dict in enumerate(sxglobals.materialArray):
+            for category in category_dict:
                 if category == categoryName:
-                    sxglobals.materialArray.remove(categoryDict)
+                    sxglobals.materialArray.remove(category_dict)
                     del sxglobals.preset_lookup[categoryEnum]
                     break
 
@@ -7870,10 +7888,10 @@ class SXTOOLS2_OT_addpalette(bpy.types.Operator):
         if paletteName in context.scene.sx2palettes:
             message_box('Palette Name Already in Use!')
         else:
-            for categoryDict in sxglobals.masterPaletteArray:
-                for i, category in enumerate(categoryDict.keys()):
+            for category_dict in sxglobals.masterPaletteArray:
+                for i, category in enumerate(category_dict.keys()):
                     if category.casefold() == context.scene.sx2.palettecategories.casefold():
-                        categoryDict[category][paletteName] = [
+                        category_dict[category][paletteName] = [
                             [
                                 scene.newpalette0[0],
                                 scene.newpalette0[1],
@@ -7918,9 +7936,9 @@ class SXTOOLS2_OT_delpalette(bpy.types.Operator):
         paletteName = self.label.replace(" ", "")
         category = context.scene.sx2palettes[paletteName].category
 
-        for i, categoryDict in enumerate(sxglobals.masterPaletteArray):
-            if category in categoryDict:
-                del categoryDict[category][paletteName]
+        for i, category_dict in enumerate(sxglobals.masterPaletteArray):
+            if category in category_dict:
+                del category_dict[category][paletteName]
 
         files.save_file('palettes')
         files.load_file('palettes')
@@ -7951,10 +7969,10 @@ class SXTOOLS2_OT_addmaterial(bpy.types.Operator):
         if materialName in context.scene.sx2materials:
             message_box('Material Name Already in Use!')
         else:
-            for categoryDict in sxglobals.materialArray:
-                for i, category in enumerate(categoryDict.keys()):
+            for category_dict in sxglobals.materialArray:
+                for i, category in enumerate(category_dict.keys()):
                     if category.casefold() == context.scene.sx2.materialcategories.casefold():
-                        categoryDict[category][materialName] = [
+                        category_dict[category][materialName] = [
                             [
                                 scene.newpalette0[0],
                                 scene.newpalette0[1],
@@ -7989,9 +8007,9 @@ class SXTOOLS2_OT_delmaterial(bpy.types.Operator):
         materialName = self.label.replace(" ", "")
         category = context.scene.sx2materials[materialName].category
 
-        for i, categoryDict in enumerate(sxglobals.materialArray):
-            if category in categoryDict:
-                del categoryDict[category][materialName]
+        for i, category_dict in enumerate(sxglobals.materialArray):
+            if category in category_dict:
+                del category_dict[category][materialName]
 
         files.save_file('materials')
         files.load_file('materials')
@@ -9310,6 +9328,30 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     context.view_layer.objects.active = obj
                     obj.select_set(True)
 
+                    # grab modifier values
+                    obj.sx2.smoothangle = obj['sxtools'].get('smoothangle', 180)
+                    obj.data.use_auto_smooth = True
+                    obj.sx2.subdivisionlevel = obj['sxtools'].get('subdivisionlevel', 0)
+                    mirror_obj_value = obj['sxtools'].get('mirrorobject', None)
+                    if type(mirror_obj_value) is None or type(mirror_obj_value) is bpy.types.Object:
+                        obj.sx2.mirrorobject = mirror_obj_value
+                    elif hasattr(mirror_obj_value, 'to_dict'):
+                        obj.sx2.mirrorobject = None
+                    obj.sx2.decimation = obj['sxtools'].get('decimation', 0)
+                    obj.sx2.weldthreshold = obj['sxtools'].get('weldthreshold', 0)
+                    obj.sx2.smartseparate = obj['sxtools'].get('smartseparate', False)
+                    obj.sx2.lodmeshes = obj['sxtools'].get('lodmeshes', False)
+                    obj.sx2.xmirror = obj['sxtools'].get('xmirror', False)
+                    obj.sx2.ymirror = obj['sxtools'].get('ymirror', False)
+                    obj.sx2.zmirror = obj['sxtools'].get('zmirror', False)
+                    obj.sx2.bevelwidth = obj['sxtools'].get('bevelwidth', 0.05)
+                    obj.sx2.bevelsegments = obj['sxtools'].get('bevelsegments', 2)
+                    obj.sx2.beveltype = obj['sxtools'].get('beveltype', 'WIDTH')
+                    hardmode_dict = {0: 'SHARP', 1: 'SMOOTH'}
+                    obj.sx2.hardmode = hardmode_dict[obj['sxtools'].get('hardmode', 0)]
+                    obj.sx2.staticvertexcolors = str(obj['sxtools'].get('staticvertexcolors', 1))
+                    obj.parent.sx2.exportready = obj.parent['sxtools'].get('exportready', False)
+
                     count = len(obj.data.color_attributes)
                     for i in range(count):
                         # omit legacy composite layer
@@ -9327,7 +9369,6 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     layers.add_layer([obj, ], name='Emission', layer_type='EMI')
 
                     for uv in obj.data.uv_layers:
-                        print('uv name:', uv.name)
                         if uv.name == 'UVSet0':
                             pass
                         elif uv.name == 'UVSet1':
@@ -9370,6 +9411,9 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
 
                 utils.mode_manager(objs, revert=True, mode_id='sxtosx2')
                 sxglobals.refresh_in_progress = False
+
+                categories = list(sxglobals.category_dict.keys())
+                objs[0].sx2.category = categories[obj['sxtools'].get('category', 0)].upper()
 
                 refresh_swatches(self, context)
 
@@ -9539,7 +9583,8 @@ def register():
     bpy.types.Scene.sx2materials = bpy.props.CollectionProperty(type=SXTOOLS2_material)
 
     bpy.app.handlers.load_post.append(load_post_handler)
-
+    bpy.app.handlers.save_pre.append(save_pre_handler)
+    bpy.app.handlers.save_post.append(save_post_handler)
 
 def unregister():
     from bpy.utils import unregister_class
@@ -9557,7 +9602,8 @@ def unregister():
     del bpy.types.Scene.sx2materials
 
     bpy.app.handlers.load_post.remove(load_post_handler)
-
+    bpy.app.handlers.save_pre.remove(save_pre_handler)
+    bpy.app.handlers.save_post.remove(save_post_handler)
 
 if __name__ == '__main__':
     try:
@@ -9566,21 +9612,18 @@ if __name__ == '__main__':
         pass
     register()
 
+
 # TODO:
-# - reset scene
+# - reset scene -> redundant?
 # - keymonitor does not start without creating an empty layer
 # - Atlas export settings:
 #   - Emission atlas -> emissive color in composite
 #   - Smoothness vs. roughness
 #   - Metallic
 #   - Write any pbr atlas by iterating over color UVs
-# - magic processing
-#   - fix gradients for roughness
 # - rewrite validation functions according to current data structures, validate based on category
-# - import modifier settings
 # - fix auto-smooth errors (?!!)
 # - generate masks updated to dynamic layer stack
-# - save-pre-handler, save-post-handler
 # - load category in a non-destructive way
 # - vertex bevel modifier?
-
+# - implement smoothness vs. roughness
