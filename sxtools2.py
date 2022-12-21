@@ -65,6 +65,9 @@ class SXTOOLS2_sxglobals(object):
             'CMP': (0.0, 0.0, 0.0, 0.0)
             }
 
+        # {layer_keys: (index, obj)}
+        self.sx2material_dict = {}
+
         # {obj.name: {stack_layer_index: (layer.name, layer.color_attribute, layer.layer_type)}}
         self.layer_stack_dict = {}
 
@@ -394,6 +397,13 @@ class SXTOOLS2_utils(object):
                     bpy.context.view_layer.objects.active = objs[0]
                 bpy.ops.object.mode_set(mode=sxglobals.mode)
                 sxglobals.modeID = None
+
+
+    def find_sx2material_name(self, obj):
+        if tuple(obj.sx2layers.keys()) in sxglobals.sx2material_dict:
+            return 'SX2Material_' + sxglobals.sx2material_dict[tuple(obj.sx2layers.keys())][1].name
+        else:
+            return None
 
 
     def find_layer_by_stack_index(self, obj, index):
@@ -4858,13 +4868,17 @@ class SXTOOLS2_setup(object):
                 if 'sx2layers' in obj.keys():
                     sx_mat_objs.append(obj)
 
+            for obj in sx_mat_objs:
+                if tuple(obj.sx2layers.keys()) not in sxglobals.sx2material_dict.keys():
+                    sxglobals.sx2material_dict[tuple(obj.sx2layers.keys())] = (len(sxglobals.sx2material_dict), obj)
+
             sx_mats = []
             for obj in sx_mat_objs:
                 utils.sort_stack_indices(obj)
                 if obj.active_material is not None:
                     sx_mat = bpy.data.materials.get(obj.active_material.name)
                     obj.data.materials.clear()
-                    if ('SX2Material_' + obj.name) == sx_mat.name:
+                    if ('SX2Material_' in sx_mat.name) and (sx_mat not in sx_mats):
                         sx_mats.append(sx_mat)
 
             if len(sx_mats) > 0:
@@ -4874,11 +4888,15 @@ class SXTOOLS2_setup(object):
 
             bpy.context.view_layer.update()
 
-            setup.create_sx2material(sx_mat_objs)
+            ref_objs = []
+            for value in sxglobals.sx2material_dict.values():
+                ref_objs.append(value[1])
+
+            setup.create_sx2material(ref_objs)
 
             for obj in sx_mat_objs:
-                if len(obj.sx2layers) > 0:
-                    obj.active_material = bpy.data.materials['SX2Material_' + obj.name]
+                if (len(obj.sx2layers) > 0) and (tuple(obj.sx2layers.keys()) in sxglobals.sx2material_dict):
+                    obj.active_material = bpy.data.materials[utils.find_sx2material_name(obj)]
 
 
     # TODO: Update to sx2 parameters
@@ -5041,7 +5059,7 @@ def update_paletted_layers(self, context, index):
             for layer in obj.sx2layers:
                 if layer.paletted:
                     color = getattr(scene, 'newpalette'+str(layer.palette_index))
-                    bpy.data.materials['SX2Material_'+obj.name].node_tree.nodes['PaletteColor' + str(layer.name)].outputs[0].default_value = color[:]
+                    bpy.data.materials[utils.find_sx2material_name(obj)].node_tree.nodes['PaletteColor' + str(layer.name)].outputs[0].default_value = color[:]
 
     # refresh_swatches(self, context)
 
@@ -5159,14 +5177,14 @@ def update_material_props(self, context):
                     opacity_vector.append(1.0)
                 setattr(obj.sx2, 'material_opacity_list_' + str(i), opacity_vector)
 
-            if 'SX2Material_'+obj.name in bpy.data.materials:
-                bpy.data.materials['SX2Material_'+obj.name].blend_method = 'OPAQUE'
-                bpy.data.materials['SX2Material_'+obj.name].use_backface_culling = False
+            if (utils.find_sx2material_name(obj)) is not None and (utils.find_sx2material_name(obj) in bpy.data.materials):
+                bpy.data.materials[utils.find_sx2material_name(obj)].blend_method = 'OPAQUE'
+                bpy.data.materials[utils.find_sx2material_name(obj)].use_backface_culling = False
 
                 # for layer in obj.sx2layers:
                 #     if (layer.index == 0) and (layer.opacity < 1.0):
-                #         bpy.data.materials['SX2Material_'+obj.name].blend_method = 'BLEND'
-                #         bpy.data.materials['SX2Material_'+obj.name].use_backface_culling = True
+                #         bpy.data.materials['utils.find_sx2material_name(obj)].blend_method = 'BLEND'
+                #         bpy.data.materials[utils.find_sx2material_name(obj)].use_backface_culling = True
 
 
 def update_modifiers(self, context, prop):
@@ -5386,11 +5404,11 @@ def load_category(self, context):
             obj.sx2.roughness4 = category_data['palette_roughness'][4]
             obj.sx2.selectedlayer = 1
 
-            # bpy.data.materials['SX2Material_' + obj.name].blend_method = category_data['blend']
+            # bpy.data.materials[utils.find_sx2material_name(obj)].blend_method = category_data['blend']
             # if category_data['blend'] == 'BLEND':
-            #     bpy.data.materials['SX2Material_' + obj.name].use_backface_culling = True
+            #     bpy.data.materials[utils.find_sx2material_name(obj)].use_backface_culling = True
             # else:
-            #     bpy.data.materials['SX2Material_' + obj.name].use_backface_culling = False
+            #     bpy.data.materials[utils.find_sx2material_name(obj)].use_backface_culling = False
 
             utils.sort_stack_indices(obj)
             context.view_layer.objects.active = None
@@ -5533,6 +5551,8 @@ def update_layer_props(self, context, prop):
         setup.update_sx2material(context)
     elif prop == 'opacity':
         update_material_props(self, context)
+    elif prop == 'palette_index':
+        update_paletted_layers(self, context, None)
 
 
 def export_validator(self, context):
@@ -5660,7 +5680,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
         default=0.0,
-        update=lambda self, context: update_obj_props(self, context, 'shadingmode'))
+        update=lambda self, context: update_obj_props(self, context, 'palettedshading'))
 
     # Running index for unique layer names
     layercount: bpy.props.IntProperty(
@@ -6661,7 +6681,7 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
         min = 0,
         max = 4,
         default=0,
-        update=lambda self, context: update_paletted_layers(self, context, None))
+        update=lambda self, context: update_layer_props(self, context, 'palette_index'))
 
 
 class SXTOOLS2_masterpalette(bpy.types.PropertyGroup):
@@ -9340,6 +9360,8 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     obj.sx2.decimation = obj['sxtools'].get('decimation', 0)
                     obj.sx2.weldthreshold = obj['sxtools'].get('weldthreshold', 0)
                     obj.sx2.smartseparate = obj['sxtools'].get('smartseparate', False)
+                    pivot_dict = {0: 'OFF', 1: 'MASS', 2: 'BBOX', 3: 'ROOT', 4: 'ORG', 5: 'PAR'}
+                    obj.sx2.pivotmode = pivot_dict[obj['sxtools'].get('pivotmode', 0)]
                     obj.sx2.lodmeshes = obj['sxtools'].get('lodmeshes', False)
                     obj.sx2.xmirror = obj['sxtools'].get('xmirror', False)
                     obj.sx2.ymirror = obj['sxtools'].get('ymirror', False)
@@ -9626,4 +9648,9 @@ if __name__ == '__main__':
 # - generate masks updated to dynamic layer stack
 # - load category in a non-destructive way
 # - vertex bevel modifier?
-# - implement smoothness vs. roughness
+# - implement smoothness vs. roughness export value support
+# - load libraries automatically on scene load?
+# - optimize synced layersets to use the same material
+#   - clean-up for sxglobals.sx2_material_dict
+#   - only create a single material in debug and alpha mode
+# - import step: remove redundant obj props and sxMaterial
