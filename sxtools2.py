@@ -274,7 +274,7 @@ class SXTOOLS2_files(object):
 
                 # Create palette masks
                 export.generate_palette_masks(objArray)
-                export.generate_material_channels(objArray)
+                export.generate_uv_channels(objArray)
 
                 for obj in objArray:
                     bpy.context.view_layer.objects.active = obj
@@ -818,6 +818,13 @@ class SXTOOLS2_convert(object):
                 values[(0+i*4):(4+i*4)] = [uvs[i], uvs[i], uvs[i], alpha]
             else:
                 values[(0+i*4):(4+i*4)] = self.luminance_to_color(uvs[i])
+        return values
+
+
+    def invert_values(self, values):
+        for i, value in enumerate(values):
+            values[i] = 1.0 - value
+
         return values
 
 
@@ -2993,45 +3000,58 @@ class SXTOOLS2_export(object):
 
 
     def generate_uv_channels(self, objs):
+        prefs = bpy.context.preferences.addons['sxtools2'].preferences
         for obj in objs:
+            # Clear all export uvlayers, UVSet0 reserved for texture UVs.
+            to_delete = []
+            for uvlayer in obj.data.uv_layers:
+                if uvlayer.name != 'UVSet0':
+                    to_delete.append(uvlayer.name[:])
+            if len(to_delete) > 0:
+                for uvlayer_name in to_delete:
+                    obj.data.uv_layers.remove(obj.data.uv_layers[uvlayer_name])
+
+            for i in range(7):
+                uvmap = 'UVSet' + str(i)
+                if uvmap not in obj.data.uv_layers.keys():
+                    obj.data.uv_layers.new(name=uvmap)
+
             for layer in obj.sx2layers:
                 if layer.layer_type != 'COLOR':
                     channel_name = 'uv_' + layer.name.lower()
                     uvmap, target_channel = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]][channel_name]
 
-                    if uvmap not in obj.data.uv_layers.keys():
-                        obj.data.uv_layers.new(name=uvmap)
-
+                    # Take layer opacity into account
                     values = layers.get_luminances(obj, layer)
+                    values = [value * layer.opacity for value in values]
+
+                    if (prefs.exportroughness =='SMOOTH') and (layer.layer_type == 'RGH'):
+                        values = convert.invert_values(values)
                     layers.set_uvs(obj, uvmap, values, target_channel)
 
                 elif 'Gradient' in layer.name:
                     channel_name = 'uv_' + layer.name.lower()
                     uvmap, target_channel = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]][channel_name]
 
-                    if uvmap not in obj.data.uv_layers.keys():
-                        obj.data.uv_layers.new(name=uvmap)
+                    values, empty = layers.get_layer_mask(obj, layer)
+                    if not empty:
+                        values = [value * layer.opacity for value in values]
 
-                    values = layers.get_layer_mask(obj, layer)
                     layers.set_uvs(obj, uvmap, values, target_channel)
 
                 elif layer.name == 'Overlay':
+                    channel_name = 'uv_' + layer.name.lower()
                     target0, target1 = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]][channel_name]
                     colors = layers.get_colors(obj, obj.sx2layers['Overlay'].color_attribute)
                     values0 = generate.empty_list(obj, 2)
                     values1 = generate.empty_list(obj, 2)
 
-                    if target0 not in obj.data.uv_layers.keys():
-                        obj.data.uv_layers.new(name=target0)
-                    if target1 not in obj.data.uv_layers.keys():
-                        obj.data.uv_layers.new(name=target1)
-
                     count = len(values0)//2
                     for i in range(count):
                         [values0[(0+i*2)], values0[(1+i*2)], values1[(0+i*2)], values1[(1+i*2)]] = colors[(0+i*4):(4+i*4)]
 
-                    self.set_uvs(obj, target0, values0, None)
-                    self.set_uvs(obj, target1, values1, None)
+                    layers.set_uvs(obj, target0, values0, None)
+                    layers.set_uvs(obj, target1, values1, None)
 
 
     def flatten_alphas(self, objs):
@@ -6637,14 +6657,6 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
             ('HI', 'High Detail', '')],
         default='LO')
 
-    exportroughness: bpy.props.EnumProperty(
-        name='Roughness Mode',
-        description='Game engines may expect roughness or smoothness',
-        items=[
-            ('ROUGH', 'Roughness', ''),
-            ('SMOOTH', 'Smoothness', '')],
-        default='SMOOTH')
-
     exportfolder: bpy.props.StringProperty(
         name='Export Folder',
         description='Folder to export FBX files to',
@@ -7288,10 +7300,6 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 row_override.prop(sx2, 'roughness3', text='Palette Color 3 Roughness')
                                 row_override.prop(sx2, 'roughness4', text='Palette Color 4 Roughness')
 
-                            row_smooth = col_export.row(align=True)
-                            row_smooth.label(text='Export roughness as:')
-                            row_smooth.prop(scene, 'exportroughness', text='')
-
                             row_static = col_export.row(align=True)
                             row_static.label(text='Vertex Colors:')
                             row_static.prop(sx2, 'staticvertexcolors', text='')
@@ -7417,10 +7425,6 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                         col_cataloguebuttons.enabled = False
 
                             col2_export = box_export.column(align=True)
-                            row_smooth = col2_export.row(align=True)
-                            row_smooth.label(text='Export roughness as:')
-                            row_smooth.prop(scene, 'exportroughness', text='')
-
                             col2_export.label(text='Export Folder:')
                             col2_export.prop(scene, 'exportfolder', text='')
 
@@ -7537,6 +7541,14 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
             ('LIN', 'Linear', '')],
         default='LIN')
 
+    exportroughness: bpy.props.EnumProperty(
+        name='Roughness Mode',
+        description='Game engines may expect roughness or smoothness',
+        items=[
+            ('ROUGH', 'Roughness', ''),
+            ('SMOOTH', 'Smoothness', '')],
+        default='SMOOTH')
+
     removelods: bpy.props.BoolProperty(
         name='Remove LOD Meshes After Export',
         description='Remove LOD meshes from the scene after exporting to FBX',
@@ -7578,9 +7590,12 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
         layout_split_modules_2 = layout_split_modules_1.split()
         layout_split_modules_2.prop(self, 'enable_modifiers', toggle=True)
         layout_split_modules_2.prop(self, 'enable_export', toggle=True)
-        layout_split4 = layout.split()
-        layout_split4.label(text='FBX Export Color Space:')
-        layout_split4.prop(self, 'exportspace', text='')
+        layout_split_colorspace = layout.split()
+        layout_split_colorspace.label(text='FBX Export Color Space:')
+        layout_split_colorspace.prop(self, 'exportspace', text='')
+        layout_split_roughness = layout.split()
+        layout_split_roughness.label(text='Export roughness as:')
+        layout_split_roughness.prop(self, 'exportroughness', text='')
         layout_split5 = layout.split()
         layout_split5.label(text='LOD Mesh Preview Z-Offset')
         layout_split5.prop(self, 'lodoffset', text='')
@@ -9361,6 +9376,7 @@ class SXTOOLS2_OT_generatemasks(bpy.types.Operator):
         objs = mesh_selection_validator(self, context)
         if len(objs) > 0:
             export.generate_palette_masks(objs)
+            export.generate_uv_channels(objs)
             # export.flatten_alphas(objs)
         return {'FINISHED'}
 
@@ -9701,12 +9717,11 @@ if __name__ == '__main__':
 #   - Write any pbr atlas by iterating over color UVs
 # - rewrite validation functions according to current data structures, validate based on category
 # - fix auto-smooth errors (?!!)
-# - generate masks updated to dynamic layer stack
 # - load category in a non-destructive way
-# - implement smoothness vs. roughness export value support
 # - load libraries automatically on scene load?
 # - optimize synced layersets to use the same material
 #   - clean-up for sxglobals.sx2_material_dict
 #   - only create a single material in debug and alpha mode
 # - import step: remove redundant obj props and sxMaterial
 # - optimize load_category -> block material updates
+# - layer opacity included in compositing and uv exporting
