@@ -1480,8 +1480,7 @@ class SXTOOLS2_layers(object):
                     item.color_attribute = 'Alpha Materials'
                 item.layer_type = 'COLOR' if layer_type is None else layer_type
                 item.default_color = sxglobals.default_colors[item.layer_type]
-                if layer_type in alpha_mats:
-                    item.paletted = False
+                # item.paletted is False by default
 
                 if layer_type not in alpha_mats:
                     if color_attribute not in obj.data.color_attributes.keys():
@@ -4870,6 +4869,14 @@ class SXTOOLS2_setup(object):
 
             for obj in sx_mat_objs:
                 if tuple(obj.sx2layers.keys()) not in sxglobals.sx2material_dict.keys():
+                    del_list = []
+                    for key, value in sxglobals.sx2material_dict.items():
+                        if obj == value[1]:
+                            del_list.append(key)
+                    if len(del_list) > 0:
+                        for key in del_list:
+                            del sxglobals.sx2material_dict[key]
+
                     sxglobals.sx2material_dict[tuple(obj.sx2layers.keys())] = (len(sxglobals.sx2material_dict), obj)
 
             sx_mats = []
@@ -4884,7 +4891,7 @@ class SXTOOLS2_setup(object):
             if len(sx_mats) > 0:
                 for sx_mat in sx_mats:
                     sx_mat.user_clear()
-                    bpy.data.materials.remove(sx_mat)
+                    bpy.data.materials.remove(sx_mat, do_unlink=True)
 
             bpy.context.view_layer.update()
 
@@ -5059,9 +5066,10 @@ def update_paletted_layers(self, context, index):
             for layer in obj.sx2layers:
                 if layer.paletted:
                     color = getattr(scene, 'newpalette'+str(layer.palette_index))
-                    bpy.data.materials[utils.find_sx2material_name(obj)].node_tree.nodes['PaletteColor' + str(layer.name)].outputs[0].default_value = color[:]
-
-    # refresh_swatches(self, context)
+                    # If update_paletted_layers is called during object category change, materials may not exist
+                    mat_name = utils.find_sx2material_name(obj)
+                    if mat_name is not None:
+                        bpy.data.materials[mat_name].node_tree.nodes['PaletteColor' + str(layer.name)].outputs[0].default_value = color[:]
 
 
 def update_material_layer(self, context, index):
@@ -5370,6 +5378,7 @@ def load_category(self, context):
     if len(objs) > 0:
         active = context.view_layer.objects.active
         category_data = sxglobals.category_dict[sxglobals.preset_lookup[objs[0].sx2.category]]
+        sxglobals.magic_in_progress = True
 
         for obj in objs:
             obj.select_set(False)
@@ -5417,6 +5426,7 @@ def load_category(self, context):
         for obj in objs:
             obj.select_set(True)
 
+        sxglobals.magic_in_progress = False
         context.view_layer.objects.active = active
 
 
@@ -9339,15 +9349,14 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
         if len(objs) > 0:
             if not sxglobals.refresh_in_progress:
                 sxglobals.refresh_in_progress = True
+                sxglobals.magic_in_progress = True
+                if not sxglobals.librariesLoaded:
+                    load_libraries(self, context)
 
                 utils.mode_manager(objs, set_mode=True, mode_id='sxtosx2')
                 for obj in objs:
-                    obj.select_set(False)
-
-                for obj in objs:
                     context.view_layer.objects.active = obj
-                    obj.select_set(True)
-
+                    print('1 - Modifiers starting')
                     # grab modifier values
                     obj.sx2.smoothangle = obj['sxtools'].get('smoothangle', 180)
                     obj.data.use_auto_smooth = True
@@ -9368,18 +9377,21 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     obj.sx2.zmirror = obj['sxtools'].get('zmirror', False)
                     obj.sx2.bevelwidth = obj['sxtools'].get('bevelwidth', 0.05)
                     obj.sx2.bevelsegments = obj['sxtools'].get('bevelsegments', 2)
-                    obj.sx2.beveltype = obj['sxtools'].get('beveltype', 'WIDTH')
+                    bevel_dict = {0: 'OFFSET', 1: 'WIDTH', 2: 'DEPTH', 3: 'PERCENT', 4: 'ABSOLUTE'}
+                    obj.sx2.beveltype = bevel_dict[obj['sxtools'].get('beveltype', 1)]
                     hardmode_dict = {0: 'SHARP', 1: 'SMOOTH'}
                     obj.sx2.hardmode = hardmode_dict[obj['sxtools'].get('hardmode', 0)]
                     obj.sx2.staticvertexcolors = str(obj['sxtools'].get('staticvertexcolors', 1))
                     obj.parent.sx2.exportready = obj.parent['sxtools'].get('exportready', False)
 
+                    print('2 - Creating Color layers')
                     count = len(obj.data.color_attributes)
                     for i in range(count):
                         # omit legacy composite layer
                         if i > 0:
                             layers.add_layer([obj, ], name='Layer '+str(i), layer_type='COLOR', color_attribute='VertexColor'+str(i), clear=False)
 
+                    print('3 - Creating additional layers')
                     layers.add_layer([obj, ], name='Gradient 1', layer_type='COLOR')
                     layers.add_layer([obj, ], name='Gradient 2', layer_type='COLOR')
                     layers.add_layer([obj, ], name='Overlay', layer_type='COLOR')
@@ -9390,6 +9402,7 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     layers.add_layer([obj, ], name='Transmission', layer_type='TRN')
                     layers.add_layer([obj, ], name='Emission', layer_type='EMI')
 
+                    print('4 - Migrating UV data to layers')
                     for uv in obj.data.uv_layers:
                         if uv.name == 'UVSet0':
                             pass
@@ -9422,21 +9435,21 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                             # grab overlay BA
                             pass
 
-                    obj.select_set(False)
-
-                for obj in objs:
-                    obj.select_set(True)
-
+                print('5 - Removing modifiers')
                 modifiers.remove_modifiers(objs)
                 if ('sx_tiler' in bpy.data.node_groups):
                     bpy.data.node_groups.remove(bpy.data.node_groups['sx_tiler'], do_unlink=True)
 
-                utils.mode_manager(objs, revert=True, mode_id='sxtosx2')
                 sxglobals.refresh_in_progress = False
 
+                print('6 - Assigning category')
                 categories = list(sxglobals.category_dict.keys())
                 objs[0].sx2.category = categories[obj['sxtools'].get('category', 0)].upper()
 
+                utils.mode_manager(objs, revert=True, mode_id='sxtosx2')
+
+                sxglobals.magic_in_progress = False
+                setup.update_sx2material(context)
                 refresh_swatches(self, context)
 
         return {'FINISHED'}
@@ -9654,3 +9667,4 @@ if __name__ == '__main__':
 #   - clean-up for sxglobals.sx2_material_dict
 #   - only create a single material in debug and alpha mode
 # - import step: remove redundant obj props and sxMaterial
+# - optimize load_category -> block material updates
