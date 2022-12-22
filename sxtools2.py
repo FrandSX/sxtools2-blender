@@ -5586,6 +5586,7 @@ def export_validator(self, context):
 @persistent
 def load_post_handler(dummy):
     sxglobals.layer_stack_dict.clear()
+    sxglobals.sx2material_dict.clear()
     sxglobals.librariesLoaded = False
 
     if bpy.data.scenes['Scene'].sx2.rampmode == '':
@@ -9356,7 +9357,7 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                 utils.mode_manager(objs, set_mode=True, mode_id='sxtosx2')
                 for obj in objs:
                     context.view_layer.objects.active = obj
-                    print('1 - Modifiers starting')
+                    print('SX Tools: Converting', obj.name)
                     # grab modifier values
                     obj.sx2.smoothangle = obj['sxtools'].get('smoothangle', 180)
                     obj.data.use_auto_smooth = True
@@ -9384,14 +9385,12 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     obj.sx2.staticvertexcolors = str(obj['sxtools'].get('staticvertexcolors', 1))
                     obj.parent.sx2.exportready = obj.parent['sxtools'].get('exportready', False)
 
-                    print('2 - Creating Color layers')
                     count = len(obj.data.color_attributes)
                     for i in range(count):
                         # omit legacy composite layer
                         if i > 0:
                             layers.add_layer([obj, ], name='Layer '+str(i), layer_type='COLOR', color_attribute='VertexColor'+str(i), clear=False)
 
-                    print('3 - Creating additional layers')
                     layers.add_layer([obj, ], name='Gradient 1', layer_type='COLOR')
                     layers.add_layer([obj, ], name='Gradient 2', layer_type='COLOR')
                     layers.add_layer([obj, ], name='Overlay', layer_type='COLOR')
@@ -9402,7 +9401,6 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     layers.add_layer([obj, ], name='Transmission', layer_type='TRN')
                     layers.add_layer([obj, ], name='Emission', layer_type='EMI')
 
-                    print('4 - Migrating UV data to layers')
                     for uv in obj.data.uv_layers:
                         if uv.name == 'UVSet0':
                             pass
@@ -9435,14 +9433,14 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                             # grab overlay BA
                             pass
 
-                print('5 - Removing modifiers')
                 modifiers.remove_modifiers(objs)
                 if ('sx_tiler' in bpy.data.node_groups):
                     bpy.data.node_groups.remove(bpy.data.node_groups['sx_tiler'], do_unlink=True)
+                modifiers.add_modifiers(objs)
 
                 sxglobals.refresh_in_progress = False
 
-                print('6 - Assigning category')
+                print('SX Tools: Assigning category to converted objects')
                 categories = list(sxglobals.category_dict.keys())
                 objs[0].sx2.category = categories[obj['sxtools'].get('category', 0)].upper()
 
