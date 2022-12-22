@@ -273,7 +273,8 @@ class SXTOOLS2_files(object):
                 empty = False
 
                 # Create palette masks
-                layers.generate_palette_masks(objArray)
+                export.generate_palette_masks(objArray)
+                export.generate_material_channels(objArray)
 
                 for obj in objArray:
                     bpy.context.view_layer.objects.active = obj
@@ -1648,8 +1649,8 @@ class SXTOOLS2_layers(object):
             return values, True
 
 
-    def get_colors(self, obj, source):
-        source_colors = obj.data.color_attributes[source].data
+    def get_colors(self, obj, source_name):
+        source_colors = obj.data.color_attributes[source_name].data
         colors = [None] * len(source_colors) * 4
         source_colors.foreach_get('color', colors)
         return colors
@@ -2963,7 +2964,7 @@ class SXTOOLS2_export(object):
 
 
     # Generate 1-bit layer masks for color layers
-    # so the faces can be re-colored in a game engine
+    # so the faces can be re-colored in a game engine.
     # Brush tools may leave low alpha values that break
     # palettemasks, alpha_tolerance can be used to fix this.
     # The default setting accepts only fully opaque values.
@@ -2972,10 +2973,11 @@ class SXTOOLS2_export(object):
 
         for obj in objs:
             layers = utils.find_color_layers(obj)
+            uvmap, target_channel = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]['uv_palette_masks']
+            if uvmap not in obj.data.uv_layers.keys():
+                obj.data.uv_layers.new(name=uvmap)
 
             for layer in layers:
-                uvmap = obj.sx2.uvmap_palette_masks
-                target_channel = obj.sx2.uvchannel_palette_masks
                 for poly in obj.data.polygons:
                     for idx in poly.loop_indices:
                         for i, layer in enumerate(layers):
@@ -2988,6 +2990,48 @@ class SXTOOLS2_export(object):
                                         obj.data.uv_layers[uvmap].data[idx].uv[channels[target_channel]] = layer.palette_index + 1
                                     else:
                                         obj.data.uv_layers[uvmap].data[idx].uv[channels[target_channel]] = 0
+
+
+    def generate_uv_channels(self, objs):
+        for obj in objs:
+            for layer in obj.sx2layers:
+                if layer.layer_type != 'COLOR':
+                    channel_name = 'uv_' + layer.name.lower()
+                    uvmap, target_channel = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]][channel_name]
+
+                    if uvmap not in obj.data.uv_layers.keys():
+                        obj.data.uv_layers.new(name=uvmap)
+
+                    values = layers.get_luminances(obj, layer)
+                    layers.set_uvs(obj, uvmap, values, target_channel)
+
+                elif 'Gradient' in layer.name:
+                    channel_name = 'uv_' + layer.name.lower()
+                    uvmap, target_channel = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]][channel_name]
+
+                    if uvmap not in obj.data.uv_layers.keys():
+                        obj.data.uv_layers.new(name=uvmap)
+
+                    values = layers.get_layer_mask(obj, layer)
+                    layers.set_uvs(obj, uvmap, values, target_channel)
+
+                elif layer.name == 'Overlay':
+                    target0, target1 = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]][channel_name]
+                    colors = layers.get_colors(obj, obj.sx2layers['Overlay'].color_attribute)
+                    values0 = generate.empty_list(obj, 2)
+                    values1 = generate.empty_list(obj, 2)
+
+                    if target0 not in obj.data.uv_layers.keys():
+                        obj.data.uv_layers.new(name=target0)
+                    if target1 not in obj.data.uv_layers.keys():
+                        obj.data.uv_layers.new(name=target1)
+
+                    count = len(values0)//2
+                    for i in range(count):
+                        [values0[(0+i*2)], values0[(1+i*2)], values1[(0+i*2)], values1[(1+i*2)]] = colors[(0+i*4):(4+i*4)]
+
+                    self.set_uvs(obj, target0, values0, None)
+                    self.set_uvs(obj, target1, values1, None)
 
 
     def flatten_alphas(self, objs):
@@ -9647,6 +9691,7 @@ if __name__ == '__main__':
 
 
 # TODO:
+# - vertex bevel modifier?
 # - reset scene -> redundant?
 # - keymonitor does not start without creating an empty layer
 # - Atlas export settings:
@@ -9658,7 +9703,6 @@ if __name__ == '__main__':
 # - fix auto-smooth errors (?!!)
 # - generate masks updated to dynamic layer stack
 # - load category in a non-destructive way
-# - vertex bevel modifier?
 # - implement smoothness vs. roughness export value support
 # - load libraries automatically on scene load?
 # - optimize synced layersets to use the same material
