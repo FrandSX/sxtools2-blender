@@ -273,18 +273,16 @@ class SXTOOLS2_files(object):
                 empty = False
 
                 # Create palette masks
+                export.reset_uv_layers(objArray)
                 export.generate_palette_masks(objArray)
                 export.generate_uv_channels(objArray)
 
                 for obj in objArray:
                     bpy.context.view_layer.objects.active = obj
-                    compLayers = utils.find_comp_layers(obj, obj['staticVertexColors'])
-                    layer0 = utils.find_color_layers(obj, 0)
-                    layer1 = utils.find_color_layers(obj, 1)
-                    layers.blend_layers([obj, ], compLayers, layer1, layer0, single_as_alpha=True)
+                    export.composite_color_layers([obj, ], obj['staticVertexColors'])
 
-                    obj.data.attributes.active_color = obj.data.attributes[layer0.vertexColorLayer]
-                    bpy.ops.geometry.color_attribute_render_set(name=layer0.vertexColorLayer)
+                    obj.data.attributes.active_color = obj.data.color_attributes['Composite']
+                    bpy.ops.geometry.color_attribute_render_set(name='Composite')
 
                     # bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
                     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
@@ -463,14 +461,34 @@ class SXTOOLS2_utils(object):
             return sortList
 
 
-    def find_color_layers(self, obj, index=None):
+    # TODO: handle if index is not in layers to be returned
+    def find_color_layers(self, obj, index=None, staticvertexcolors=True):
         color_layers = []
         if len(obj.sx2layers) > 0:
             for layer in obj.sx2layers:
                 if layer.layer_type == 'COLOR':
                     color_layers.append(layer)
+
+            if not staticvertexcolors:
+                filtered = []
+                for layer in color_layers:
+                    if 'Gradient' in layer.name:
+                        filtered.append(layer)
+                    elif 'Overlay' in layer.name:
+                        filtered.append(layer)
+
+                if len(filtered) > 0:
+                    for layer in filtered:
+                        color_layers.remove(layer)
+
             color_layers.sort(key=lambda x: x.index)
-            return color_layers if index is None else color_layers[index]
+
+            index_layer = None
+            if index is not None:
+                if index <= (len(color_layers) - 1):
+                    index_layer = color_layers[index]
+
+            return color_layers if index is None else index_layer
         else:
             return None
 
@@ -2617,6 +2635,19 @@ class SXTOOLS2_export(object):
         return None
 
 
+    def composite_color_layers(self, objs, staticvertexcolors=True):
+        utils.mode_manager(objs, set_mode=True, mode_id='composite_color_layers')
+
+        for obj in objs:
+            if 'Composite' not in obj.sx2layers.keys():
+                layers.add_layer([obj, ], name='Composite', layer_type='CMP')
+
+            comp_layers = utils.find_color_layers(obj, staticvertexcolors=staticvertexcolors)
+            layers.blend_layers([obj, ], comp_layers, comp_layers[0], obj.sx2layers['Composite'])
+
+        utils.mode_manager(objs, revert=True, mode_id='composite_color_layers')
+
+
     def smart_separate(self, objs):
         if len(objs) > 0:
             mirror_pairs = [('_top', '_bottom'), ('_front', '_rear'), ('_left', '_right'), ('_bottom', '_top'), ('_rear', '_front'), ('_right', '_left')]
@@ -2969,40 +3000,9 @@ class SXTOOLS2_export(object):
                 sourceObjects.unlink(obj)
 
 
-
-    # Generate 1-bit layer masks for color layers
-    # so the faces can be re-colored in a game engine.
-    # Brush tools may leave low alpha values that break
-    # palettemasks, alpha_tolerance can be used to fix this.
-    # The default setting accepts only fully opaque values.
-    def generate_palette_masks(self, objs, alpha_tolerance=1.0):
-        channels = {'R': 0, 'G': 1, 'B': 2, 'A': 3, 'U': 0, 'V': 1}
-
+    def reset_uv_layers(self, objs):
+        # Remove and recreate all export uvlayers, UVSet0 reserved for texture UVs.
         for obj in objs:
-            layers = utils.find_color_layers(obj)
-            uvmap, target_channel = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]['uv_palette_masks']
-            if uvmap not in obj.data.uv_layers.keys():
-                obj.data.uv_layers.new(name=uvmap)
-
-            for layer in layers:
-                for poly in obj.data.polygons:
-                    for idx in poly.loop_indices:
-                        for i, layer in enumerate(layers):
-                            if i == 0:
-                                obj.data.uv_layers[uvmap].data[idx].uv[channels[target_channel]] = 1.0
-                            else:
-                                vertex_alpha = obj.data.color_attributes[layer.color_attribute].data[idx].color[3]
-                                if vertex_alpha >= alpha_tolerance:
-                                    if layer.paletted:
-                                        obj.data.uv_layers[uvmap].data[idx].uv[channels[target_channel]] = layer.palette_index + 1
-                                    else:
-                                        obj.data.uv_layers[uvmap].data[idx].uv[channels[target_channel]] = 0
-
-
-    def generate_uv_channels(self, objs):
-        prefs = bpy.context.preferences.addons['sxtools2'].preferences
-        for obj in objs:
-            # Clear all export uvlayers, UVSet0 reserved for texture UVs.
             to_delete = []
             for uvlayer in obj.data.uv_layers:
                 if uvlayer.name != 'UVSet0':
@@ -3016,8 +3016,41 @@ class SXTOOLS2_export(object):
                 if uvmap not in obj.data.uv_layers.keys():
                     obj.data.uv_layers.new(name=uvmap)
 
+
+    # Generate 1-bit layer masks for color layers
+    # so the faces can be re-colored in a game engine.
+    # Brush tools may leave low alpha values that break
+    # palettemasks, alpha_tolerance can be used to fix this.
+    # The default setting accepts only fully opaque values.
+    def generate_palette_masks(self, objs, alpha_tolerance=1.0):
+        channels = {'R': 0, 'G': 1, 'B': 2, 'A': 3, 'U': 0, 'V': 1}
+
+        for obj in objs:
+            layers = utils.find_color_layers(obj, staticvertexcolors=False)
+            uvmap, target_channel = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]['uv_palette_masks']
+            if uvmap not in obj.data.uv_layers.keys():
+                obj.data.uv_layers.new(name=uvmap)
+
+            for i, layer in enumerate(layers):
+                for poly in obj.data.polygons:
+                    for idx in poly.loop_indices:
+                        vertex_alpha = 1.0 if i == 0 else obj.data.color_attributes[layer.color_attribute].data[idx].color[3]
+                        if vertex_alpha >= alpha_tolerance:
+                            if layer.paletted:
+                                obj.data.uv_layers[uvmap].data[idx].uv[channels[target_channel]] = layer.palette_index + 1
+                            elif 'PBR' in layer.name:
+                                obj.data.uv_layers[uvmap].data[idx].uv[channels[target_channel]] = 7
+                            else:
+                                obj.data.uv_layers[uvmap].data[idx].uv[channels[target_channel]] = 6
+
+
+    def generate_uv_channels(self, objs):
+        prefs = bpy.context.preferences.addons['sxtools2'].preferences
+        for obj in objs:
             for layer in obj.sx2layers:
-                if layer.layer_type != 'COLOR':
+                if layer.layer_type == 'CMP':
+                    pass
+                elif layer.layer_type != 'COLOR':
                     channel_name = 'uv_' + layer.name.lower()
                     uvmap, target_channel = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]][channel_name]
 
@@ -9531,18 +9564,15 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
 
         # ---- COMPOSITE LAYERS ----
             utils.mode_manager(objs, set_mode=True, mode_id='composite_layers')
-            layers.add_layer(objs, name='Composite', layer_type='CMP')
-
             for obj in objs:
-                comp_layers = utils.find_color_layers(obj)
-                layers.blend_layers([obj, ], comp_layers, comp_layers[0], obj.sx2layers['Composite'])
+                export.composite_color_layers([obj, ], obj['staticVertexColors'])
 
             palette = utils.find_colors_by_frequency(objs, objs[0].sx2layers['Composite'])
             grid = 1 if len(palette) == 0 else 2**math.ceil(math.log2(math.sqrt(len(palette))))
 
             for obj in objs:
                 if len(obj.data.uv_layers) == 0:
-                    obj.data.uv_layers.new(name='UVMap')
+                    obj.data.uv_layers.new(name='UVSet0')
 
                 color_uv_coords = {}
                 offset = 1.0/grid * 0.5
@@ -9556,7 +9586,7 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
                     color_uv_coords[color] = [u, v]
 
                 colors = layers.get_layer(obj, obj.sx2layers['Composite'], as_tuple=True)
-                uvs = layers.get_uvs(obj, obj.data.uv_layers.active.name)
+                uvs = layers.get_uvs(obj, obj.data.uv_layers['UVSet0'])
                 count = len(colors)
 
                 for i in range(count):
@@ -9565,7 +9595,7 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
                         if utils.color_compare(color, key, 0.01):
                             uvs[i*2:i*2+2] = color_uv_coords[color]
 
-                layers.set_uvs(obj, obj.data.uv_layers.active, uvs)
+                layers.set_uvs(obj, obj.data.uv_layers['UVSet0'], uvs)
 
             files.export_palette_texture(palette)
             utils.mode_manager(objs, revert=True, mode_id='composite_layers')
@@ -9725,3 +9755,5 @@ if __name__ == '__main__':
 # - import step: remove redundant obj props and sxMaterial
 # - optimize load_category -> block material updates
 # - layer opacity included in compositing and uv exporting
+# - select colormask is broken
+# - make flatten alphas obsolete by including layer opacity in blending
