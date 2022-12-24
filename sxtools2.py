@@ -359,10 +359,13 @@ class SXTOOLS2_files(object):
             for j in range(swatch_size):
                 pixels[y*swatch_size*row_length+j*row_length:y*swatch_size*row_length+(j+1)*row_length] = row
 
+        path = bpy.context.scene.sx2.exportfolder + os.path.sep
+        pathlib.Path(path).mkdir(exist_ok=True)
+
         image = bpy.data.images.new('palette_atlas', alpha=True, width=grid*swatch_size, height=grid*swatch_size)
         image.alpha_mode = 'STRAIGHT'
         image.pixels = pixels
-        image.filepath_raw = '/tmp/palette_atlas.png'
+        image.filepath_raw = path + 'palette_atlas.png'
         image.file_format = 'PNG'
         image.save()
 
@@ -432,17 +435,18 @@ class SXTOOLS2_utils(object):
                 return i
 
 
-    def find_colors_by_frequency(self, objs, layer, numcolors=None, masklayer=None, obj_sel_override=False):
+    def find_colors_by_frequency(self, objs, layer_name, numcolors=None, masklayer=None, obj_sel_override=False):
         colorArray = []
 
         for obj in objs:
             if obj_sel_override:
-                values = layers.get_layer(obj, layer, as_tuple=True)
+                values = layers.get_layer(obj, obj.sx2layers[layer_name], as_tuple=True)
             else:
-                values = generate.mask_list(obj, layers.get_layer(obj, layer), masklayer=masklayer, as_tuple=True)
+                values = generate.mask_list(obj, layers.get_layer(obj, obj.sx2layers[layer_name]), masklayer=masklayer, as_tuple=True)
 
             if values is not None:
                 colorArray.extend(values)
+            print(obj.name, len(values))
 
         # colors = list(filter(lambda a: a != (0.0, 0.0, 0.0, 0.0), colorArray))
         colors = list(filter(lambda a: a[3] != 0.0, colorArray))
@@ -1513,8 +1517,11 @@ class SXTOOLS2_layers(object):
                         obj.data.color_attributes.new(name=item.name, type='FLOAT_COLOR', domain='CORNER')
                 elif ('Alpha Materials' not in obj.data.color_attributes.keys()) and (layer_type in alpha_mats):
                     obj.data.color_attributes.new(name='Alpha Materials', type='FLOAT_COLOR', domain='CORNER')
-                    
-                item.index = utils.insert_layer_at_index(obj, item, obj.sx2layers[obj.sx2.selectedlayer].index + 1)
+
+                if layer_type == 'CMP':
+                    item.index = utils.insert_layer_at_index(obj, item, 0)
+                else:
+                    item.index = utils.insert_layer_at_index(obj, item, obj.sx2layers[obj.sx2.selectedlayer].index + 1)
 
                 if clear:
                     colors = generate.color_list(obj, item.default_color)
@@ -1914,7 +1921,7 @@ class SXTOOLS2_layers(object):
             for i in range(5):
                 for layer in obj.sx2layers:
                     if layer.paletted and (layer.palette_index == i):
-                        palettecolor = utils.find_colors_by_frequency(objs, layer, 1, obj_sel_override=True)[0]
+                        palettecolor = utils.find_colors_by_frequency(objs, layer.name, 1, obj_sel_override=True)[0]
                         tabcolor = getattr(scene, 'newpalette' + str(i))
 
                         if not utils.color_compare(palettecolor, tabcolor) and not utils.color_compare(palettecolor, (0.0, 0.0, 0.0, 1.0)):
@@ -1931,7 +1938,7 @@ class SXTOOLS2_layers(object):
                 masklayer = None
             else:
                 masklayer = utils.find_layer_by_stack_index(objs[0], layers[0])
-            layercolors = utils.find_colors_by_frequency(objs, layer, 8, masklayer=masklayer)
+            layercolors = utils.find_colors_by_frequency(objs, layer.name, 8, masklayer=masklayer)
             tabcolor = getattr(scene, 'newmaterial' + str(i))
 
             if tabcolor in layercolors:
@@ -2097,7 +2104,7 @@ class SXTOOLS2_tools(object):
     def apply_hsl(self, objs, layer, hslmode, newValue):
         utils.mode_manager(objs, set_mode=True, mode_id='apply_hsl')
 
-        colors = utils.find_colors_by_frequency(objs, layer)
+        colors = utils.find_colors_by_frequency(objs, layer.name)
         if len(colors) > 0:
             valueArray = []
             for color in colors:
@@ -3914,7 +3921,7 @@ class SXTOOLS2_magic(object):
         # Clear metallic, roughness, and transmission
         layers.clear_layers(objs, obj.sx2layers['Metallic'])
         layers.clear_layers(objs, obj.sx2layers['Roughness'])
-        layers.clear_layers(objs, obj.sx2layers['Transmission'])
+        # layers.clear_layers(objs, obj.sx2layers['Transmission'])
 
         material = 'Iron'
         palette = [
@@ -5095,7 +5102,7 @@ def refresh_swatches(self, context):
         for obj in objs:
             if len(obj.sx2layers) > 0:
                 layer = obj.sx2layers[obj.sx2.selectedlayer]
-                colors = utils.find_colors_by_frequency([obj, ], layer, 8)
+                colors = utils.find_colors_by_frequency([obj, ], layer.name, 8)
 
                 # Refresh SX Tools UI to latest selection
                 # 1) Update layer HSL elements
@@ -5119,7 +5126,7 @@ def refresh_swatches(self, context):
 
         # 2) Update layer palette elements
         layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-        colors = utils.find_colors_by_frequency(objs, layer, 8)
+        colors = utils.find_colors_by_frequency(objs, layer.name, 8)
         for i, pcol in enumerate(colors):
             palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
             setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
@@ -5200,9 +5207,9 @@ def update_material_layer(self, context, index):
                     pbr_values[index] = (rgb[0], rgb[1], rgb[2], 1.0)
 
         if sxglobals.mode == 'EDIT':
-            modecolor = utils.find_colors_by_frequency(objs, objs[0].sx2layers[layer_ids[index]], 1)[0]
+            modecolor = utils.find_colors_by_frequency(objs, layer_ids[index], 1)[0]
         else:
-            modecolor = utils.find_colors_by_frequency(objs, objs[0].sx2layers[layer_ids[index]], 1, masklayer=layer)[0]
+            modecolor = utils.find_colors_by_frequency(objs, layer_ids[index], 1, masklayer=layer)[0]
 
         if not utils.color_compare(modecolor, pbr_values[index]):
             if sxglobals.mode == 'EDIT':
@@ -6682,6 +6689,15 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         default='MAGIC',
         update=lambda self, context: expand_element(self, context, 'expandexport'))
 
+    exporttype: bpy.props.EnumProperty(
+        name='Export Type',
+        description='Export color data as vertex colors or palette atlas textures',
+        items=[
+            ('VERTEX', 'Vertex Colors', ''),
+            ('ATLAS', 'Palette Atlas', '')],
+        default='VERTEX',
+        update=lambda self, context: expand_element(self, context, 'exporttype'))
+
     exportquality: bpy.props.EnumProperty(
         name='Export Quality',
         description='Low Detail mode uses base mesh for baking\nHigh Detail mode bakes after applying modifiers but disables decimation',
@@ -7392,7 +7408,6 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     elif scene.exportmode == 'UTILS':
                         if scene.expandexport:
                             col_utils = box_export.column(align=False)
-                            col_utils.operator('sx2.test_button', text='Composite and Export Atlas')
                             col_utils.operator('sx2.sxtosx2')
                             if scene.shift:
                                 group_text = 'Group Under World Origin'
@@ -7427,6 +7442,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
                     elif scene.exportmode == 'EXPORT':
                         if scene.expandexport:
+                            row_exporttype = box_export.row(align=True)
+                            row_exporttype.prop(scene, 'exporttype', expand=True)
                             if len(prefs.cataloguepath) > 0:
                                 row_batchexport = box_export.row()
                                 row_batchexport.prop(
@@ -7468,7 +7485,10 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 exp_text = 'Export All'
                             else:
                                 exp_text = 'Export Selected'
-                            split_export.operator('sx2.exportfiles', text=exp_text)
+                            if scene.exporttype == 'VERTEX':
+                                split_export.operator('sx2.exportfiles', text=exp_text)
+                            else:
+                                split_export.operator('sx2.test_button', text=exp_text)
 
                             if (mode == 'EDIT') or (len(scene.exportfolder) == 0):
                                 split_export.enabled = False
@@ -8482,7 +8502,9 @@ class SXTOOLS2_OT_mergeup(bpy.types.Operator):
 
         if len(mesh_objs[0].sx2layers) > 0:
             layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
-            if (layer.layer_type == 'COLOR') and (layer.index < (len(sxglobals.layer_stack_dict.get(mesh_objs[0].name, [])) - 1)):
+            if layer.layer_type == 'CMP':
+                enabled = False
+            elif (layer.layer_type == 'COLOR') and (layer.index < (len(sxglobals.layer_stack_dict.get(mesh_objs[0].name, [])) - 1)):
                 enabled = True
         return enabled
 
@@ -8526,7 +8548,9 @@ class SXTOOLS2_OT_mergedown(bpy.types.Operator):
 
         if len(mesh_objs[0].sx2layers) > 0:
             layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
-            if layer.index > 0:
+            if layer.layer_type == 'CMP':
+                enabled = False
+            elif layer.index > 0:
                 nextLayer = utils.find_layer_by_stack_index(mesh_objs[0], layer.index - 1)
                 if (nextLayer.layer_type == 'COLOR') and (layer.layer_type == 'COLOR'):
                     enabled = True
@@ -9562,40 +9586,55 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
         #     refresh_swatches(self, context)
 
 
-        # ---- COMPOSITE LAYERS ----
+        # ---- GENERATE PALETTE ATLAS ----
             utils.mode_manager(objs, set_mode=True, mode_id='composite_layers')
             for obj in objs:
                 export.composite_color_layers([obj, ], obj['staticVertexColors'])
 
-            palette = utils.find_colors_by_frequency(objs, objs[0].sx2layers['Composite'])
+            palette = utils.find_colors_by_frequency(objs, 'Composite')
+            print('palette size:', len(palette))
+
+            filtered_palette = []
+            for color in palette:
+                if len(filtered_palette) == 0:
+                    filtered_palette.append(color)
+                else:
+                    match = False
+                    for filtered_color in filtered_palette:
+                        if utils.color_compare(color, filtered_color, 0.01):
+                            match = True
+                    if not match:
+                        filtered_palette.append(color)
+            palette = filtered_palette
+            print('filtered size:', len(filtered_palette))
+
             grid = 1 if len(palette) == 0 else 2**math.ceil(math.log2(math.sqrt(len(palette))))
+            print('grid size:', grid)
+
+            color_uv_coords = {}
+            offset = 1.0/grid * 0.5
+            j = -1
+            for i, color in enumerate(palette):
+                a = i%grid
+                if a == 0:
+                    j += 1
+                u = a*offset*2 + offset
+                v = j*offset*2 + offset
+                color_uv_coords[color] = [u, v]
 
             for obj in objs:
                 if len(obj.data.uv_layers) == 0:
                     obj.data.uv_layers.new(name='UVSet0')
 
-                color_uv_coords = {}
-                offset = 1.0/grid * 0.5
-                j = -1
-                for i, color in enumerate(palette):
-                    a = i%grid
-                    if a == 0:
-                        j += 1
-                    u = a*offset*2 + offset
-                    v = j*offset*2 + offset
-                    color_uv_coords[color] = [u, v]
-
                 colors = layers.get_layer(obj, obj.sx2layers['Composite'], as_tuple=True)
-                uvs = layers.get_uvs(obj, obj.data.uv_layers['UVSet0'])
-                count = len(colors)
+                uvs = layers.get_uvs(obj,'UVSet0')
 
-                for i in range(count):
-                    color = colors[i]
+                for i, color in enumerate(colors):
                     for key in color_uv_coords.keys():
                         if utils.color_compare(color, key, 0.01):
-                            uvs[i*2:i*2+2] = color_uv_coords[color]
+                            uvs[i*2:i*2+2] = color_uv_coords[key]
 
-                layers.set_uvs(obj, obj.data.uv_layers['UVSet0'], uvs)
+                layers.set_uvs(obj, 'UVSet0', uvs)
 
             files.export_palette_texture(palette)
             utils.mode_manager(objs, revert=True, mode_id='composite_layers')
@@ -9754,6 +9793,8 @@ if __name__ == '__main__':
 #   - only create a single material in debug and alpha mode
 # - import step: remove redundant obj props and sxMaterial
 # - optimize load_category -> block material updates
-# - layer opacity included in compositing and uv exporting
 # - select colormask is broken
+# - layer opacity included in compositing and uv exporting
 # - make flatten alphas obsolete by including layer opacity in blending
+# - selectedlayer not passed to all selected? Composite layer appears in different locations per multi-selection object
+# - check what might change datatype of custom props, staticvertexcolors was not int?
