@@ -340,33 +340,36 @@ class SXTOOLS2_files(object):
                 print(f'Completed: {group_name}')
 
 
-    def export_palette_texture(self, colors):
-        swatch_size = 16
-        grid = 1 if len(colors) == 0 else 2**math.ceil(math.log2(math.sqrt(len(colors))))
-        pixels = [0.0, 0.0, 0.0, 0.1] * grid * grid * swatch_size * swatch_size
+    def export_palette_textures(self, palette_dict):
+        prefs = bpy.context.preferences.addons['sxtools2'].preferences
+        for palette_name, palette in palette_dict.items():
+            swatch_size = 16
+            grid = 1 if len(palette) == 0 else 2**math.ceil(math.log2(math.sqrt(len(palette))))
+            pixels = [0.0, 0.0, 0.0, 0.1] * grid * grid * swatch_size * swatch_size
 
-        z = 0
-        for y in range(grid):
-            row = [0.0, 0.0, 0.0, 1.0] * grid * swatch_size
-            row_length = 4 * grid * swatch_size
-            for x in range(grid):
-                color = colors[z] if z < len(colors) else (0.0, 0.0, 0.0, 1.0)
-                color = convert.linear_to_srgb(color)
-                z += 1
-                for i in range(swatch_size):
-                    row[x*swatch_size*4+i*4:x*swatch_size*4+i*4+4] = [color[0], color[1], color[2], color[3]]
-            for j in range(swatch_size):
-                pixels[y*swatch_size*row_length+j*row_length:y*swatch_size*row_length+(j+1)*row_length] = row
+            z = 0
+            for y in range(grid):
+                row = [0.0, 0.0, 0.0, 1.0] * grid * swatch_size
+                row_length = 4 * grid * swatch_size
+                for x in range(grid):
+                    color = palette[z] if z < len(palette) else (0.0, 0.0, 0.0, 1.0)
+                    if (palette_name == 'Composite') and (prefs.exportspace == 'SRGB'):
+                        color = convert.linear_to_srgb(color)
+                    z += 1
+                    for i in range(swatch_size):
+                        row[x*swatch_size*4+i*4:x*swatch_size*4+i*4+4] = [color[0], color[1], color[2], color[3]]
+                for j in range(swatch_size):
+                    pixels[y*swatch_size*row_length+j*row_length:y*swatch_size*row_length+(j+1)*row_length] = row
 
-        path = bpy.context.scene.sx2.exportfolder + os.path.sep
-        pathlib.Path(path).mkdir(exist_ok=True)
+            path = bpy.context.scene.sx2.exportfolder + os.path.sep
+            pathlib.Path(path).mkdir(exist_ok=True)
 
-        image = bpy.data.images.new('palette_atlas', alpha=True, width=grid*swatch_size, height=grid*swatch_size)
-        image.alpha_mode = 'STRAIGHT'
-        image.pixels = pixels
-        image.filepath_raw = path + 'palette_atlas.png'
-        image.file_format = 'PNG'
-        image.save()
+            image = bpy.data.images.new('palette_atlas', alpha=True, width=grid*swatch_size, height=grid*swatch_size)
+            image.alpha_mode = 'STRAIGHT'
+            image.pixels = pixels
+            image.filepath_raw = path + 'atlas_' + palette_name.lower() + '.png'
+            image.file_format = 'PNG'
+            image.save()
 
 
 # ------------------------------------------------------------------------
@@ -9566,6 +9569,7 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
         objs = mesh_selection_validator(self, context)
         if len(objs) > 0:
             utils.mode_manager(objs, set_mode=True, mode_id='composite_layers')
+            material_sources = ['Occlusion', 'Metallic', 'Roughness', 'Transmission', 'Subsurface', 'Emission']
             export.composite_color_layers(objs)
             raw_palette = utils.find_colors_by_frequency(objs, 'Composite')
             palette = []
@@ -9582,6 +9586,7 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
 
             grid = 1 if len(palette) == 0 else 2**math.ceil(math.log2(math.sqrt(len(palette))))
 
+            # assign UV coords per palette color
             color_uv_coords = {}
             offset = 1.0/grid * 0.5
             j = -1
@@ -9593,6 +9598,7 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
                 v = j*offset*2 + offset
                 color_uv_coords[color] = [u, v]
 
+            # match vertex color with palette color, assign UV accordingly
             for obj in objs:
                 if len(obj.data.uv_layers) == 0:
                     obj.data.uv_layers.new(name='UVSet0')
@@ -9607,7 +9613,25 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
 
                 layers.set_uvs(obj, 'UVSet0', uvs)
 
-            files.export_palette_texture(palette)
+            # build material channel atlases by finding the most frequent channel value per palette entry
+            palette_dict = {}
+            palette_dict['Composite'] = palette
+
+            for source in material_sources:
+                if source in objs[0].sx2layers.keys():
+                    palette_dict[source] = [None] * len(palette)
+
+            for i, color in enumerate(palette):
+                # color = convert.linear_to_srgb(color)
+                tools.select_color_mask(objs, color, invertmask=False)
+                print('selled:', len(sxglobals.prev_component_selection))
+                for source in material_sources:
+                    if source in objs[0].sx2layers.keys():
+                        typical_color = utils.find_colors_by_frequency(objs, source, 1)[0]
+                        print(typical_color)
+                        palette_dict[source][i] = typical_color
+
+            files.export_palette_textures(palette_dict)
             utils.mode_manager(objs, revert=True, mode_id='composite_layers')
             refresh_swatches(self, context)
 
@@ -9763,7 +9787,6 @@ if __name__ == '__main__':
 #   - clean-up for sxglobals.sx2_material_dict
 #   - only create a single material in debug and alpha mode
 # - import step: remove redundant obj props and sxMaterial
-# - optimize load_category -> block material updates
 # - layer opacity included in compositing and uv exporting
 # - make flatten alphas obsolete by including layer opacity in blending
 # - selectedlayer not passed to all selected? Composite layer appears in different locations per multi-selection object
