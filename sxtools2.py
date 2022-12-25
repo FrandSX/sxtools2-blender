@@ -2624,10 +2624,14 @@ class SXTOOLS2_export(object):
     def composite_color_layers(self, objs):
         utils.mode_manager(objs, set_mode=True, mode_id='composite_color_layers')
 
+        cmp_add_objs = []
         for obj in objs:
             if 'Composite' not in obj.sx2layers.keys():
-                layers.add_layer([obj, ], name='Composite', layer_type='CMP')
+                cmp_add_objs.append(obj)
 
+        layers.add_layer(cmp_add_objs, name='Composite', layer_type='CMP')
+
+        for obj in objs:
             comp_layers = utils.find_color_layers(obj, staticvertexcolors=int(obj.sx2.staticvertexcolors))
             layers.blend_layers([obj, ], comp_layers, comp_layers[0], obj.sx2layers['Composite'])
 
@@ -3304,7 +3308,7 @@ class SXTOOLS2_export(object):
     def validate_objects(self, objs):
         utils.mode_manager(objs, set_mode=True, mode_id='validate_objects')
 
-        self.validate_sxtoolmaterial(objs)
+        self.validate_sxtoolmaterial()
 
         ok1 = self.validate_palette_layers(objs)
         ok2 = self.validate_names(objs)
@@ -3321,7 +3325,7 @@ class SXTOOLS2_export(object):
             return False
 
 
-    def validate_sxmtoolaterial(self):
+    def validate_sxtoolmaterial(self):
         try:
             sxtoolmaterial = bpy.data.materials['SXToolMaterial'].node_tree
         except:
@@ -3387,25 +3391,26 @@ class SXTOOLS2_export(object):
                 mesh = obj.data
                 layers = utils.find_color_layers(obj, staticvertexcolors=int(obj.sx2.staticvertexcolors))
                 for layer in layers:
-                    colors = []
-                    vertex_colors = mesh.attributes[layer.color_attribute].data
+                    if layer.paletted:
+                        colors = []
+                        vertex_colors = mesh.attributes[layer.color_attribute].data
 
-                    for poly in mesh.polygons:
-                        for loop_idx in poly.loop_indices:
-                            colors.append(vertex_colors[loop_idx].color[:])
+                        for poly in mesh.polygons:
+                            for loop_idx in poly.loop_indices:
+                                colors.append(vertex_colors[loop_idx].color[:])
 
-                    color_set = set(colors)
+                        color_set = set(colors)
 
-                    if i == 0:
-                        if len(color_set) > 1:
-                            print(f'SX Tools Error: Multiple colors in {obj.name} layer {layer.name}')
-                            message_box('Multiple colors in ' + obj.name + ' layer' + {layer.name})
-                            return False
-                    else:
-                        if len(color_set) > 2:
-                            print(f'SX Tools Error: Multiple colors in {obj.name} layer {layer.name}')
-                            message_box('Multiple colors in ' + obj.name + ' layer' + {layer.name})
-                            return False
+                        if layer == layers[0]:
+                            if len(color_set) > 1:
+                                print(f'SX Tools Error: Multiple colors in {obj.name} {layer.name}')
+                                message_box('Multiple colors in ' + obj.name + ' ' + layer.name)
+                                return False
+                        else:
+                            if len(color_set) > 2:
+                                print(f'SX Tools Error: Multiple colors in {obj.name} {layer.name}')
+                                message_box('Multiple colors in ' + obj.name + ' ' + layer.name)
+                                return False
         return True
 
 
@@ -4307,9 +4312,10 @@ class SXTOOLS2_setup(object):
 
 
     def start_modal(self):
-        bpy.ops.sx2.selectionmonitor('EXEC_DEFAULT')
-        bpy.ops.sx2.keymonitor('EXEC_DEFAULT')
-        sxglobals.modal_status = True
+        if (bpy.context.area is not None) and (bpy.context.area.type == 'VIEW_3D'):
+            bpy.ops.sx2.selectionmonitor('EXEC_DEFAULT')
+            bpy.ops.sx2.keymonitor('EXEC_DEFAULT')
+            sxglobals.modal_status = True
 
 
     def create_tiler(self):
@@ -6898,7 +6904,14 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
         objs = mesh_selection_validator(self, context)
         layout = self.layout
 
-        if len(objs) > 0:
+        if not sxglobals.librariesLoaded:
+            col = layout.column()
+            col.label(text='Libraries not loaded')
+            col.label(text='Check Add-on Preferences')
+            if len(prefs.libraryfolder) > 0:
+                col.operator('sx2.loadlibraries', text='Reload Libraries')
+
+        elif len(objs) > 0:
             if not layer_validator(self, context):
                 col = layout.column()
                 col.label(text='Mismatching layers sets!')
@@ -7483,13 +7496,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
         else:
             col = layout.column()
-            if sxglobals.librariesLoaded:
-                col.label(text='Select a mesh to continue')
-            else:
-                col.label(text='Libraries not loaded')
-                col.label(text='Check Add-on Preferences')
-                if len(prefs.libraryfolder) > 0:
-                    col.operator('sx2.loadlibraries', text='Reload Libraries')
+            col.label(text='Select a mesh to continue')
 
 
 class SXTOOLS2_UL_layerlist(bpy.types.UIList):
