@@ -3304,7 +3304,7 @@ class SXTOOLS2_export(object):
     def validate_objects(self, objs):
         utils.mode_manager(objs, set_mode=True, mode_id='validate_objects')
 
-        # self.validate_sxmaterial(objs)
+        self.validate_sxtoolmaterial(objs)
 
         ok1 = self.validate_palette_layers(objs)
         ok2 = self.validate_names(objs)
@@ -3313,7 +3313,7 @@ class SXTOOLS2_export(object):
 
         utils.mode_manager(objs, revert=True, mode_id='validate_objects')
 
-        if ok1 and ok2 and ok3 and ok4:
+        if ok1 and ok2 and ok3:  # and ok4:
             print('SX Tools: Selected objects passed validation tests')
             return True
         else:
@@ -3321,15 +3321,16 @@ class SXTOOLS2_export(object):
             return False
 
 
-    def validate_sxmaterial(self, objs):
+    def validate_sxmtoolaterial(self):
         try:
-            sxmaterial = bpy.data.materials['SX2Material'].node_tree
+            sxtoolmaterial = bpy.data.materials['SXToolMaterial'].node_tree
         except:
-            print(f'SX Tools Error: Invalid SX Material on {objs}. \nPerforming SX Material reset.')
-            bpy.ops.sx2.resetmaterial('EXEC_DEFAULT')
+            print(f'SX Tools Error: Missing SXToolMaterial.\nPerforming SX Material reset.')
+            setup.create_sxtoolmaterial()
 
 
     # Check for proper UV set configuration
+    # TODO: Match with category
     def validate_uv_sets(self, objs):
         for obj in objs:
             if len(obj.data.uv_layers) != 7:
@@ -3380,31 +3381,30 @@ class SXTOOLS2_export(object):
 
 
     # if paletted, fail if layer colorcount > 1
-    # TODO: update to sx2 -> check all
     def validate_palette_layers(self, objs):
         for obj in objs:
             if obj.sx2.category != 'DEFAULT':
                 mesh = obj.data
-                for i in range(5):
-                    colorArray = []
-                    layer = utils.find_layer_by_stack_index(obj, i+1)
-                    vertexColors = mesh.attributes[layer.vertexColorLayer].data
+                layers = utils.find_color_layers(obj, staticvertexcolors=int(obj.sx2.staticvertexcolors))
+                for layer in layers:
+                    colors = []
+                    vertex_colors = mesh.attributes[layer.color_attribute].data
 
                     for poly in mesh.polygons:
                         for loop_idx in poly.loop_indices:
-                            colorArray.append(vertexColors[loop_idx].color[:])
+                            colors.append(vertex_colors[loop_idx].color[:])
 
-                    colorSet = set(colorArray)
+                    color_set = set(colors)
 
                     if i == 0:
-                        if len(colorSet) > 1:
-                            print(f'SX Tools Error: Multiple colors in {obj.name} layer {i+1}')
-                            message_box('Multiple colors in ' + obj.name + ' layer' + str(i+1))
+                        if len(color_set) > 1:
+                            print(f'SX Tools Error: Multiple colors in {obj.name} layer {layer.name}')
+                            message_box('Multiple colors in ' + obj.name + ' layer' + {layer.name})
                             return False
                     else:
-                        if len(colorSet) > 2:
-                            print(f'SX Tools Error: Multiple colors in {obj.name} layer {i+1}')
-                            message_box('Multiple colors in ' + obj.name + ' layer' + str(i+1))
+                        if len(color_set) > 2:
+                            print(f'SX Tools Error: Multiple colors in {obj.name} layer {layer.name}')
+                            message_box('Multiple colors in ' + obj.name + ' layer' + {layer.name})
                             return False
         return True
 
@@ -9153,8 +9153,8 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
 
         if len(objs) > 0:
             bpy.context.view_layer.objects.active = objs[0]
-            # check = export.validate_objects(objs)
-            if True:  # check:
+            check = export.validate_objects(objs)
+            if check:
                 sxglobals.magic_in_progress = True
                 magic.process_objects(objs)
                 if hasattr(bpy.types, bpy.ops.object.vhacd.idname()) and scene.exportcolliders:
@@ -9762,3 +9762,6 @@ if __name__ == '__main__':
 # - selectedlayer not passed to all selected? Composite layer appears in different locations per multi-selection object
 # - check what might change datatype of custom props, staticvertexcolors was not int?
 # - export different fbx for palette atlas objs
+# - default path if no categories used?
+# - SXTool missing if magic twice? Loadlibraries not handled properly
+
