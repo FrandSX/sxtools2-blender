@@ -279,8 +279,7 @@ class SXTOOLS2_files(object):
 
                 for obj in objArray:
                     bpy.context.view_layer.objects.active = obj
-                    export.composite_color_layers([obj, ], obj['staticVertexColors'])
-
+                    export.composite_color_layers([obj, ])
                     obj.data.attributes.active_color = obj.data.color_attributes['Composite']
                     bpy.ops.geometry.color_attribute_render_set(name='Composite')
 
@@ -446,7 +445,6 @@ class SXTOOLS2_utils(object):
 
             if values is not None:
                 colorArray.extend(values)
-            print(obj.name, len(values))
 
         # colors = list(filter(lambda a: a != (0.0, 0.0, 0.0, 0.0), colorArray))
         colors = list(filter(lambda a: a[3] != 0.0, colorArray))
@@ -1848,28 +1846,6 @@ class SXTOOLS2_layers(object):
         bpy.context.view_layer.objects.active = active
 
 
-    def linear_alphas(self, objs):
-        def value_to_linear(value):
-            value = value[0]
-            if value < 0.0:
-                output = 0.0
-            elif 0.0 <= value <= 0.0404482362771082:
-                output = float(value) / 12.92
-            elif 0.0404482362771082 < value <= 1.0:
-                output = ((value + 0.055) / 1.055) ** 2.4
-            else:
-                output = 1.0
-            return [output]
-
-        for obj in objs:
-            for layer in obj.sx2layers:
-                values = self.get_colors(obj, layer.color_attribute)
-                for i in range(len(values)//4):
-                    values[(3+i*4):(4+i*4)] = value_to_linear(values[(3+i*4):(4+i*4)])
-                self.set_colors(obj, layer.color_attribute, values)
-            # obj.data.update()
-
-
     def merge_layers(self, objs, toplayer, baselayer, targetlayer):
         for obj in objs:
             basecolors = self.get_layer(obj, baselayer, apply_layer_alpha=True, single_as_alpha=True)
@@ -2218,28 +2194,31 @@ class SXTOOLS2_tools(object):
         bpy.ops.mesh.select_all(action='DESELECT')
         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
+        export.composite_color_layers(objs)
+        color = convert.srgb_to_linear(color)
         for obj in objs:
-            colors = layers.get_layer(obj, obj.sx2layers['composite'])
+            obj.data.update()
+            colors = layers.get_layer(obj, obj.sx2layers['Composite'])
             mesh = obj.data
             i = 0
             if bpy.context.tool_settings.mesh_select_mode[2]:
                 for poly in mesh.polygons:
                     for loop_idx in poly.loop_indices:
                         if invertmask:
-                            if not utils.color_compare(colors[(0+i*4):(4+i*4)], color):
+                            if not utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01):
                                 poly.select = True
                         else:
-                            if utils.color_compare(colors[(0+i*4):(4+i*4)], color):
+                            if utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01):
                                 poly.select = True
                         i += 1
             else:
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
                         if invertmask:
-                            if not utils.color_compare(colors[(0+i*4):(4+i*4)], color):
+                            if not utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01):
                                 mesh.vertices[vert_idx].select = True
                         else:
-                            if utils.color_compare(colors[(0+i*4):(4+i*4)], color):
+                            if utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01):
                                 mesh.vertices[vert_idx].select = True
                         i += 1
 
@@ -2642,14 +2621,14 @@ class SXTOOLS2_export(object):
         return None
 
 
-    def composite_color_layers(self, objs, staticvertexcolors=True):
+    def composite_color_layers(self, objs):
         utils.mode_manager(objs, set_mode=True, mode_id='composite_color_layers')
 
         for obj in objs:
             if 'Composite' not in obj.sx2layers.keys():
                 layers.add_layer([obj, ], name='Composite', layer_type='CMP')
 
-            comp_layers = utils.find_color_layers(obj, staticvertexcolors=staticvertexcolors)
+            comp_layers = utils.find_color_layers(obj, staticvertexcolors=int(obj.sx2.staticvertexcolors))
             layers.blend_layers([obj, ], comp_layers, comp_layers[0], obj.sx2layers['Composite'])
 
         utils.mode_manager(objs, revert=True, mode_id='composite_color_layers')
@@ -8736,8 +8715,7 @@ class SXTOOLS2_OT_selmask(bpy.types.Operator):
                 inverse = False
 
             if event.ctrl:
-                color = context.scene.sx2.fillcolor
-                tools.select_color_mask(objs, color, inverse)
+                tools.select_color_mask(objs, context.scene.sx2.fillcolor, inverse)
             else:
                 layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
                 tools.select_mask(objs, layer, inverse)
@@ -9580,36 +9558,22 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         if len(objs) > 0:
-
-        # ---- LINEAR ALPHA CONVERSION ----
-        #     layers.linear_alphas(objs)
-        #     refresh_swatches(self, context)
-
-
-        # ---- GENERATE PALETTE ATLAS ----
             utils.mode_manager(objs, set_mode=True, mode_id='composite_layers')
-            for obj in objs:
-                export.composite_color_layers([obj, ], obj['staticVertexColors'])
-
-            palette = utils.find_colors_by_frequency(objs, 'Composite')
-            print('palette size:', len(palette))
-
-            filtered_palette = []
-            for color in palette:
-                if len(filtered_palette) == 0:
-                    filtered_palette.append(color)
+            export.composite_color_layers(objs)
+            raw_palette = utils.find_colors_by_frequency(objs, 'Composite')
+            palette = []
+            for color in raw_palette:
+                if len(palette) == 0:
+                    palette.append(color)
                 else:
                     match = False
-                    for filtered_color in filtered_palette:
+                    for filtered_color in palette:
                         if utils.color_compare(color, filtered_color, 0.01):
                             match = True
                     if not match:
-                        filtered_palette.append(color)
-            palette = filtered_palette
-            print('filtered size:', len(filtered_palette))
+                        palette.append(color)
 
             grid = 1 if len(palette) == 0 else 2**math.ceil(math.log2(math.sqrt(len(palette))))
-            print('grid size:', grid)
 
             color_uv_coords = {}
             offset = 1.0/grid * 0.5
@@ -9793,8 +9757,8 @@ if __name__ == '__main__':
 #   - only create a single material in debug and alpha mode
 # - import step: remove redundant obj props and sxMaterial
 # - optimize load_category -> block material updates
-# - select colormask is broken
 # - layer opacity included in compositing and uv exporting
 # - make flatten alphas obsolete by including layer opacity in blending
 # - selectedlayer not passed to all selected? Composite layer appears in different locations per multi-selection object
 # - check what might change datatype of custom props, staticvertexcolors was not int?
+# - export different fbx for palette atlas objs
