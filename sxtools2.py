@@ -437,14 +437,14 @@ class SXTOOLS2_utils(object):
                 return i
 
 
-    def find_colors_by_frequency(self, objs, layer_name, numcolors=None, masklayer=None, obj_sel_override=False):
+    def find_colors_by_frequency(self, objs, layer_name, numcolors=None, masklayer=None, maskcolor=None, obj_sel_override=False):
         colorArray = []
 
         for obj in objs:
             if obj_sel_override:
                 values = layers.get_layer(obj, obj.sx2layers[layer_name], as_tuple=True)
             else:
-                values = generate.mask_list(obj, layers.get_layer(obj, obj.sx2layers[layer_name]), masklayer=masklayer, as_tuple=True)
+                values = generate.mask_list(obj, layers.get_layer(obj, obj.sx2layers[layer_name]), masklayer=masklayer, maskcolor=maskcolor, as_tuple=True)
 
             if values is not None:
                 colorArray.extend(values)
@@ -1264,10 +1264,11 @@ class SXTOOLS2_generate(object):
             return None
 
 
-    def mask_list(self, obj, colors, masklayer=None, as_tuple=False, override_mask=False):
+    def mask_list(self, obj, colors, masklayer=None, maskcolor=None, as_tuple=False, override_mask=False):
         count = len(colors)//4
 
-        if (masklayer is None) and (sxglobals.mode == 'OBJECT'):
+        # No mask, colors pass through
+        if (masklayer is None) and (maskcolor is None) and (sxglobals.mode == 'OBJECT'):
             if as_tuple:
                 rgba = [None] * count
                 for i in range(count):
@@ -1275,9 +1276,11 @@ class SXTOOLS2_generate(object):
                 return rgba
             else:
                 return colors
+
+        # Colors are masked by selection or layer alpha
         else:
             if masklayer is None:
-                mask, empty = self.selection_mask(obj)
+                mask, empty = self.get_selection_mask(obj, selected_color=maskcolor)
                 if empty:
                     return None
             else:
@@ -1309,7 +1312,7 @@ class SXTOOLS2_generate(object):
     def color_list(self, obj, color, masklayer=None, as_tuple=False):
         count = len(obj.data.color_attributes[0].data)
         colors = [color[0], color[1], color[2], color[3]] * count
-        return self.mask_list(obj, colors, masklayer, as_tuple)
+        return self.mask_list(obj, colors, masklayer, as_tuple=as_tuple)
 
 
     def ramp_list(self, obj, objs, rampmode, masklayer=None, mergebbx=True):
@@ -1458,29 +1461,50 @@ class SXTOOLS2_generate(object):
         return vertex_dict
 
 
-    def selection_mask(self, obj):
+    # Returns mask and empty status
+    def get_selection_mask(self, obj, selected_color=None):
         mesh = obj.data
         mask = self.empty_list(obj, 1)
 
-        pre_check = [None] * len(mesh.vertices)
-        mesh.vertices.foreach_get('select', pre_check)
-        if True not in pre_check:
-            return mask, True
+        if selected_color is None:
+            pre_check = [None] * len(mesh.vertices)
+            mesh.vertices.foreach_get('select', pre_check)
+            if True not in pre_check:
+                empty = True
+            else:
+                empty = False
+                i = 0
+                if bpy.context.tool_settings.mesh_select_mode[2]:
+                    for poly in mesh.polygons:
+                        for loop_idx in poly.loop_indices:
+                            mask[i] = float(poly.select)
+                            i += 1
+                else:
+                    for poly in mesh.polygons:
+                        for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
+                            mask[i] = float(mesh.vertices[vert_idx].select)
+                            i += 1
         else:
+            export.composite_color_layers([obj, ])
+            colors = layers.get_layer(obj, obj.sx2layers['Composite'])
             i = 0
             if bpy.context.tool_settings.mesh_select_mode[2]:
                 for poly in mesh.polygons:
-                    sel = float(poly.select)
                     for loop_idx in poly.loop_indices:
-                        mask[i] = sel
+                        mask[i] = float(utils.color_compare(colors[(0+i*4):(4+i*4)], selected_color, 0.01))
                         i += 1
             else:
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        mask[i] = float(mesh.vertices[vert_idx].select)
+                        mask[i] = float(utils.color_compare(colors[(0+i*4):(4+i*4)], selected_color, 0.01))
                         i += 1
 
-            return mask, False
+            if 1.0 not in mask:
+                empty = True
+            else:
+                empty = False
+
+        return mask, empty
 
 
     def __del__(self):
@@ -1811,7 +1835,7 @@ class SXTOOLS2_layers(object):
                 layers.set_layer(obj, colors, layer)
             else:
                 colors = layers.get_layer(obj, layer)
-                mask, empty = generate.selection_mask(obj)
+                mask, empty = generate.get_selection_mask(obj)
                 if not empty:
                     for i in range(len(mask)):
                         if mask[i] == 1.0:
@@ -2200,7 +2224,6 @@ class SXTOOLS2_tools(object):
         export.composite_color_layers(objs)
         color = convert.srgb_to_linear(color)
         for obj in objs:
-            obj.data.update()
             colors = layers.get_layer(obj, obj.sx2layers['Composite'])
             mesh = obj.data
             i = 0
@@ -2208,21 +2231,17 @@ class SXTOOLS2_tools(object):
                 for poly in mesh.polygons:
                     for loop_idx in poly.loop_indices:
                         if invertmask:
-                            if not utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01):
-                                poly.select = True
+                            poly.select = not utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01)
                         else:
-                            if utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01):
-                                poly.select = True
+                            poly.select = utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01)
                         i += 1
             else:
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
                         if invertmask:
-                            if not utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01):
-                                mesh.vertices[vert_idx].select = True
+                            mesh.vertices[vert_idx].select = not utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01)
                         else:
-                            if utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01):
-                                mesh.vertices[vert_idx].select = True
+                            mesh.vertices[vert_idx].select = utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01)
                         i += 1
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
@@ -9568,7 +9587,6 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         if len(objs) > 0:
-            utils.mode_manager(objs, set_mode=True, mode_id='composite_layers')
             material_sources = ['Occlusion', 'Metallic', 'Roughness', 'Transmission', 'Subsurface', 'Emission']
             export.composite_color_layers(objs)
             raw_palette = utils.find_colors_by_frequency(objs, 'Composite')
@@ -9623,16 +9641,12 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
 
             for i, color in enumerate(palette):
                 # color = convert.linear_to_srgb(color)
-                tools.select_color_mask(objs, color, invertmask=False)
-                print('selled:', len(sxglobals.prev_component_selection))
                 for source in material_sources:
                     if source in objs[0].sx2layers.keys():
-                        typical_color = utils.find_colors_by_frequency(objs, source, 1)[0]
-                        print(typical_color)
+                        typical_color = utils.find_colors_by_frequency(objs, source, 1, maskcolor=color)[0]
                         palette_dict[source][i] = typical_color
 
             files.export_palette_textures(palette_dict)
-            utils.mode_manager(objs, revert=True, mode_id='composite_layers')
             refresh_swatches(self, context)
 
         return {'FINISHED'}
