@@ -340,7 +340,70 @@ class SXTOOLS2_files(object):
                 print(f'Completed: {group_name}')
 
 
-    def export_palette_textures(self, palette_dict):
+    def export_files_simple(self, objs, reset_locations=False):
+        scene = bpy.context.scene.sx2
+        prefs = bpy.context.preferences.addons['sxtools2'].preferences
+        export_dict = {'LIN': 'LINEAR', 'SRGB': 'SRGB'}
+
+        obj_names = []
+        for obj in objs:
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+            if reset_locations:
+                org_loc = obj.location.copy()
+                obj.location = (0, 0, 0)
+
+            obj['staticVertexColors'] = obj.sx2.staticvertexcolors
+            obj['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
+            obj['colorSpace'] = export_dict[prefs.exportspace]
+
+            # bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+            bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+
+            if 'sxTiler' in obj.modifiers:
+                obj.modifiers.remove(obj.modifiers['sxTiler'])
+                obj.data.use_auto_smooth = True
+
+            category = objs[0].sx2.category.lower()
+            print(f'Determining path: {objs[0].name} {category}')
+            path = scene.exportfolder + category + os.path.sep
+            pathlib.Path(path).mkdir(exist_ok=True)
+
+            exportPath = path + obj.name + '.' + 'fbx'
+            export_settings = ['FBX_SCALE_UNITS', False, False, False, 'Z', '-Y', '-Y', '-X', 'NONE']
+
+            bpy.ops.export_scene.fbx(
+                filepath=exportPath,
+                apply_scale_options=export_settings[0],
+                use_selection=True,
+                apply_unit_scale=export_settings[1],
+                use_space_transform=export_settings[2],
+                bake_space_transform=export_settings[3],
+                use_mesh_modifiers=True,
+                axis_up=export_settings[4],
+                axis_forward=export_settings[5],
+                use_active_collection=False,
+                add_leaf_bones=False,
+                primary_bone_axis=export_settings[6],
+                secondary_bone_axis=export_settings[7],
+                object_types={'ARMATURE', 'EMPTY', 'MESH'},
+                use_custom_props=True,
+                use_metadata=False,
+                colors_type=export_settings[8])
+
+            obj_names.append(obj.name)
+            obj.location = org_loc
+
+        modifiers.remove_modifiers(objs)
+        modifiers.add_modifiers(objs)
+
+        message_box('Exported:\n' + str('\n').join(obj_names))
+        for obj_name in obj_names:
+            print(f'Completed: {obj_name}')
+
+
+    def export_palette_atlases(self, palette_dict):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         for palette_name, palette in palette_dict.items():
             swatch_size = 16
@@ -9646,7 +9709,8 @@ class SXTOOLS2_OT_test_button(bpy.types.Operator):
                         typical_color = utils.find_colors_by_frequency(objs, source, 1, maskcolor=color)[0]
                         palette_dict[source][i] = typical_color
 
-            files.export_palette_textures(palette_dict)
+            files.export_palette_atlases(palette_dict)
+            files.export_files_simple(objs)
             refresh_swatches(self, context)
 
         return {'FINISHED'}
@@ -9805,7 +9869,6 @@ if __name__ == '__main__':
 # - make flatten alphas obsolete by including layer opacity in blending
 # - selectedlayer not passed to all selected? Composite layer appears in different locations per multi-selection object
 # - check what might change datatype of custom props, staticvertexcolors was not int?
-# - export different fbx for palette atlas objs
 # - default path if no categories used?
 # - SXTool missing if magic twice? Loadlibraries not handled properly
 
