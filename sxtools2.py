@@ -350,8 +350,8 @@ class SXTOOLS2_files(object):
             bpy.context.view_layer.objects.active = obj
             bpy.ops.object.select_all(action='DESELECT')
             obj.select_set(True)
+            org_loc = obj.location.copy()
             if reset_locations:
-                org_loc = obj.location.copy()
                 obj.location = (0, 0, 0)
 
             obj['staticVertexColors'] = obj.sx2.staticvertexcolors
@@ -419,7 +419,7 @@ class SXTOOLS2_files(object):
                     if (palette_name == 'Composite') and (prefs.exportspace == 'SRGB'):
                         color = convert.linear_to_srgb(color)
                     elif (palette_name == 'Roughness') and (prefs.exportroughness == 'SMOOTH'):
-                        color = convert.invert_values([color, ])
+                        color = [1.0 - color[0], 1.0 - color[1], 1.0 - color[2], color[3]]
                     z += 1
                     for i in range(swatch_size):
                         row[x*swatch_size*4+i*4:x*swatch_size*4+i*4+4] = [color[0], color[1], color[2], color[3]]
@@ -1786,7 +1786,10 @@ class SXTOOLS2_layers(object):
 
     def get_luminances(self, obj, sourcelayer=None, colors=None, as_rgba=False, as_alpha=False):
         if colors is None:
-            colors = self.get_layer(obj, sourcelayer)
+            if sourcelayer is not None:
+                colors = self.get_layer(obj, sourcelayer)
+            else:
+                colors = generate.empty_list(obj, 4)
 
         if as_rgba:
             values = generate.empty_list(obj, 4)
@@ -3707,6 +3710,10 @@ class SXTOOLS2_magic(object):
                         if scene.exportquality == 'HI':
                             tools.apply_modifiers(groupObjs)
                         self.process_default(groupObjs)
+                    if category == 'STATIC':
+                        if scene.exportquality == 'HI':
+                            tools.apply_modifiers(groupObjs)
+                        self.process_static(groupObjs)
                     elif category == 'PALETTED':
                         if scene.exportquality == 'HI':
                             tools.apply_modifiers(groupObjs)
@@ -3755,7 +3762,7 @@ class SXTOOLS2_magic(object):
                     elif category == 'TRANSPARENT':
                         if scene.exportquality == 'HI':
                             tools.apply_modifiers(groupObjs)
-                        self.process_default(groupObjs)
+                        self.process_static(groupObjs)
                     else:
                         if scene.exportquality == 'HI':
                             tools.apply_modifiers(groupObjs)
@@ -3831,6 +3838,46 @@ class SXTOOLS2_magic(object):
 
     def process_default(self, objs):
         print('SX Tools: Processing Default')
+        scene = bpy.context.scene.sx2
+
+        # Apply palette material overrides
+        for obj in objs:
+            if obj.sx2.metallicoverride or obj.sx2.roughnessoverride:
+                color_layers = utils.find_color_layers(obj, staticvertexcolors=int(obj.sx2.staticvertexcolors))
+                paletted_layers = []
+                for layer in color_layers:
+                    if layer.paletted:
+                        paletted_layers.append(layer)
+
+            if obj.sx2.roughnessoverride:
+                if 'Roughness' not in obj.sx2layers.keys():
+                    layers.add_layer([obj, ], name='Roughness', layer_type='RGH')
+
+                for layer in paletted_layers:
+                    value = getattr(obj.sx2, 'roughness'+str(layer.palette_index))
+                    value *= layer.opacity
+                    color = (value, value, value, 1.0)
+                    values = generate.color_list(obj, color, layer)
+                    base = layers.get_layer(obj, obj.sx2layers['Roughness'])
+                    colors = tools.blend_values(values, base, 'ALPHA', 1.0)
+                    layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
+
+            if obj.sx2.metallicoverride:
+                if 'Metallic' not in obj.sx2layers.keys():
+                    layers.add_layer([obj, ], name='Metallic', layer_type='MET')
+
+                for layer in paletted_layers:
+                    value = getattr(obj.sx2, 'metallic'+str(layer.palette_index))
+                    value *= layer.opacity
+                    color = (value, value, value, 1.0)
+                    values = generate.color_list(obj, color, layer)
+                    base = layers.get_layer(obj, obj.sx2layers['Metallic'])
+                    colors = tools.blend_values(values, base, 'ALPHA', 1.0)
+                    layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
+
+
+    def process_static(self, objs):
+        print('SX Tools: Processing Static')
         scene = bpy.context.scene.sx2
         obj = objs[0]
 
@@ -5581,6 +5628,12 @@ def load_category(self, context):
                     layer.palette_index = category_data["layers"][i][4]
 
             obj.sx2.staticvertexcolors = str(category_data['staticvertexcolors'])
+            obj.sx2.metallicoverride = bool(category_data['metallic_override'])
+            obj.sx2.metallic0 = category_data['palette_metallic'][0]
+            obj.sx2.metallic1 = category_data['palette_metallic'][1]
+            obj.sx2.metallic2 = category_data['palette_metallic'][2]
+            obj.sx2.metallic3 = category_data['palette_metallic'][3]
+            obj.sx2.metallic4 = category_data['palette_metallic'][4]
             obj.sx2.roughnessoverride = bool(category_data['roughness_override'])
             obj.sx2.roughness0 = category_data['palette_roughness'][0]
             obj.sx2.roughness1 = category_data['palette_roughness'][1]
@@ -6073,6 +6126,52 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
             ('0', 'Paletted', '')],
         default='1',
         update=lambda self, context: update_obj_props(self, context, 'staticvertexcolors'))
+
+    metallicoverride: bpy.props.BoolProperty(
+        name='Palette Metallic Override',
+        description='Apply metallic per palette color',
+        default=False,
+        update=lambda self, context: update_obj_props(self, context, 'metallicoverride'))
+
+    metallic0: bpy.props.FloatProperty(
+        name='Palette Color 0 Base Metallic',
+        min=0.0,
+        max=1.0,
+        precision=2,
+        default=0.0,
+        update=lambda self, context: update_obj_props(self, context, 'metallic0'))
+
+    metallic1: bpy.props.FloatProperty(
+        name='Palette Color 1 Base Metallic',
+        min=0.0,
+        max=1.0,
+        precision=2,
+        default=0.0,
+        update=lambda self, context: update_obj_props(self, context, 'metallic1'))
+
+    metallic2: bpy.props.FloatProperty(
+        name='Palette Color 2 Base Metallic',
+        min=0.0,
+        max=1.0,
+        precision=2,
+        default=0.0,
+        update=lambda self, context: update_obj_props(self, context, 'metallic2'))
+
+    metallic3: bpy.props.FloatProperty(
+        name='Palette Color 3 Base Metallic',
+        min=0.0,
+        max=1.0,
+        precision=2,
+        default=0.0,
+        update=lambda self, context: update_obj_props(self, context, 'metallic3'))
+
+    metallic4: bpy.props.FloatProperty(
+        name='Palette Color 4 Base Metallic',
+        min=0.0,
+        max=1.0,
+        precision=2,
+        default=0.0,
+        update=lambda self, context: update_obj_props(self, context, 'metallic4'))
 
     roughnessoverride: bpy.props.BoolProperty(
         name='Palette Roughness Override',
@@ -7419,6 +7518,16 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_cat.prop(sx2, 'category', text='')
 
                             col_export.separator()
+                            col_export.prop(sx2, 'metallicoverride', text='Override Palette Metallic', toggle=True)
+                            if obj.sx2.metallicoverride:
+                                row_override = col_export.row(align=True)
+                                row_override.prop(sx2, 'metallic0', text='Palette Color 0 Metallic')
+                                row_override.prop(sx2, 'metallic1', text='Palette Color 1 Metallic')
+                                row_override.prop(sx2, 'metallic2', text='Palette Color 2 Metallic')
+                                row_override.prop(sx2, 'metallic3', text='Palette Color 3 Metallic')
+                                row_override.prop(sx2, 'metallic4', text='Palette Color 4 Metallic')
+
+                            col_export.separator()
                             col_export.prop(sx2, 'roughnessoverride', text='Override Palette Roughness', toggle=True)
                             if obj.sx2.roughnessoverride:
                                 row_override = col_export.row(align=True)
@@ -7428,6 +7537,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 row_override.prop(sx2, 'roughness3', text='Palette Color 3 Roughness')
                                 row_override.prop(sx2, 'roughness4', text='Palette Color 4 Roughness')
 
+                            col_export.separator()
                             row_static = col_export.row(align=True)
                             row_static.label(text='Vertex Colors:')
                             row_static.prop(sx2, 'staticvertexcolors', text='')
@@ -9203,7 +9313,9 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
             modeString = 'Low Detail export:\nBaking is performed on control cage (base mesh)\n\n'
 
         if category == 'DEFAULT':
-            modeString += 'Default batch process:\n1) Overlay bake\n2) Occlusion bake\nNOTE: Overwrites existing overlay and occlusion'
+            modeString += 'Default batch process:\nApplies palette roughness overrides'
+        elif category == 'STATIC':
+            modeString += 'Static batch process:\n1) Overlay bake\n2) Occlusion bake\nNOTE: Overwrites existing overlay and occlusion'
         elif category == 'PALETTED':
             modeString += 'Paletted batch process:\n1) Occlusion bake\n2) Custom roughness & metallic bake\n3) Custom overlay bake\n4) Emissive faces are smooth and non-occluded\nNOTE: Overwrites existing overlay, occlusion, transmission, metallic and roughness'
         elif category == 'VEHICLES':
@@ -9631,7 +9743,10 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
 
                 print('SX Tools: Assigning category to converted objects')
                 categories = list(sxglobals.category_dict.keys())
-                objs[0].sx2.category = categories[obj['sxtools'].get('category', 0)].upper()
+                sx_category = categories[obj['sxtools'].get('category', 0)].upper()
+                if sx_category == 'DEFAULT':
+                    sx_category = 'STATIC'
+                objs[0].sx2.category = sx_category
 
                 utils.mode_manager(objs, revert=True, mode_id='sxtosx2')
 
@@ -9858,12 +9973,10 @@ if __name__ == '__main__':
 # - fix auto-smooth errors (?!!)
 # - load category in a non-destructive way
 # - load libraries automatically on scene load?
-# - optimize synced layersets to use the same material
-#   - clean-up for sxglobals.sx2_material_dict
-#   - only create a single material in debug and alpha mode
 # - import step: remove redundant obj props and sxMaterial
 # - layer opacity included in compositing and uv exporting
 # - make flatten alphas obsolete by including layer opacity in blending
 # - selectedlayer not passed to all selected? Composite layer appears in different locations per multi-selection object
 # - check what might change datatype of custom props, staticvertexcolors was not int?
 # - default path if no categories used?
+# - Handle case when all objects have been deleted from the scene and a new one is added
