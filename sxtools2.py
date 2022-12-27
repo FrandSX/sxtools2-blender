@@ -418,6 +418,8 @@ class SXTOOLS2_files(object):
                     color = palette[z] if z < len(palette) else (0.0, 0.0, 0.0, 1.0)
                     if (palette_name == 'Composite') and (prefs.exportspace == 'SRGB'):
                         color = convert.linear_to_srgb(color)
+                    elif (palette_name == 'Roughness') and (prefs.exportroughness == 'SMOOTH'):
+                        color = convert.invert_values([color, ])
                     z += 1
                     for i in range(swatch_size):
                         row[x*swatch_size*4+i*4:x*swatch_size*4+i*4+4] = [color[0], color[1], color[2], color[3]]
@@ -9852,11 +9854,6 @@ if __name__ == '__main__':
 # - vertex bevel modifier?
 # - reset scene -> redundant?
 # - keymonitor does not start without creating an empty layer
-# - Atlas export settings:
-#   - Emission atlas -> emissive color in composite
-#   - Smoothness vs. roughness
-#   - Metallic
-#   - Write any pbr atlas by iterating over color UVs
 # - rewrite validation functions according to current data structures, validate based on category
 # - fix auto-smooth errors (?!!)
 # - load category in a non-destructive way
@@ -9870,5 +9867,3 @@ if __name__ == '__main__':
 # - selectedlayer not passed to all selected? Composite layer appears in different locations per multi-selection object
 # - check what might change datatype of custom props, staticvertexcolors was not int?
 # - default path if no categories used?
-# - SXTool missing if magic twice? Loadlibraries not handled properly
-
