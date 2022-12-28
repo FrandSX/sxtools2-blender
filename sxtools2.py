@@ -5478,11 +5478,11 @@ def load_category(self, context):
             obj.sx2.roughness4 = category_data['palette_roughness'][4]
             obj.sx2.selectedlayer = 1
 
-            # bpy.data.materials[utils.find_sx2material_name(obj)].blend_method = category_data['blend']
-            # if category_data['blend'] == 'BLEND':
-            #     bpy.data.materials[utils.find_sx2material_name(obj)].use_backface_culling = True
-            # else:
-            #     bpy.data.materials[utils.find_sx2material_name(obj)].use_backface_culling = False
+            bpy.data.materials[utils.find_sx2material_name(obj)].blend_method = category_data['blend']
+            if category_data['blend'] == 'BLEND':
+                bpy.data.materials[utils.find_sx2material_name(obj)].use_backface_culling = True
+            else:
+                bpy.data.materials[utils.find_sx2material_name(obj)].use_backface_culling = False
 
             utils.sort_stack_indices(obj)
             context.view_layer.objects.active = None
@@ -5616,18 +5616,19 @@ def update_obj_props(self, context, prop):
 
 
 def update_layer_props(self, context, prop):
-    objs = mesh_selection_validator(self, context)
-    for obj in objs:
-        if getattr(obj.sx2layers[self.name], prop) != getattr(objs[0].sx2layers[self.name], prop):
-            setattr(obj.sx2layers[self.name], prop, getattr(objs[0].sx2layers[self.name], prop))
+    if not sxglobals.refresh_in_progress:
+        objs = mesh_selection_validator(self, context)
+        for obj in objs:
+            if getattr(obj.sx2layers[self.name], prop) != getattr(objs[0].sx2layers[self.name], prop):
+                setattr(obj.sx2layers[self.name], prop, getattr(objs[0].sx2layers[self.name], prop))
 
-    mat_props = ['paletted', 'visibility', 'blend_mode']
-    if prop in mat_props:
-        setup.update_sx2material(context)
-    elif prop == 'opacity':
-        update_material_props(self, context)
-    elif prop == 'palette_index':
-        update_paletted_layers(self, context, None)
+        mat_props = ['paletted', 'visibility', 'blend_mode']
+        if prop in mat_props:
+            setup.update_sx2material(context)
+        elif prop == 'opacity':
+            update_material_props(self, context)
+        elif prop == 'palette_index':
+            update_paletted_layers(self, context, None)
 
 
 def export_validator(self, context):
@@ -9492,6 +9493,8 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     load_libraries(self, context)
 
                 utils.mode_manager(objs, set_mode=True, mode_id='sxtosx2')
+                categories = list(sxglobals.category_dict.keys())
+
                 for obj in objs:
                     context.view_layer.objects.active = obj
                     print('SX Tools: Converting', obj.name)
@@ -9570,20 +9573,53 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                             # grab overlay BA
                             pass
 
+                    sx_category = categories[obj['sxtools'].get('category', 0) + 1].upper()
+                    if sx_category == 'DEFAULT':
+                        sx_category = 'STATIC'
+                    obj.sx2.category = sx_category
+                    category_data = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]
+
+                    for i in range(len(category_data['layers'])):
+                        layer = utils.find_layer_by_stack_index(obj, i)
+                        if layer is None:
+                            layer_dict = layers.add_layer([obj, ], name=category_data["layers"][i][0], layer_type=category_data["layers"][i][1])
+                            layer = layer_dict[obj]
+                        else:
+                            layer.name = category_data["layers"][i][0]
+                            layer.layer_type = category_data["layers"][i][1]
+                        
+                        layer.blend_mode = category_data["layers"][i][2]
+                        layer.opacity = category_data["layers"][i][3]
+                        if category_data["layers"][i][4] == "None":
+                            layer.paletted = False
+                        else:
+                            layer.paletted = True
+                            layer.palette_index = category_data["layers"][i][4]
+
+                    obj.sx2.staticvertexcolors = str(category_data['staticvertexcolors'])
+                    obj.sx2.metallicoverride = bool(category_data['metallic_override'])
+                    obj.sx2.metallic0 = category_data['palette_metallic'][0]
+                    obj.sx2.metallic1 = category_data['palette_metallic'][1]
+                    obj.sx2.metallic2 = category_data['palette_metallic'][2]
+                    obj.sx2.metallic3 = category_data['palette_metallic'][3]
+                    obj.sx2.metallic4 = category_data['palette_metallic'][4]
+                    obj.sx2.roughnessoverride = bool(category_data['roughness_override'])
+                    obj.sx2.roughness0 = category_data['palette_roughness'][0]
+                    obj.sx2.roughness1 = category_data['palette_roughness'][1]
+                    obj.sx2.roughness2 = category_data['palette_roughness'][2]
+                    obj.sx2.roughness3 = category_data['palette_roughness'][3]
+                    obj.sx2.roughness4 = category_data['palette_roughness'][4]
+                    obj.sx2.selectedlayer = 1
+
+                    utils.sort_stack_indices(obj)
+                    print(f'SX Tools: Assigned {obj.name} to category {sx_category}')
+
                 modifiers.remove_modifiers(objs)
                 if ('sx_tiler' in bpy.data.node_groups):
                     bpy.data.node_groups.remove(bpy.data.node_groups['sx_tiler'], do_unlink=True)
                 modifiers.add_modifiers(objs)
 
                 sxglobals.refresh_in_progress = False
-
-                print('SX Tools: Assigning category to converted objects')
-                categories = list(sxglobals.category_dict.keys())
-                sx_category = categories[obj['sxtools'].get('category', 0) + 1].upper()
-                if sx_category == 'DEFAULT':
-                    sx_category = 'STATIC'
-                objs[0].sx2.category = sx_category
-
                 utils.mode_manager(objs, revert=True, mode_id='sxtosx2')
 
                 # Delete redundant object properties and the legacy material
@@ -9599,7 +9635,8 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     for key in to_delete:
                         del obj[key]
 
-                bpy.data.materials.remove(bpy.data.materials['SXMaterial'])
+                if 'SXMaterial' in bpy.data.materials:
+                    bpy.data.materials.remove(bpy.data.materials['SXMaterial'])
 
                 sxglobals.magic_in_progress = False
                 setup.update_sx2material(context)
@@ -9824,5 +9861,6 @@ if __name__ == '__main__':
 # - fix auto-smooth errors (?!!)
 # - load category in a non-destructive and order independent way
 # - load libraries automatically on scene load?
+
 # - layer opacity included in compositing and uv exporting
 # - make flatten alphas obsolete by including layer opacity in blending
