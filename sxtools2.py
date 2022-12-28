@@ -1651,7 +1651,7 @@ class SXTOOLS2_layers(object):
 
 
     # wrapper for low-level functions, always returns layerdata in RGBA
-    def get_layer(self, obj, sourcelayer, as_tuple=False, single_as_alpha=False, apply_layer_alpha=False, gradient_with_palette=False):
+    def get_layer(self, obj, sourcelayer, as_tuple=False, single_as_alpha=False, apply_layer_opacity=False, gradient_with_palette=False):
         rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP']
         alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
         dv = [1.0, 1.0, 1.0, 1.0]
@@ -1679,9 +1679,9 @@ class SXTOOLS2_layers(object):
             values = [None] * count * 4
 
             # if gradient_with_palette:
-            #     if sourcelayer.name == 'Gradient 1':
+            #     if sourcelayer.name == 'Gradient1':
             #         dv = sxmaterial.nodes['PaletteColor3'].outputs[0].default_value
-            #     elif sourcelayer.name == 'Gradient 2':
+            #     elif sourcelayer.name == 'Gradient2':
             #         dv = sxmaterial.nodes['PaletteColor4'].outputs[0].default_value
 
             if single_as_alpha:
@@ -1697,7 +1697,7 @@ class SXTOOLS2_layers(object):
         elif sourcelayer.layer_type == 'UV4':
             values = layers.get_uv4(obj, sourcelayer)
 
-        if apply_layer_alpha and sourcelayer.opacity != 1.0:
+        if apply_layer_opacity and sourcelayer.opacity != 1.0:
             count = len(values)//4
             for i in range(count):
                 values[3+i*4] *= sourcelayer.opacity
@@ -1736,7 +1736,7 @@ class SXTOOLS2_layers(object):
             self.set_colors(obj, 'Alpha Materials', target_values)
 
         elif target_type == 'UV':
-            if (targetlayer.name == 'Gradient 1') or (targetlayer.name == 'Gradient 2'):
+            if (targetlayer.name == 'Gradient1') or (targetlayer.name == 'Gradient2'):
                 target_uvs = colors[3::4]
                 if constant_alpha_test(target_uvs):
                     target_uvs = layers.get_luminances(obj, sourcelayer=None, colors=colors, as_rgba=False)
@@ -1943,8 +1943,8 @@ class SXTOOLS2_layers(object):
 
     def merge_layers(self, objs, toplayer, baselayer, targetlayer):
         for obj in objs:
-            basecolors = self.get_layer(obj, baselayer, apply_layer_alpha=True, single_as_alpha=True)
-            topcolors = self.get_layer(obj, toplayer, apply_layer_alpha=True, single_as_alpha=True)
+            basecolors = self.get_layer(obj, baselayer, apply_layer_opacity=True, single_as_alpha=True)
+            topcolors = self.get_layer(obj, toplayer, apply_layer_opacity=True, single_as_alpha=True)
 
             blendmode = toplayer.blend_mode
             colors = tools.combine_layers(topcolors, basecolors, blendmode)
@@ -3173,7 +3173,7 @@ class SXTOOLS2_export(object):
             channels = {'U': 0, 'V': 1}
             for layer in obj.sx2layers:
                 alpha = layer.opacity
-                if (layer.name == 'Gradient 1') or (layer.name == 'Gradient 2'):
+                if (layer.name == 'Gradient1') or (layer.name == 'Gradient2'):
                     for poly in obj.data.polygons:
                         for idx in poly.loop_indices:
                             vertexUVs[layer.uvLayer0].data[idx].uv[channels[layer.uvChannel0]] *= alpha
@@ -3836,11 +3836,7 @@ class SXTOOLS2_magic(object):
         sxglobals.refresh_in_progress = False
 
 
-    def process_default(self, objs):
-        print('SX Tools: Processing Default')
-        scene = bpy.context.scene.sx2
-
-        # Apply palette material overrides
+    def apply_palette_overrides(self, objs, clear=False):
         for obj in objs:
             if obj.sx2.metallicoverride or obj.sx2.roughnessoverride:
                 color_layers = utils.find_color_layers(obj, staticvertexcolors=int(obj.sx2.staticvertexcolors))
@@ -3850,6 +3846,9 @@ class SXTOOLS2_magic(object):
                         paletted_layers.append(layer)
 
             if obj.sx2.roughnessoverride:
+                if clear:
+                    layers.clear_layers(objs, obj.sx2layers['Roughness'])
+
                 if 'Roughness' not in obj.sx2layers.keys():
                     layers.add_layer([obj, ], name='Roughness', layer_type='RGH')
 
@@ -3863,6 +3862,8 @@ class SXTOOLS2_magic(object):
                     layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
 
             if obj.sx2.metallicoverride:
+                if clear:
+                    layers.clear_layers(objs, obj.sx2layers['Metallic'])
                 if 'Metallic' not in obj.sx2layers.keys():
                     layers.add_layer([obj, ], name='Metallic', layer_type='MET')
 
@@ -3876,24 +3877,21 @@ class SXTOOLS2_magic(object):
                     layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
 
 
-    def process_static(self, objs):
-        print('SX Tools: Processing Static')
+    def apply_occlusion(self, objs, masklayername=None, blend=0.5, rays=1000, groundplane=True, distance=10.0):
+        for obj in objs:
+            layer = obj.sx2layers['Occlusion']
+            colors = generate.occlusion_list(obj, rays, blend, distance, groundplane)
+            if masklayername is not None:
+                mask = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), obj.sx2layers[masklayername])
+                colors = tools.blend_values(mask, colors, 'ALPHA', 1.0)
+            layers.set_layer(obj, colors, layer)
+
+
+    def apply_curvature_overlay(self, objs, opacity=1.0):
         scene = bpy.context.scene.sx2
-        obj = objs[0]
-
-        # Apply occlusion
-        layer = obj.sx2layers['Occlusion']
-        scene.toolmode = 'OCC'
-        scene.noisemono = True
-        scene.occlusionblend = 0.5
-        scene.occlusionrays = 1000
-        scene.occlusiondistance = 10.0
-
-        tools.apply_tool(objs, layer)
-
-        # Apply custom overlay
         layer = obj.sx2layers['Overlay']
         scene.toolmode = 'CRV'
+        scene.toolopacity = opacity
         scene.curvaturenormalize = True
 
         tools.apply_tool(objs, layer)
@@ -3908,93 +3906,58 @@ class SXTOOLS2_magic(object):
             obj.sx2layers['Overlay'].blend_mode = 'OVR'
             # obj.sx2layers['Overlay'].opacity = obj.sx2.overlaystrength
 
+        scene.toolopacity = 1.0
+
+
+    def process_default(self, objs):
+        print('SX Tools: Processing Default')
+        self.apply_palette_overrides(objs)
+
+
+    def process_static(self, objs):
+        print('SX Tools: Processing Static')
+        obj = objs[0]
+
+        self.apply_palette_overrides(objs, clear=True)
+        self.apply_occlusion(objs)
+        self.apply_curvature_overlay(objs)
+
         # Emissives are smooth
-        color = (0.0, 0.0, 0.0, 1.0)
-        masklayer = obj.sx2layers['Emission']
-        layer = obj.sx2layers['Roughness']
-        tools.apply_tool(objs, layer, masklayer=masklayer, color=color)
+        tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Emission'], color=(0.0, 0.0, 0.0, 1.0))
 
 
     def process_roadtiles(self, objs):
         print('SX Tools: Processing Roadtiles')
-        scene = bpy.context.scene.sx2
 
-        # Apply occlusion
-        layer = objs[0].sx2layers['Occlusion']
-        scene.toolmode = 'OCC'
-        scene.noisemono = True
-        scene.occlusionblend = 0.0
-        scene.occlusionrays = 1000
-        scene.occlusiondistance = 50.0
-
-        tools.apply_tool(objs, layer)
-
-        # Apply Gradient 1 to roughness and metallic
+        # Apply Gradient1 to roughness and metallic
         for obj in objs:
-            obj.sx2layers['Gradient 1'].opacity = 1.0
-            colors = layers.get_layer(obj, obj.sx2layers['Gradient 1'])
+            obj.sx2layers['Gradient1'].opacity = 1.0
+            colors = layers.get_layer(obj, obj.sx2layers['Gradient1'])
             if colors is not None:
                 layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
                 layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
 
-        # Painted roads are smooth-ish
-        color = (0.5, 0.5, 0.5, 1.0)
-        masklayer = utils.find_color_layers(objs[0], 2)
-        layer = objs[0].sx2layers['Metallic']
-        tools.apply_tool(objs, layer, masklayer=masklayer, color=color)
-        layer = objs[0].sx2layers['Roughness']
-        tools.apply_tool(objs, layer, masklayer=masklayer, color=color)
+        self.apply_palette_overrides(objs, clear=False)
+        self.apply_occlusion(objs, blend=0.0, groundplane=False, distance=50.0)
 
         # Emissives are smooth
-        color = (0.0, 0.0, 0.0, 1.0)
-        masklayer = objs[0].sx2layers['Emission']
-        layer = objs[0].sx2layers['Roughness']
-        tools.apply_tool(objs, layer, masklayer=masklayer, color=color)
+        tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Emission'], color=(0.0, 0.0, 0.0, 1.0))
 
-        # Tone down Gradient 1 contribution
+        # Tone down Gradient1 contribution
         for obj in objs:
-            obj.sx2layers['Gradient 1'].opacity = 0.15
+            obj.sx2layers['Gradient1'].opacity = 0.15
 
 
     def process_characters(self, objs):
         print('SX Tools: Processing Characters')
-        scene = bpy.context.scene.sx2
         obj = objs[0]
 
-        # Apply occlusion
-        layer = obj.sx2layers['Occlusion']
-        scene.toolmode = 'OCC'
-        scene.noisemono = True
-        scene.occlusionblend = 0.2
-        scene.occlusionrays = 1000
-        scene.occlusiondistance = 1.0
-
-        tools.apply_tool(objs, layer)
-
-        # Apply custom overlay
-        layer = obj.sx2layers['Overlay']
-        scene.toolmode = 'CRV'
-        scene.curvaturenormalize = True
-        scene.toolopacity = 0.2
-        scene.toolblend = 'ALPHA'
-
-        tools.apply_tool(objs, layer)
-
-        scene.noisemono = False
-        scene.toolmode = 'NSE'
-        scene.toolopacity = 0.01
-        scene.toolblend = 'MUL'
-
-        tools.apply_tool(objs, layer)
-        for obj in objs:
-            obj.sx2layers['Overlay'].blend_mode = 'OVR'
-            # obj.sx2layers['Overlay'].opacity = obj.sx2.overlaystrength
+        self.apply_palette_overrides(objs)
+        self.apply_occlusion(objs, blend=0.2, distance=1.0)
+        self.apply_curvature_overlay(objs, opacity=0.2)
 
         # Emissives are smooth
-        color = (0.0, 0.0, 0.0, 1.0)
-        masklayer = obj.sx2layers['Emission']
-        layer = obj.sx2layers['Roughness']
-        tools.apply_tool(objs, layer, masklayer=masklayer, color=color)
+        tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Emission'], color=(0.0, 0.0, 0.0, 1.0))
 
 
     def process_paletted(self, objs):
@@ -4002,44 +3965,9 @@ class SXTOOLS2_magic(object):
         scene = bpy.context.scene.sx2
         obj = objs[0]
 
-        # Apply occlusion masked by emission
-        scene.occlusionblend = 0.5
-        scene.occlusionrays = 1000
-        scene.occlusiondistance = 10.0
-
-        for obj in objs:
-            layer = obj.sx2layers['Occlusion']
-            colors0 = generate.occlusion_list(obj, scene.occlusionrays, scene.occlusionblend, scene.occlusiondistance, scene.occlusiongroundplane)
-            colors1 = layers.get_layer(obj, obj.sx2layers['Emission'], single_as_alpha=True)
-            colors = tools.blend_values(colors1, colors0, 'ALPHA', 1.0)
-
-            layers.set_layer(obj, colors, layer)
-
-        # Apply custom overlay
-        layer = obj.sx2layers['Overlay']
-        scene.toolmode = 'CRV'
-        scene.curvaturenormalize = True
-
-        tools.apply_tool(objs, layer)
-
-        scene.toolmode = 'NSE'
-        scene.toolopacity = 0.01
-        scene.toolblend = 'MUL'
-        scene.noisemono = False
-
-        tools.apply_tool(objs, layer)
-
-        scene.toolopacity = 1.0
-        scene.toolblend = 'ALPHA'
-
-        for obj in objs:
-            obj.sx2layers['Overlay'].blend_mode = 'OVR'
-            # obj.sx2layers['Overlay'].opacity = obj.sx2.overlaystrength
-
-        # Clear metallic, roughness, and transmission
-        layers.clear_layers(objs, obj.sx2layers['Metallic'])
-        layers.clear_layers(objs, obj.sx2layers['Roughness'])
-        # layers.clear_layers(objs, obj.sx2layers['Transmission'])
+        self.apply_palette_overrides(objs, clear=True)
+        self.apply_occlusion(objs, masklayername='Emission')
+        self.apply_curvature_overlay(objs)
 
         material = 'Iron'
         palette = [
@@ -4053,16 +3981,9 @@ class SXTOOLS2_magic(object):
         palette[2] = inverted_color
 
         for obj in objs:
-            # Construct layer1-7 roughness base mask
-            color = (obj.sx2.roughness0, obj.sx2.roughness0, obj.sx2.roughness0, 1.0)
-            colors = generate.color_list(obj, color)
-            color = (obj.sx2.roughness4, obj.sx2.roughness4, obj.sx2.roughness4, 1.0)
-            colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 3))
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 4))
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            color = (1.0, 1.0, 1.0, 1.0)
-            colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 5))
+            colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
+            # Static colors layer is rough
+            colors1 = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), utils.find_color_layers(obj, 5))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             # Combine with roughness from PBR material
             colors1 = generate.color_list(obj, palette[2], utils.find_color_layers(obj, 6))
@@ -4114,44 +4035,11 @@ class SXTOOLS2_magic(object):
         print('SX Tools: Processing Vehicles')
         scene = bpy.context.scene.sx2
 
-        # Apply occlusion masked by emission
-        scene.occlusionblend = 0.5
-        scene.occlusionrays = 1000
-        scene.occlusiongroundplane = True
-        scene.occlusiondistance = 10.0
-
-        for obj in objs:
-            layer = obj.sx2layers['Occlusion']
-            colors0 = generate.occlusion_list(obj, scene.occlusionrays, scene.occlusionblend, scene.occlusiondistance, scene.occlusiongroundplane)
-            colors1 = layers.get_layer(obj, obj.sx2layers['Emission'])
-            colors = tools.blend_values(colors1, colors0, 'ALPHA', 1.0)
-            layers.set_layer(obj, colors, layer)
+        self.apply_palette_overrides(objs, clear=True)
+        self.apply_occlusion(objs, masklayername='Emission')
+        self.apply_curvature_overlay(objs)
 
         obj = objs[0]
-        # Apply custom overlay
-        layer = obj.sx2layers['Overlay']
-        scene.toolmode = 'CRV'
-        scene.curvaturenormalize = True
-
-        tools.apply_tool(objs, layer)
-
-        scene.toolmode = 'NSE'
-        scene.toolopacity = 0.01
-        scene.toolblend = 'MUL'
-        scene.noisemono = False
-
-        tools.apply_tool(objs, layer)
-
-        scene.toolopacity = 1.0
-        scene.toolblend = 'ALPHA'
-
-        # for obj in objs:
-        #     obj.sx2layers['Overlay'].blend_mode = 'OVR'
-
-        # Clear metallic, roughness, and transmission
-        layers.clear_layers(objs, obj.sx2layers['Metallic'])
-        layers.clear_layers(objs, obj.sx2layers['Roughness'])
-        layers.clear_layers(objs, obj.sx2layers['Transmission'])
 
         material = 'Iron'
         palette = [
@@ -4165,16 +4053,9 @@ class SXTOOLS2_magic(object):
         palette[2] = inverted_color
 
         for obj in objs:
-            # Construct layer1-7 roughness base mask
-            color = (obj.sx2.roughness0, obj.sx2.roughness0, obj.sx2.roughness0, 1.0)
-            colors = generate.color_list(obj, color)
-            color = (obj.sx2.roughness4, obj.sx2.roughness4, obj.sx2.roughness4, 1.0)
-            colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 3))
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 4))
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            color = (1.0, 1.0, 1.0, 1.0)
-            colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 5))
+            colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
+            # Static colors layer is rough
+            colors1 = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), utils.find_color_layers(obj, 5))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             # Combine with roughness from PBR material
             colors1 = generate.color_list(obj, palette[2], utils.find_color_layers(obj, 6))
@@ -4199,12 +4080,10 @@ class SXTOOLS2_magic(object):
             colors1 = generate.luminance_remap_list(obj, values=values)
             colors = tools.blend_values(colors1, colors, 'ADD', 0.2)
             # Emissives are smooth
-            color = (0.0, 0.0, 0.0, 1.0)
-            colors1 = generate.color_list(obj, color, obj.sx2layers['Emission'])
+            colors1 = generate.color_list(obj, (0.0, 0.0, 0.0, 1.0), obj.sx2layers['Emission'])
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             # Write roughness
-            layer = obj.sx2layers['Roughness']
-            layers.set_layer(obj, colors, layer)
+            layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
             # layer.locked = True
 
             # Apply PBR metal based on layer7
@@ -4238,23 +4117,8 @@ class SXTOOLS2_magic(object):
 
         objs = objs_tiles[:]
 
-        # Apply occlusion
-        scene.toolmode = 'OCC'
-        scene.noisemono = True
-        scene.occlusionblend = 0.0
-        scene.occlusionrays = 1000
-        scene.occlusiongroundplane = False
-        scene.occlusiondistance = 0.5
-        color = (1.0, 1.0, 1.0, 1.0)
-        mask = utils.find_color_layers(obj, 6)
-
-        for obj in objs:
-            layer = obj.sx2layers['Occlusion']
-            colors = generate.occlusion_list(obj, scene.occlusionrays, scene.occlusionblend, scene.occlusiondistance, scene.occlusiongroundplane)
-            colors1 = generate.color_list(obj, color=color, masklayer=mask)
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-
-            layers.set_layer(obj, colors, layer)
+        self.apply_palette_overrides(objs, clear=True)
+        self.apply_occlusion(objs, masklayername=utils.find_color_layers(obj, 6).name, blend=0.0, groundplane=False, distance=0.5)
 
         # Apply normalized curvature with luma remapping to overlay, clear windows
         scene.curvaturenormalize = False
@@ -4272,12 +4136,6 @@ class SXTOOLS2_magic(object):
             obj.sx2layers['Overlay'].blend_mode = 'OVR'
             # obj.sx2layers['Overlay'].opacity = obj.sx2.overlaystrength
 
-
-        # Clear metallic, roughness, and transmission
-        layers.clear_layers(objs, obj.sx2layers['Metallic'])
-        layers.clear_layers(objs, obj.sx2layers['Roughness'])
-        layers.clear_layers(objs, obj.sx2layers['Transmission'])
-
         material = 'Silver'
         palette = [
             bpy.context.scene.sx2materials[material].color0,
@@ -4290,13 +4148,9 @@ class SXTOOLS2_magic(object):
         palette[2] = inverted_color
 
         for obj in objs:
-            # Construct layer1-7 roughness base mask
-            color = (obj.sx2.roughness0, obj.sx2.roughness0, obj.sx2.roughness0, 1.0)
-            colors = generate.color_list(obj, color)
-            color = (obj.sx2.roughness4, obj.sx2.roughness4, obj.sx2.roughness4, 1.0)
-            colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 4))
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 5))
+            colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
+            # Static colors layer is rough
+            colors1 = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), utils.find_color_layers(obj, 5))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             color = (1.0, 1.0, 1.0, 1.0)
             colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 6))
@@ -4363,17 +4217,8 @@ class SXTOOLS2_magic(object):
         scene = bpy.context.scene.sx2
         obj = objs[0]
 
-        # Apply occlusion
-        scene.toolmode = 'OCC'
-        scene.noisemono = True
-        scene.occlusionblend = 0.5
-        scene.occlusionrays = 500
-        color = (1.0, 1.0, 1.0, 1.0)
-
-        for obj in objs:
-            layer = obj.sx2layers['Occlusion']
-            colors = generate.occlusion_list(obj, scene.occlusionrays, scene.occlusionblend, scene.occlusiondistance, scene.occlusiongroundplane)
-            layers.set_layer(obj, colors, layer)
+        self.apply_palette_overrides(objs, clear=True)
+        self.apply_occlusion(objs)
 
         # Apply overlay
         scene.curvaturenormalize = True
@@ -4387,13 +4232,8 @@ class SXTOOLS2_magic(object):
             obj.sx2layers['Overlay'].blend_mode = 'OVR'
             # obj.sx2layers['Overlay'].opacity = obj.sx2.overlaystrength
 
-        # Clear metallic, roughness, and transmission
-        layers.clear_layers(objs, obj.sx2layers['Metallic'])
-        layers.clear_layers(objs, obj.sx2layers['Roughness'])
-        layers.clear_layers(objs, obj.sx2layers['Transmission'])
-
         # Apply thickness to transmission
-        layer = obj.sx2layers['Transmission']
+        layers.clear_layers(objs, obj.sx2layers['Transmission'])
         scene.ramplist = 'FOLIAGERAMP'
         color = (1.0, 1.0, 1.0, 1.0)
 
@@ -4405,17 +4245,12 @@ class SXTOOLS2_magic(object):
             colors2 = generate.color_list(obj, color=color, masklayer=utils.find_color_layers(obj, 4))
             colors1 = tools.blend_values(colors2, colors1, 'ALPHA', 1.0)
             colors = tools.blend_values(colors1, colors, 'MUL', 1.0)
-            layers.set_layer(obj, colors, layer)
-            # Construct layer1-7 roughness base mask
-            color = (obj.sx2.roughness0, obj.sx2.roughness0, obj.sx2.roughness0, 1.0)
-            colors = generate.color_list(obj, color)
-            color = (obj.sx2.roughness4, obj.sx2.roughness4, obj.sx2.roughness4, 1.0)
-            colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 3))
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 4))
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            color = (1.0, 1.0, 1.0, 1.0)
-            colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 5))
+            layers.set_layer(obj, colors, obj.sx2layers['Transmission'])
+
+            # Get roughness base
+            colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
+            # Static colors layer is rough
+            colors1 = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), utils.find_color_layers(obj, 5))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             colors1 = generate.noise_list(obj, 0.01, True)
             colors = tools.blend_values(colors1, colors, 'OVR', 1.0)
@@ -9694,8 +9529,8 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                         if i > 0:
                             layers.add_layer([obj, ], name='Layer '+str(i), layer_type='COLOR', color_attribute='VertexColor'+str(i), clear=False)
 
-                    layers.add_layer([obj, ], name='Gradient 1', layer_type='COLOR')
-                    layers.add_layer([obj, ], name='Gradient 2', layer_type='COLOR')
+                    layers.add_layer([obj, ], name='Gradient1', layer_type='COLOR')
+                    layers.add_layer([obj, ], name='Gradient2', layer_type='COLOR')
                     layers.add_layer([obj, ], name='Overlay', layer_type='COLOR')
 
                     layers.add_layer([obj, ], name='Occlusion', layer_type='OCC')
@@ -9726,9 +9561,9 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                         elif uv.name == 'UVSet4':
                             # grab gradient 1, 2
                             colors = convert.uvs_to_colors(obj, uv.name, 'U', as_alpha=True)
-                            layers.set_layer(obj, colors, obj.sx2layers['Gradient 1'])
+                            layers.set_layer(obj, colors, obj.sx2layers['Gradient1'])
                             colors = convert.uvs_to_colors(obj, uv.name, 'V', as_alpha=True)
-                            layers.set_layer(obj, colors, obj.sx2layers['Gradient 2'])
+                            layers.set_layer(obj, colors, obj.sx2layers['Gradient2'])
                         elif uv.name == 'UVSet5':
                             # grab and store overlay RG
                             pass
