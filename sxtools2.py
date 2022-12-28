@@ -470,7 +470,7 @@ class SXTOOLS2_utils(object):
 
     def find_sx2material_name(self, obj):
         if tuple(obj.sx2layers.keys()) in sxglobals.sx2material_dict:
-            return 'SX2Material_' + sxglobals.sx2material_dict[tuple(obj.sx2layers.keys())][1].name
+            return 'SX2Material_' + sxglobals.sx2material_dict[tuple(obj.sx2layers.keys())][1]
         else:
             return None
 
@@ -1627,20 +1627,20 @@ class SXTOOLS2_layers(object):
         return layer_dict
 
 
-    def del_layer(self, objs, layer_to_delete):
+    def del_layer(self, objs, layer_name):
         for obj in objs:
-            bottom_layer_index = obj.sx2layers[layer_to_delete.name].index - 1 if obj.sx2layers[layer_to_delete.name].index - 1 > 0 else 0
-            if layer_to_delete.color_attribute == 'Alpha Materials':
+            bottom_layer_index = obj.sx2layers[layer_name].index - 1 if obj.sx2layers[layer_name].index - 1 > 0 else 0
+            if obj.sx2layers[layer_name].color_attribute == 'Alpha Materials':
                 alpha_mat_count = 0
                 for layer in obj.sx2layers:
                     if layer.color_attribute == 'Alpha Materials':
                         alpha_mat_count += 1
                 if alpha_mat_count == 1:
-                    obj.data.attributes.remove(obj.data.attributes[layer_to_delete.color_attribute])
+                    obj.data.attributes.remove(obj.data.attributes[obj.sx2layers[layer_name].color_attribute])
             else:
-                if layer_to_delete.color_attribute in obj.data.color_attributes.keys():
-                    obj.data.color_attributes.remove(obj.data.color_attributes[layer_to_delete.color_attribute])
-            idx = utils.find_layer_index_by_name(obj, layer_to_delete.name)
+                if obj.sx2layers[layer_name].color_attribute in obj.data.color_attributes.keys():
+                    obj.data.color_attributes.remove(obj.data.color_attributes[obj.sx2layers[layer_name].color_attribute])
+            idx = utils.find_layer_index_by_name(obj, layer_name)
             obj.sx2layers.remove(idx)
 
         for obj in objs:
@@ -5084,33 +5084,29 @@ class SXTOOLS2_setup(object):
             if 'SXToolMaterial' not in bpy.data.materials:
                 setup.create_sxtoolmaterial()
 
+            # Find objects with sx2 data
             objs = mesh_selection_validator(self, context)
             sx_mat_objs = []
             for obj in objs:
                 if 'sx2layers' in obj.keys():
                     sx_mat_objs.append(obj)
 
+            # Clear sx2material_dict
+            sxglobals.sx2material_dict.clear()
+
+            # Store unique layer stacks in sx2material_dict
             for obj in sx_mat_objs:
+                obj.data.materials.clear()
                 if tuple(obj.sx2layers.keys()) not in sxglobals.sx2material_dict.keys():
-                    del_list = []
-                    for key, value in sxglobals.sx2material_dict.items():
-                        if obj == value[1]:
-                            del_list.append(key)
-                    if len(del_list) > 0:
-                        for key in del_list:
-                            del sxglobals.sx2material_dict[key]
+                    sxglobals.sx2material_dict[tuple(obj.sx2layers.keys())] = (len(sxglobals.sx2material_dict), obj.name)
 
-                    sxglobals.sx2material_dict[tuple(obj.sx2layers.keys())] = (len(sxglobals.sx2material_dict), obj)
-
+            # Get a list of all unique materials in sx2 objects
             sx_mats = []
-            for obj in sx_mat_objs:
-                utils.sort_stack_indices(obj)
-                if obj.active_material is not None:
-                    sx_mat = bpy.data.materials.get(obj.active_material.name)
-                    obj.data.materials.clear()
-                    if ('SX2Material_' in sx_mat.name) and (sx_mat not in sx_mats):
-                        sx_mats.append(sx_mat)
+            for mat in bpy.data.materials:
+                if 'SX2Material_' in mat.name:
+                    sx_mats.append(mat)
 
+            # Remove them
             if len(sx_mats) > 0:
                 for sx_mat in sx_mats:
                     sx_mat.user_clear()
@@ -5118,12 +5114,17 @@ class SXTOOLS2_setup(object):
 
             bpy.context.view_layer.update()
 
+            # Get reference objects for material update
             ref_objs = []
             for value in sxglobals.sx2material_dict.values():
-                ref_objs.append(value[1])
+                obj = context.view_layer.objects.get(value[1])
+                if obj:
+                    ref_objs.append(obj)
 
+            # Create materials for group reference objects
             setup.create_sx2material(ref_objs)
 
+            # Assign materials based on sx2_material_dict
             for obj in sx_mat_objs:
                 if (len(obj.sx2layers) > 0) and (tuple(obj.sx2layers.keys()) in sxglobals.sx2material_dict):
                     obj.active_material = bpy.data.materials[utils.find_sx2material_name(obj)]
@@ -8432,7 +8433,7 @@ class SXTOOLS2_OT_del_layer(bpy.types.Operator):
         if len(objs) > 0:
             utils.mode_manager(objs, set_mode=True, mode_id='del_layer')
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-            layers.del_layer(objs, layer)
+            layers.del_layer(objs, layer.name)
             setup.update_sx2material(context)
             utils.mode_manager(objs, revert=True, mode_id='del_layer')
             if len(objs[0].sx2layers) > 0:
@@ -8698,7 +8699,7 @@ class SXTOOLS2_OT_mergeup(bpy.types.Operator):
             baseLayer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             topLayer = utils.find_layer_by_stack_index(objs[0], baseLayer.index + 1)
             layers.merge_layers(objs, topLayer, baseLayer, topLayer)
-            layers.del_layer(objs, baseLayer)
+            layers.del_layer(objs, baseLayer.name)
 
             if len(objs[0].sx2layers) > 1:
                 layer = utils.find_layer_by_stack_index(objs[0], objs[0].sx2layers[objs[0].sx2.selectedlayer].index + 1)
@@ -8746,7 +8747,7 @@ class SXTOOLS2_OT_mergedown(bpy.types.Operator):
             topLayer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             baseLayer = utils.find_layer_by_stack_index(objs[0], topLayer.index - 1)
             layers.merge_layers(objs, topLayer, baseLayer, baseLayer)
-            layers.del_layer(objs, topLayer)
+            layers.del_layer(objs, topLayer.name)
             setup.update_sx2material(context)
             refresh_swatches(self, context)
 
@@ -9743,12 +9744,27 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
 
                 print('SX Tools: Assigning category to converted objects')
                 categories = list(sxglobals.category_dict.keys())
-                sx_category = categories[obj['sxtools'].get('category', 0)].upper()
+                sx_category = categories[obj['sxtools'].get('category', 0) + 1].upper()
                 if sx_category == 'DEFAULT':
                     sx_category = 'STATIC'
                 objs[0].sx2.category = sx_category
 
                 utils.mode_manager(objs, revert=True, mode_id='sxtosx2')
+
+                # Delete redundant object properties and the legacy material
+                for obj in objs:
+                    to_delete = []
+                    for key in obj.keys():
+                        if '_visibility' in key:
+                            to_delete.append(key)
+                        if key == 'sxtools':
+                            to_delete.append(key)
+                        if key == 'sxlayers':
+                            to_delete.append(key)
+                    for key in to_delete:
+                        del obj[key]
+
+                bpy.data.materials.remove(bpy.data.materials['SXMaterial'])
 
                 sxglobals.magic_in_progress = False
                 setup.update_sx2material(context)
@@ -9971,12 +9987,7 @@ if __name__ == '__main__':
 # - keymonitor does not start without creating an empty layer
 # - rewrite validation functions according to current data structures, validate based on category
 # - fix auto-smooth errors (?!!)
-# - load category in a non-destructive way
+# - load category in a non-destructive and order independent way
 # - load libraries automatically on scene load?
-# - import step: remove redundant obj props and sxMaterial
 # - layer opacity included in compositing and uv exporting
 # - make flatten alphas obsolete by including layer opacity in blending
-# - selectedlayer not passed to all selected? Composite layer appears in different locations per multi-selection object
-# - check what might change datatype of custom props, staticvertexcolors was not int?
-# - default path if no categories used?
-# - Handle case when all objects have been deleted from the scene and a new one is added
