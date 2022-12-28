@@ -4123,15 +4123,14 @@ class SXTOOLS2_magic(object):
         scene.curvaturenormalize = False
         scene.ramplist = 'WEARANDTEAR'
         for obj in objs:
-            layer = obj.sx2layers['Overlay']
             colors = generate.curvature_list(obj)
             values = layers.get_luminances(obj, colors=colors)
             colors1 = generate.luminance_remap_list(obj, values=values)
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             color = (0.5, 0.5, 0.5, 1.0)
-            colors1 = generate.color_list(obj, color=color, masklayer=mask)
+            colors1 = generate.color_list(obj, color=color, masklayer=utils.find_color_layers(obj, 6))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            layers.set_layer(obj, colors, layer)
+            layers.set_layer(obj, colors, obj.sx2layers['Overlay'])
             obj.sx2layers['Overlay'].blend_mode = 'OVR'
             # obj.sx2layers['Overlay'].opacity = obj.sx2.overlaystrength
 
@@ -4151,22 +4150,16 @@ class SXTOOLS2_magic(object):
             # Static colors layer is rough
             colors1 = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), utils.find_color_layers(obj, 5))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            color = (1.0, 1.0, 1.0, 1.0)
-            colors1 = generate.color_list(obj, color, utils.find_color_layers(obj, 6))
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             # Combine with roughness from PBR material
             colors1 = generate.color_list(obj, palette[2], utils.find_color_layers(obj, 6))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            # Noise for variance
-            # colors1 = generate.noise_list(obj, 0.01, True)
-            # colors = tools.blend_values(colors1, colors, 'OVR', 1.0)
             # Combine roughness base mask with custom curvature gradient
             scene.curvaturenormalize = True
             scene.ramplist = 'CURVATUREROUGHNESS'
             colors1 = generate.curvature_list(obj)
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
-            colors = tools.blend_values(colors1, colors, 'ADD', 0.1)
+            colors = tools.blend_values(colors1, colors, 'MUL', 0.2)
             # Combine previous mix with directional dust
             scene.ramplist = 'DIRECTIONALDUST'
             scene.dirAngle = 0.0
@@ -4175,7 +4168,7 @@ class SXTOOLS2_magic(object):
             colors1 = generate.direction_list(obj)
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
-            colors = tools.blend_values(colors1, colors, 'ADD', 0.2)
+            colors = tools.blend_values(colors1, colors, 'ADD', 0.4)
             # Emissives are smooth
             color = (0.0, 0.0, 0.0, 1.0)
             colors1 = generate.color_list(obj, color, obj.sx2layers['Emission'])
@@ -4197,15 +4190,14 @@ class SXTOOLS2_magic(object):
                 layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
 
             # Windows are smooth and emissive
-            colors = generate.color_list(obj, color=(1.0, 1.0, 1.0, 1.0), masklayer=utils.find_color_layers(obj, 6))
+            colors = generate.color_list(obj, color=(0.0, 0.0, 0.0, 1.0), masklayer=utils.find_color_layers(obj, 6))
             base = layers.get_layer(obj, obj.sx2layers['Roughness'])
             colors = tools.blend_values(colors, base, 'ALPHA', 1.0)
             if colors is not None:
                 layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
-            emission = generate.color_list(obj, color=(0.1, 0.1, 0.1, 0.1), masklayer=utils.find_color_layers(obj, 7))
+            emission = generate.color_list(obj, color=(0.1, 0.1, 0.1, 0.1), masklayer=utils.find_color_layers(obj, 6))
             if emission is not None:
                 layers.set_layer(obj, emission, obj.sx2layers['Emission'])
-
 
         for obj in objs_windows:
             obj.hide_viewport = False
