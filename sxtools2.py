@@ -3847,7 +3847,7 @@ class SXTOOLS2_magic(object):
 
             if obj.sx2.roughnessoverride:
                 if clear:
-                    layers.clear_layers(objs, obj.sx2layers['Roughness'])
+                    layers.clear_layers([obj, ], obj.sx2layers['Roughness'])
 
                 if 'Roughness' not in obj.sx2layers.keys():
                     layers.add_layer([obj, ], name='Roughness', layer_type='RGH')
@@ -3863,7 +3863,8 @@ class SXTOOLS2_magic(object):
 
             if obj.sx2.metallicoverride:
                 if clear:
-                    layers.clear_layers(objs, obj.sx2layers['Metallic'])
+                    layers.clear_layers([obj, ], obj.sx2layers['Metallic'])
+
                 if 'Metallic' not in obj.sx2layers.keys():
                     layers.add_layer([obj, ], name='Metallic', layer_type='MET')
 
@@ -3889,7 +3890,7 @@ class SXTOOLS2_magic(object):
 
     def apply_curvature_overlay(self, objs, opacity=1.0):
         scene = bpy.context.scene.sx2
-        layer = obj.sx2layers['Overlay']
+        layer = objs[0].sx2layers['Overlay']
         scene.toolmode = 'CRV'
         scene.toolopacity = opacity
         scene.curvaturenormalize = True
@@ -4038,8 +4039,6 @@ class SXTOOLS2_magic(object):
         self.apply_palette_overrides(objs, clear=True)
         self.apply_occlusion(objs, masklayername='Emission')
         self.apply_curvature_overlay(objs)
-
-        obj = objs[0]
 
         material = 'Iron'
         palette = [
