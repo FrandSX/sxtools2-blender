@@ -5084,18 +5084,19 @@ class SXTOOLS2_setup(object):
             if 'SXToolMaterial' not in bpy.data.materials:
                 setup.create_sxtoolmaterial()
 
-            # Find objects with sx2 data
-            objs = mesh_selection_validator(self, context)
-            sx_mat_objs = []
-            for obj in objs:
-                if 'sx2layers' in obj.keys():
-                    sx_mat_objs.append(obj)
+            # Get all objects in the scene with sx2 data
+            sx2_objs = []
+            for obj in context.view_layer.objects:
+                if (obj.type == 'MESH') and ('sx2layers' in obj.keys()):
+                    sx2_objs.append(obj)
+
+            sx2_objs = list(set(sx2_objs))
 
             # Clear sx2material_dict
             sxglobals.sx2material_dict.clear()
 
             # Store unique layer stacks in sx2material_dict
-            for obj in sx_mat_objs:
+            for obj in sx2_objs:
                 obj.data.materials.clear()
                 if tuple(obj.sx2layers.keys()) not in sxglobals.sx2material_dict.keys():
                     sxglobals.sx2material_dict[tuple(obj.sx2layers.keys())] = (len(sxglobals.sx2material_dict), obj.name)
@@ -5124,8 +5125,8 @@ class SXTOOLS2_setup(object):
             # Create materials for group reference objects
             setup.create_sx2material(ref_objs)
 
-            # Assign materials based on sx2_material_dict
-            for obj in sx_mat_objs:
+            # Assign materials based on matching layer stacks
+            for obj in sx2_objs:
                 if (len(obj.sx2layers) > 0) and (tuple(obj.sx2layers.keys()) in sxglobals.sx2material_dict):
                     obj.active_material = bpy.data.materials[utils.find_sx2material_name(obj)]
 
