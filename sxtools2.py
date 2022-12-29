@@ -34,6 +34,7 @@ class SXTOOLS2_sxglobals(object):
     def __init__(self):
         self.librariesLoaded = False
         self.refresh_in_progress = False
+        self.layer_update_in_progress = False
         self.magic_in_progress = False
         self.hsl_update = False
         self.mat_update = False
@@ -4892,6 +4893,7 @@ class SXTOOLS2_setup(object):
 
     def update_sx2material(self, context):
         if not sxglobals.magic_in_progress:
+            print('update_sx2material called')
             if 'SXToolMaterial' not in bpy.data.materials:
                 setup.create_sxtoolmaterial()
 
@@ -5596,7 +5598,8 @@ def update_obj_props(self, context, prop):
 
 
 def update_layer_props(self, context, prop):
-    if not sxglobals.magic_in_progress:
+    if (not sxglobals.magic_in_progress) and (not sxglobals.layer_update_in_progress):
+        sxglobals.layer_update_in_progress = True
         objs = mesh_selection_validator(self, context)
         for obj in objs:
             if getattr(obj.sx2layers[self.name], prop) != getattr(objs[0].sx2layers[self.name], prop):
@@ -5609,6 +5612,7 @@ def update_layer_props(self, context, prop):
             update_material_props(self, context)
         elif prop == 'palette_index':
             update_paletted_layers(self, context, None)
+        sxglobals.layer_update_in_progress = False
 
 
 def export_validator(self, context):
@@ -9834,4 +9838,4 @@ if __name__ == '__main__':
 # - fix auto-smooth errors (?!!)
 # - load category in a non-destructive and order independent way
 # - load libraries automatically on scene load?
-# - HSL-update not working properly
+# - HSL-update not working properly?
