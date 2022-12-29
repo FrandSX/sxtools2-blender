@@ -2304,10 +2304,14 @@ class SXTOOLS2_tools(object):
         bpy.ops.mesh.select_all(action='DESELECT')
         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
-        export.composite_color_layers(objs)
-        color = convert.srgb_to_linear(color)
+        if objs[0].sx2.shadingmode == 'FULL':
+            export.composite_color_layers(objs)
+
         for obj in objs:
-            colors = layers.get_layer(obj, obj.sx2layers['Composite'])
+            if objs[0].sx2.shadingmode == 'FULL':
+                colors = layers.get_layer(obj, obj.sx2layers['Composite'])
+            else:
+                colors = layers.get_layer(obj, obj.sx2layers[obj.sx2.selectedlayer])
             mesh = obj.data
             i = 0
             if bpy.context.tool_settings.mesh_select_mode[2]:
@@ -8725,7 +8729,8 @@ class SXTOOLS2_OT_selmask(bpy.types.Operator):
                 inverse = False
 
             if event.ctrl:
-                tools.select_color_mask(objs, context.scene.sx2.fillcolor, inverse)
+                color = convert.srgb_to_linear(context.scene.sx2.fillcolor)
+                tools.select_color_mask(objs, color, inverse)
             else:
                 layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
                 tools.select_mask(objs, layer, inverse)
