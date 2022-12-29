@@ -3320,7 +3320,7 @@ class SXTOOLS2_export(object):
             bpy.context.view_layer.objects.active = obj
             setCount = len(obj.data.uv_layers)
             if setCount == 0:
-                print(f'SX Tools Error: {obj.name} has no UV Sets')
+                obj.data.uv_layers.new(name='UVSet0')
             elif setCount > 6:
                 base = obj.data.uv_layers[0]
                 if base.name != 'UVSet0':
@@ -3391,11 +3391,11 @@ class SXTOOLS2_export(object):
         ok1 = self.validate_palette_layers(objs)
         ok2 = self.validate_names(objs)
         ok3 = self.validate_loose(objs)
-        # ok4 = self.validate_uv_sets(objs)
+        ok4 = self.validate_uv_sets(objs)
 
         utils.mode_manager(objs, revert=True, mode_id='validate_objects')
 
-        if ok1 and ok2 and ok3:  # and ok4:
+        if ok1 and ok2 and ok3 and ok4:
             print('SX Tools: Selected objects passed validation tests')
             return True
         else:
@@ -3411,15 +3411,9 @@ class SXTOOLS2_export(object):
             setup.create_sxtoolmaterial()
 
 
-    # Check for proper UV set configuration
-    # TODO: Match with category
+    # Check for improper UV sets
     def validate_uv_sets(self, objs):
         for obj in objs:
-            if len(obj.data.uv_layers) != 7:
-                message_box('Objects contain an invalid number of UV Sets!')
-                print(f'SX Tools Error: {obj.name} has invalid UV Sets')
-                return False
-
             for i, uv_layer in enumerate(obj.data.uv_layers):
                 if uv_layer.name != 'UVSet'+str(i):
                     message_box('Objects contain incorrectly named UV Sets!')
@@ -3458,7 +3452,6 @@ class SXTOOLS2_export(object):
                 message_box('Object is not in a group: ' + obj.name)
                 print(f'SX Tools Error: {obj.name} is not in a group')
                 return False
-
         return True
 
 
@@ -4945,48 +4938,70 @@ class SXTOOLS2_setup(object):
                     obj.active_material = bpy.data.materials[utils.find_sx2material_name(obj)]
 
 
-    # TODO: Update to sx2 parameters
     def reset_scene(self):
         sxglobals.refresh_in_progress = True
-        objs = bpy.context.scene.objects
-        scene = bpy.context.scene.sx2
+        sxglobals.magic_in_progress = True
+        sxglobals.layer_update_in_progress = True
 
+        objs = bpy.context.view_layer.objects
+
+        # TODO: Clear obj.sx2 and scene.sx2 properties
+
+        # Clear layers and UV sets
         for obj in objs:
-            removeColList = []
-            removeUVList = []
-            if obj.type == 'MESH':
-                for vertexColor in obj.data.attributes:
-                    if 'VertexColor' in vertexColor.name:
-                        removeColList.append(vertexColor.name)
-                for uvLayer in obj.data.uv_layers:
-                    if 'UVSet' in uvLayer.name:
-                        removeUVList.append(uvLayer.name)
+            remove_layer_list = []
+            remove_uv_list = []
+            if (obj.type == 'MESH') and ('sx2layers' in obj.keys()) and (len(obj.sx2layers) > 0):
+                for layer in obj.sx2layers:
+                    remove_layer_list.append(layer.name)
 
-            sx2layers = len(obj.sx2layers.keys())
-            for i in range(sx2layers):
-                obj.sx2layers.remove(0)
+                for layer_name in remove_layer_list:
+                    layers.del_layer([obj, ], layer_name)
 
-            obj.sx2.selectedlayer = 1
+                for uv_layer in obj.data.uv_layers:
+                    if 'UVSet' in uv_layer.name:
+                        remove_uv_list.append(uv_layer.name)
 
-            for vertexColor in removeColList:
-                obj.data.attributes.remove(obj.data.attributes[vertexColor])
-            for uvLayer in removeUVList:
-                obj.data.uv_layers.remove(obj.data.uv_layers[uvLayer])
+                for uv_layer_name in remove_uv_list:
+                    obj.data.uv_layers.remove(obj.data.uv_layers[uv_layer_name])
 
-        bpy.data.materials.remove(bpy.data.materials['SXMaterial'])
+        # Clear SX2 Materials
+        sx_mats = []
+        for mat in bpy.data.materials:
+            if 'SX2Material_' in mat.name:
+                sx_mats.append(mat)
 
-        sxglobals.copyLayer = None
-        sxglobals.listItems = []
-        sxglobals.listIndices = {}
-        sxglobals.prevShadingMode = 'FULL'
-        sxglobals.composite = False
-        sxglobals.paletteDict = {}
+        if len(sx_mats) > 0:
+            for mat in sx_mats:
+                mat.user_clear()
+                bpy.data.materials.remove(mat, do_unlink=True)
+
+        if 'SXToolMaterial' in bpy.data.materials:
+            bpy.data.materials.remove(bpy.data.materials['SXToolMaterial'], do_unlink=True)
+
+        # Clear globals
+        sxglobals.librariesLoaded = False
+        sxglobals.prev_selection = []
+        sxglobals.prev_component_selection = []
+        sxglobals.copy_buffer.clear()
+        sxglobals.paletteDict.clear()
+        sxglobals.ramp_dict.clear()
+        sxglobals.category_dict.clear()
+        sxglobals.preset_lookup.clear()
+        sxglobals.layer_stack_dict.clear()
+        sxglobals.sx2material_dict.clear()
         sxglobals.masterPaletteArray = []
         sxglobals.materialArray = []
-        for value in sxglobals.layerInitArray:
-            value[1] = False
-        scene.eraseuvs = True
+        sxglobals.prev_mode = 'OBJECT'
+        sxglobals.curvature_update = False
+        sxglobals.modal_status = False
+        sxglobals.hsl_update = False
+        sxglobals.mat_update = False
+        sxglobals.mode = None
+        sxglobals.modeID = None
 
+        sxglobals.layer_update_in_progress = False
+        sxglobals.magic_in_progress = False
         sxglobals.refresh_in_progress = False
 
 
@@ -5159,7 +5174,7 @@ def update_material_layer(self, context, index):
         refresh_swatches(self, context)
 
 
-# TODO: This only works correctly on multi-object selection with identical layersets
+# With multi-object selection, this requires identical layersets
 def update_selected_layer(self, context):
     objs = mesh_selection_validator(self, context)
     for obj in objs:
@@ -7496,7 +7511,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             if scene.exporttype == 'VERTEX':
                                 split_export.operator('sx2.exportfiles', text=exp_text)
                             else:
-                                split_export.operator('sx2.test_button', text=exp_text)
+                                split_export.operator('sx2.exportatlases', text=exp_text)
 
                             if (mode == 'EDIT') or (len(scene.exportfolder) == 0):
                                 split_export.enabled = False
@@ -9620,10 +9635,10 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SXTOOLS2_OT_test_button(bpy.types.Operator):
-    bl_idname = 'sx2.test_button'
-    bl_label = 'Test Button'
-    bl_description = 'Run test functions'
+class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
+    bl_idname = 'sx2.exportatlases'
+    bl_label = 'Export FBX files with atlases'
+    bl_description = 'Export FBX files with palette atlas texture files'
     bl_options = {'UNDO'}
 
 
@@ -9777,7 +9792,7 @@ export_classes = (
     SXTOOLS2_OT_generatemasks,
     SXTOOLS2_OT_resetscene,
     SXTOOLS2_OT_sxtosx2,
-    SXTOOLS2_OT_test_button)
+    SXTOOLS2_OT_exportatlases)
 
 addon_keymaps = []
 
@@ -9829,10 +9844,6 @@ if __name__ == '__main__':
 
 
 # TODO:
-# - vertex bevel modifier?
-# - reset scene -> redundant?
-# - keymonitor does not start without creating an empty layer
-# - rewrite validation functions according to current data structures, validate based on category
+# - keymonitor start requires creating an empty layer
 # - address auto-smooth errors (?!!)
-# - load category in a non-destructive and order independent way
-# - load libraries automatically on scene load?
+# - match existing layers when loading category
