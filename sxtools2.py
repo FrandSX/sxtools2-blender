@@ -9674,11 +9674,11 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
                 v = j*offset*2 + offset
                 color_uv_coords[color] = [u, v]
 
+            # make sure UVSet0 exists
+            export.create_uvset0(objs)
+
             # match vertex color with palette color, assign UV accordingly
             for obj in objs:
-                if len(obj.data.uv_layers) == 0:
-                    obj.data.uv_layers.new(name='UVSet0')
-
                 colors = layers.get_layer(obj, obj.sx2layers['Composite'], as_tuple=True)
                 uvs = layers.get_uvs(obj,'UVSet0')
 
@@ -9847,3 +9847,4 @@ if __name__ == '__main__':
 # - keymonitor start requires creating an empty layer
 # - address auto-smooth errors (?!!)
 # - match existing layers when loading category
+# - improve atlas generation by forcing all loop verts of a face to the same color
