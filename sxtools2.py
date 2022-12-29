@@ -3170,7 +3170,7 @@ class SXTOOLS2_export(object):
                 elif layer.name == 'Overlay':
                     channel_name = 'uv_' + layer.name.lower()
                     target0, target1 = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]][channel_name]
-                    colors = layers.get_colors(obj, obj.sx2layers['Overlay'].color_attribute)
+                    colors = layers.get_layer(obj, obj.sx2layers['Overlay'], apply_layer_opacity=True)
                     values0 = generate.empty_list(obj, 2)
                     values1 = generate.empty_list(obj, 2)
 
@@ -3180,41 +3180,6 @@ class SXTOOLS2_export(object):
 
                     layers.set_uvs(obj, target0, values0, None)
                     layers.set_uvs(obj, target1, values1, None)
-
-
-    def flatten_alphas(self, objs):
-        for obj in objs:
-            vertexUVs = obj.data.uv_layers
-            channels = {'U': 0, 'V': 1}
-            for layer in obj.sx2layers:
-                alpha = layer.opacity
-                if (layer.name == 'Gradient1') or (layer.name == 'Gradient2'):
-                    for poly in obj.data.polygons:
-                        for idx in poly.loop_indices:
-                            vertexUVs[layer.uvLayer0].data[idx].uv[channels[layer.uvChannel0]] *= alpha
-                    layer.opacity = 1.0
-                elif layer.name == 'Overlay':
-                    if layer.blend_mode == 'OVR':
-                        for poly in obj.data.polygons:
-                            for idx in poly.loop_indices:
-                                base = [0.5, 0.5, 0.5, 1.0]
-                                top = [
-                                    vertexUVs[layer.uvLayer0].data[idx].uv[channels[layer.uvChannel0]],
-                                    vertexUVs[layer.uvLayer1].data[idx].uv[channels[layer.uvChannel1]],
-                                    vertexUVs[layer.uvLayer2].data[idx].uv[channels[layer.uvChannel2]],
-                                    vertexUVs[layer.uvLayer3].data[idx].uv[channels[layer.uvChannel3]]][:]
-                                for j in range(3):
-                                    base[j] = (top[j] * (top[3] * alpha) + base[j] * (1 - (top[3] * alpha)))
-
-                                vertexUVs[layer.uvLayer0].data[idx].uv[channels[layer.uvChannel0]] = base[0]
-                                vertexUVs[layer.uvLayer1].data[idx].uv[channels[layer.uvChannel1]] = base[1]
-                                vertexUVs[layer.uvLayer2].data[idx].uv[channels[layer.uvChannel2]] = base[2]
-                                vertexUVs[layer.uvLayer3].data[idx].uv[channels[layer.uvChannel3]] = base[3]
-                    else:
-                        for poly in obj.data.polygons:
-                            for idx in poly.loop_indices:
-                                vertexUVs[layer.uvLayer3].data[idx].uv[channels[layer.uvChannel3]] *= alpha
-                    layer.opacity = 1.0
 
 
     def create_sxcollection(self):
@@ -3795,9 +3760,6 @@ class SXTOOLS2_magic(object):
                 obj.hide_viewport = True
             elif obj.type == 'MESH':
                 obj.hide_viewport = False
-
-        # Bake Overlay for export
-        # export.flatten_alphas(objs)
 
         # LOD mesh generation for low-detail
         if scene.exportquality == 'LO':
@@ -9457,7 +9419,6 @@ class SXTOOLS2_OT_generatemasks(bpy.types.Operator):
         if len(objs) > 0:
             export.generate_palette_masks(objs)
             export.generate_uv_channels(objs)
-            # export.flatten_alphas(objs)
         return {'FINISHED'}
 
 
@@ -9865,9 +9826,5 @@ if __name__ == '__main__':
 # - load category in a non-destructive and order independent way
 # - load libraries automatically on scene load?
 
-# - layer opacity included in compositing and uv exporting
-# - make flatten alphas obsolete by including layer opacity in blending
-
 # - layer indexing breaks material management (same number of layers, different indices)
-# - add importing_in_progress flag to block update_layer_props
 # - HSL-update not working properly
