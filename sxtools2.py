@@ -1349,6 +1349,20 @@ class SXTOOLS2_generate(object):
                 mask, empty = self.get_selection_mask(obj, selected_color=maskcolor)
                 if empty:
                     return None
+            # Layer is locked and there is an edit mode component selection
+            elif (masklayer is not None) and (sxglobals.mode == 'EDIT'):
+                mask1, empty = self.get_selection_mask(obj, selected_color=maskcolor)
+                if empty:
+                    return None
+                else:
+                    mask2, empty = layers.get_layer_mask(obj, masklayer)
+                    if empty:
+                        mask = mask1
+                    else:
+                        mask = [0.0] * len(mask1)
+                        for i in range(len(mask1)):
+                            if (mask1[i] > 0.0) and (mask2[i] > 0.0):
+                                mask[i] = min(mask1[i], mask2[i]) 
             else:
                 mask, empty = layers.get_layer_mask(obj, masklayer)
                 if empty:
@@ -2137,7 +2151,7 @@ class SXTOOLS2_tools(object):
             mergebbx = scene.rampbbox
 
         for obj in objs:
-            if (masklayer is None) and (targetlayer.locked) and (sxglobals.mode == 'OBJECT'):
+            if (masklayer is None) and (targetlayer.locked):
                 masklayer = targetlayer
 
             # Get colorbuffer
@@ -4485,7 +4499,6 @@ class SXTOOLS2_setup(object):
         scene = bpy.context.scene.sx2
 
         for obj in objs:
-            print('material:', obj.name, obj.sx2.shadingmode)
             if len(obj.sx2layers) > 0:
                 sxmaterial = bpy.data.materials.new(name='SX2Material_'+obj.name)
                 sxmaterial.use_nodes = True
@@ -4513,7 +4526,6 @@ class SXTOOLS2_setup(object):
                             else:
                                 material_layers.append(layer)
 
-                    print(obj.name, color_layers, material_layers)
                     # Create layer inputs
                     paletted_shading = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
                     paletted_shading.name = 'Paletted Shading'
@@ -4954,7 +4966,6 @@ class SXTOOLS2_setup(object):
                     ref_objs.append(obj)
 
             # Create materials for group reference objects
-            print('Updating sx2material with', ref_objs)
             setup.create_sx2material(ref_objs)
 
             # Assign materials based on matching layer stacks
@@ -7547,13 +7558,10 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
             else:
                 row_item.label(icon=hide_icon[(utils.find_layer_index_by_name(objs[0], item.name) == objs[0].sx2.selectedlayer)])
 
-            if sxglobals.mode == 'OBJECT':
-                if scene.toolmode == 'PAL':
-                    row_item.label(text='', icon='LOCKED')
-                else:
-                    row_item.prop(item, 'locked', text='', icon=lock_icon[item.locked])
+            if scene.toolmode == 'PAL':
+                row_item.label(text='', icon='LOCKED')
             else:
-                row_item.label(text='', icon='UNLOCKED')
+                row_item.prop(item, 'locked', text='', icon=lock_icon[item.locked])
 
             row_item.label(text='   ' + item.name + '   ')
 
@@ -9860,7 +9868,5 @@ if __name__ == '__main__':
 # - make flatten alphas obsolete by including layer opacity in blending
 
 # - layer indexing breaks material management (same number of layers, different indices)
-# - extend layer lock to edit mode
-# - max layer count calculator broken
-# - problem: all objects with the same material need to be selected to successfully change shading mode
 # - add importing_in_progress flag to block update_layer_props
+# - HSL-update not working properly
