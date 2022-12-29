@@ -469,8 +469,9 @@ class SXTOOLS2_utils(object):
 
 
     def find_sx2material_name(self, obj):
-        if tuple(obj.sx2layers.keys()) in sxglobals.sx2material_dict:
-            return 'SX2Material_' + sxglobals.sx2material_dict[tuple(obj.sx2layers.keys())][1]
+        mat_id = (obj.sx2.shadingmode, tuple(obj.sx2layers.keys()))
+        if mat_id in sxglobals.sx2material_dict:
+            return 'SX2Material_' + sxglobals.sx2material_dict[mat_id][1]
         else:
             return None
 
@@ -1449,7 +1450,7 @@ class SXTOOLS2_generate(object):
 
 
     def empty_list(self, obj, channelcount):
-        count = len(obj.data.uv_layers[0].data)
+        count = len(obj.data.loops)
         looplist = [0.0] * count * channelcount
         return looplist
 
@@ -4484,6 +4485,7 @@ class SXTOOLS2_setup(object):
         scene = bpy.context.scene.sx2
 
         for obj in objs:
+            print('material:', obj.name, obj.sx2.shadingmode)
             if len(obj.sx2layers) > 0:
                 sxmaterial = bpy.data.materials.new(name='SX2Material_'+obj.name)
                 sxmaterial.use_nodes = True
@@ -4511,6 +4513,7 @@ class SXTOOLS2_setup(object):
                             else:
                                 material_layers.append(layer)
 
+                    print(obj.name, color_layers, material_layers)
                     # Create layer inputs
                     paletted_shading = sxmaterial.node_tree.nodes.new(type='ShaderNodeAttribute')
                     paletted_shading.name = 'Paletted Shading'
@@ -4923,21 +4926,23 @@ class SXTOOLS2_setup(object):
 
             # Store unique layer stacks in sx2material_dict
             for obj in sx2_objs:
+                utils.sort_stack_indices(obj)
                 obj.data.materials.clear()
-                if tuple(obj.sx2layers.keys()) not in sxglobals.sx2material_dict.keys():
-                    sxglobals.sx2material_dict[tuple(obj.sx2layers.keys())] = (len(sxglobals.sx2material_dict), obj.name)
+                mat_id = (obj.sx2.shadingmode, tuple(obj.sx2layers.keys()))
+                if mat_id not in sxglobals.sx2material_dict.keys():
+                    sxglobals.sx2material_dict[mat_id] = (len(sxglobals.sx2material_dict), obj.name)
 
             # Get a list of all unique materials in sx2 objects
+            # and remove them
             sx_mats = []
             for mat in bpy.data.materials:
                 if 'SX2Material_' in mat.name:
                     sx_mats.append(mat)
 
-            # Remove them
             if len(sx_mats) > 0:
-                for sx_mat in sx_mats:
-                    sx_mat.user_clear()
-                    bpy.data.materials.remove(sx_mat, do_unlink=True)
+                for mat in sx_mats:
+                    mat.user_clear()
+                    bpy.data.materials.remove(mat, do_unlink=True)
 
             bpy.context.view_layer.update()
 
@@ -4949,11 +4954,13 @@ class SXTOOLS2_setup(object):
                     ref_objs.append(obj)
 
             # Create materials for group reference objects
+            print('Updating sx2material with', ref_objs)
             setup.create_sx2material(ref_objs)
 
             # Assign materials based on matching layer stacks
             for obj in sx2_objs:
-                if (len(obj.sx2layers) > 0) and (tuple(obj.sx2layers.keys()) in sxglobals.sx2material_dict):
+                mat_id = (obj.sx2.shadingmode, tuple(obj.sx2layers.keys()))
+                if (len(obj.sx2layers) > 0) and (mat_id in sxglobals.sx2material_dict):
                     obj.active_material = bpy.data.materials[utils.find_sx2material_name(obj)]
 
 
@@ -5608,19 +5615,18 @@ def update_obj_props(self, context, prop):
 
 
 def update_layer_props(self, context, prop):
-    if not sxglobals.refresh_in_progress:
-        objs = mesh_selection_validator(self, context)
-        for obj in objs:
-            if getattr(obj.sx2layers[self.name], prop) != getattr(objs[0].sx2layers[self.name], prop):
-                setattr(obj.sx2layers[self.name], prop, getattr(objs[0].sx2layers[self.name], prop))
+    objs = mesh_selection_validator(self, context)
+    for obj in objs:
+        if getattr(obj.sx2layers[self.name], prop) != getattr(objs[0].sx2layers[self.name], prop):
+            setattr(obj.sx2layers[self.name], prop, getattr(objs[0].sx2layers[self.name], prop))
 
-        mat_props = ['paletted', 'visibility', 'blend_mode']
-        if prop in mat_props:
-            setup.update_sx2material(context)
-        elif prop == 'opacity':
-            update_material_props(self, context)
-        elif prop == 'palette_index':
-            update_paletted_layers(self, context, None)
+    mat_props = ['paletted', 'visibility', 'blend_mode']
+    if prop in mat_props:
+        setup.update_sx2material(context)
+    elif prop == 'opacity':
+        update_material_props(self, context)
+    elif prop == 'palette_index':
+        update_paletted_layers(self, context, None)
 
 
 def export_validator(self, context):
@@ -9026,9 +9032,7 @@ class SXTOOLS2_OT_removeexports(bpy.types.Operator):
 
 
     def invoke(self, context, event):
-        scene = bpy.context.scene.sx2
         export.remove_exports()
-        scene.shadingmode = 'FULL'
         return {'FINISHED'}
 
 
@@ -9095,15 +9099,13 @@ class SXTOOLS2_OT_revertobjects(bpy.types.Operator):
 
 
     def invoke(self, context, event):
-        scene = bpy.context.scene.sx2
         objs = mesh_selection_validator(self, context)
         if len(objs) > 0:
             utils.mode_manager(objs, set_mode=True, mode_id='revertobjects')
             export.revert_objects(objs)
 
             bpy.ops.object.shade_flat()
-            scene.shadingmode = 'FULL'
-            sxglobals.composite = True
+            objs[0].sx2.shadingmode = 'FULL'
             refresh_swatches(self, context)
 
             utils.mode_manager(objs, revert=True, mode_id='revertobjects')
@@ -9196,8 +9198,7 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
                     export.generate_mesh_colliders(objs)
 
                 sxglobals.magic_in_progress = False
-                setup.update_sx2material(context)
-                scene.shadingmode = 'FULL'
+                objs[0].sx2.shadingmode = 'FULL'
                 refresh_swatches(self, context)
 
                 bpy.ops.object.shade_smooth()
@@ -9515,7 +9516,8 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     hardmode_dict = {0: 'SHARP', 1: 'SMOOTH'}
                     obj.sx2.hardmode = hardmode_dict[obj['sxtools'].get('hardmode', 0)]
                     obj.sx2.staticvertexcolors = str(obj['sxtools'].get('staticvertexcolors', 1))
-                    obj.parent.sx2.exportready = obj.parent['sxtools'].get('exportready', False)
+                    if obj.parent is not None:
+                        obj.parent.sx2.exportready = obj.parent['sxtools'].get('exportready', False)
 
                     count = len(obj.data.color_attributes)
                     for i in range(count):
@@ -9856,3 +9858,9 @@ if __name__ == '__main__':
 
 # - layer opacity included in compositing and uv exporting
 # - make flatten alphas obsolete by including layer opacity in blending
+
+# - layer indexing breaks material management (same number of layers, different indices)
+# - extend layer lock to edit mode
+# - max layer count calculator broken
+# - problem: all objects with the same material need to be selected to successfully change shading mode
+# - add importing_in_progress flag to block update_layer_props
