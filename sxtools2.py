@@ -5626,18 +5626,19 @@ def update_obj_props(self, context, prop):
 
 
 def update_layer_props(self, context, prop):
-    objs = mesh_selection_validator(self, context)
-    for obj in objs:
-        if getattr(obj.sx2layers[self.name], prop) != getattr(objs[0].sx2layers[self.name], prop):
-            setattr(obj.sx2layers[self.name], prop, getattr(objs[0].sx2layers[self.name], prop))
+    if not sxglobals.magic_in_progress:
+        objs = mesh_selection_validator(self, context)
+        for obj in objs:
+            if getattr(obj.sx2layers[self.name], prop) != getattr(objs[0].sx2layers[self.name], prop):
+                setattr(obj.sx2layers[self.name], prop, getattr(objs[0].sx2layers[self.name], prop))
 
-    mat_props = ['paletted', 'visibility', 'blend_mode']
-    if prop in mat_props:
-        setup.update_sx2material(context)
-    elif prop == 'opacity':
-        update_material_props(self, context)
-    elif prop == 'palette_index':
-        update_paletted_layers(self, context, None)
+        mat_props = ['paletted', 'visibility', 'blend_mode']
+        if prop in mat_props:
+            setup.update_sx2material(context)
+        elif prop == 'opacity':
+            update_material_props(self, context)
+        elif prop == 'palette_index':
+            update_paletted_layers(self, context, None)
 
 
 def export_validator(self, context):
