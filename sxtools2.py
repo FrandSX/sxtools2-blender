@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (0, 0, 1),
+    'version': (1, 0, 0),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4893,7 +4893,6 @@ class SXTOOLS2_setup(object):
 
     def update_sx2material(self, context):
         if not sxglobals.magic_in_progress:
-            print('update_sx2material called')
             if 'SXToolMaterial' not in bpy.data.materials:
                 setup.create_sxtoolmaterial()
 
@@ -9835,7 +9834,6 @@ if __name__ == '__main__':
 # - reset scene -> redundant?
 # - keymonitor does not start without creating an empty layer
 # - rewrite validation functions according to current data structures, validate based on category
-# - fix auto-smooth errors (?!!)
+# - address auto-smooth errors (?!!)
 # - load category in a non-destructive and order independent way
 # - load libraries automatically on scene load?
-# - HSL-update not working properly?
