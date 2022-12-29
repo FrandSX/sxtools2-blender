@@ -1,12 +1,12 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 0, 0),
+    'version': (1, 0, 1),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
     'doc_url': 'https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6',
-    'tracker_url': 'https://github.com/FrandSX/sxtools-blender/issues',
+    'tracker_url': 'https://github.com/FrandSX/sxtools2-blender/issues',
     'category': 'Development',
 }
 
@@ -21,7 +21,6 @@ import pathlib
 import statistics
 import sys
 import os
-import numpy as np
 from bpy.app.handlers import persistent
 from collections import Counter
 from mathutils import Vector
@@ -1040,9 +1039,9 @@ class SXTOOLS2_generate(object):
                     vertWorldNormal = Vector(vert_dict[vert_id][3])
                     vert_dir_dict[vert_id] += max(min(vertWorldNormal @ direction, 1.0), 0.0)
 
-            values = np.array(self.vert_dict_to_loop_list(obj, vert_dir_dict, 1, 1))
-            values *= 1.0/values.max()
-            values = values.tolist()
+            values = self.vert_dict_to_loop_list(obj, vert_dir_dict, 1, 1)
+            fraction = 1.0 / max(values)
+            values = [value * fraction for value in values]
 
             vert_dir_list = [None] * len(values) * 4
             for i in range(len(values)):
