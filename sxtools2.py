@@ -1606,9 +1606,13 @@ class SXTOOLS2_layers(object):
         alpha_mats = {'OCC': 'Occlusion', 'MET': 'Metallic', 'RGH': 'Roughness', 'TRN': 'Transmission'}
         layer_dict = {}
         if len(objs) > 0:
+            # Use largest layercount to avoid material mismatches
+            for obj in objs:
+                layercount = max([obj.sx2.layercount for obj in objs])
+
             for obj in objs:
                 item = obj.sx2layers.add()
-                item.name = 'Layer ' + str(obj.sx2.layercount) if name is None else name
+                item.name = 'Layer ' + str(layercount) if name is None else name
                 if layer_type not in alpha_mats:
                     item.color_attribute = color_attribute if color_attribute is not None else item.name
                 else:
@@ -1637,7 +1641,7 @@ class SXTOOLS2_layers(object):
             # selectedlayer needs to point to an existing layer on all objs
             for obj in objs:
                 obj.sx2.selectedlayer = len(obj.sx2layers) - 1
-                obj.sx2.layercount += 1
+                obj.sx2.layercount = layercount + 1
 
         return layer_dict
 
@@ -9830,6 +9834,4 @@ if __name__ == '__main__':
 # - fix auto-smooth errors (?!!)
 # - load category in a non-destructive and order independent way
 # - load libraries automatically on scene load?
-
-# - layer indexing breaks material management (same number of layers, different indices)
 # - HSL-update not working properly
