@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 0, 1),
+    'version': (1, 0, 2),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -227,11 +227,6 @@ class SXTOOLS2_files(object):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         export_dict = {'LIN': 'LINEAR', 'SRGB': 'SRGB'}
         empty = True
-
-        if 'ExportObjects' not in bpy.data.collections:
-            exportObjects = bpy.data.collections.new('ExportObjects')
-        else:
-            exportObjects = bpy.data.collections['ExportObjects']
 
         groupNames = []
         for group in groups:
@@ -469,7 +464,11 @@ class SXTOOLS2_utils(object):
 
 
     def find_sx2material_name(self, obj):
-        mat_id = (obj.sx2.shadingmode, tuple(obj.sx2layers.keys()))
+        layer_keys = tuple(obj.sx2layers.keys())
+        layer_vis = tuple([layer.visibility for layer in obj.sx2layers])
+        layer_paletted = tuple([layer.paletted for layer in obj.sx2layers])
+        layer_palette_ids = tuple([layer.palette_index for layer in obj.sx2layers])
+        mat_id = (obj.sx2.shadingmode, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
         if mat_id in sxglobals.sx2material_dict:
             return 'SX2Material_' + sxglobals.sx2material_dict[mat_id][1]
         else:
@@ -4881,7 +4880,11 @@ class SXTOOLS2_setup(object):
             for obj in sx2_objs:
                 utils.sort_stack_indices(obj)
                 obj.data.materials.clear()
-                mat_id = (obj.sx2.shadingmode, tuple(obj.sx2layers.keys()))
+                layer_keys = tuple(obj.sx2layers.keys())
+                layer_vis = tuple([layer.visibility for layer in obj.sx2layers])
+                layer_paletted = tuple([layer.paletted for layer in obj.sx2layers])
+                layer_palette_ids = tuple([layer.palette_index for layer in obj.sx2layers])
+                mat_id = (obj.sx2.shadingmode, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
                 if mat_id not in sxglobals.sx2material_dict.keys():
                     sxglobals.sx2material_dict[mat_id] = (len(sxglobals.sx2material_dict), obj.name)
 
@@ -4911,7 +4914,11 @@ class SXTOOLS2_setup(object):
 
             # Assign materials based on matching layer stacks
             for obj in sx2_objs:
-                mat_id = (obj.sx2.shadingmode, tuple(obj.sx2layers.keys()))
+                layer_keys = tuple(obj.sx2layers.keys())
+                layer_vis = tuple([layer.visibility for layer in obj.sx2layers])
+                layer_paletted = tuple([layer.paletted for layer in obj.sx2layers])
+                layer_palette_ids = tuple([layer.palette_index for layer in obj.sx2layers])
+                mat_id = (obj.sx2.shadingmode, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
                 if (len(obj.sx2layers) > 0) and (mat_id in sxglobals.sx2material_dict):
                     obj.active_material = bpy.data.materials[utils.find_sx2material_name(obj)]
 
@@ -5025,30 +5032,30 @@ def refresh_swatches(self, context):
     utils.mode_manager(objs, set_mode=True, mode_id='refresh_swatches')
 
     if len(objs) > 0:
-        for obj in objs:
-            if len(obj.sx2layers) > 0:
-                layer = obj.sx2layers[obj.sx2.selectedlayer]
-                colors = utils.find_colors_by_frequency([obj, ], layer.name, 8)
+        obj = objs[0]
+        if len(obj.sx2layers) > 0:
+            layer = obj.sx2layers[obj.sx2.selectedlayer]
+            colors = utils.find_colors_by_frequency([obj, ], layer.name, 8)
 
-                # Refresh SX Tools UI to latest selection
-                # 1) Update layer HSL elements
-                hArray = []
-                sArray = []
-                lArray = []
-                for color in colors:
-                    hsl = convert.rgb_to_hsl(color)
-                    hArray.append(hsl[0])
-                    sArray.append(hsl[1])
-                    lArray.append(hsl[2])
-                hue = max(hArray)
-                sat = max(sArray)
-                lightness = max(lArray)
+            # Refresh SX Tools UI to latest selection
+            # 1) Update layer HSL elements
+            hArray = []
+            sArray = []
+            lArray = []
+            for color in colors:
+                hsl = convert.rgb_to_hsl(color)
+                hArray.append(hsl[0])
+                sArray.append(hsl[1])
+                lArray.append(hsl[2])
+            hue = max(hArray)
+            sat = max(sArray)
+            lightness = max(lArray)
 
-                sxglobals.hsl_update = True
-                obj.sx2.huevalue = hue
-                obj.sx2.saturationvalue = sat
-                obj.sx2.lightnessvalue = lightness
-                sxglobals.hsl_update = False
+            sxglobals.hsl_update = True
+            obj.sx2.huevalue = hue
+            obj.sx2.saturationvalue = sat
+            obj.sx2.lightnessvalue = lightness
+            sxglobals.hsl_update = False
 
         # 2) Update layer palette elements
         layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
@@ -7734,7 +7741,9 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
                     # print('selectionmonitor: object selection changed')
                     sxglobals.prev_selection = selection[:]
                     if (selection is not None) and (len(selection) > 0) and (len(context.view_layer.objects[selection[0]].sx2layers) > 0) and (layer_validator(self, context)):
-                        refresh_swatches(self, context)
+                        # match selected layer on all selected objects
+                        # property update propagates the selection 
+                        objs[0].sx2.selectedlayer = objs[0].sx2.selectedlayer
                     return {'PASS_THROUGH'}
                 else:
                     return {'PASS_THROUGH'}
@@ -9829,7 +9838,7 @@ if __name__ == '__main__':
 
 
 # TODO:
-# - keymonitor start requires creating an empty layer
+# - selection and key monitor to start as early as possible
 # - address auto-smooth errors (?!!)
 # - match existing layers when loading category
 # - reset scene: clear obj.sx2 and scene.sx2 properties
