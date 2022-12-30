@@ -4758,7 +4758,7 @@ class SXTOOLS2_setup(object):
                                 sxmaterial.node_tree.links.new(input, output)
 
                             if material_layers[i][2] == 'EMI':
-                                sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 100
+                                sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 10
                                 input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission']
                                 sxmaterial.node_tree.links.new(input, output)
                                 bpy.context.scene.eevee.use_bloom = True
