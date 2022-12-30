@@ -1475,39 +1475,29 @@ class SXTOOLS2_generate(object):
 
         if dictchannelcount < listchannelcount:
             if (dictchannelcount == 1) and (listchannelcount == 2):
-                i = 0
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
                         value = vert_dict.get(vert_idx, 0.0)
-                        loop_list[(0+i*listchannelcount):(listchannelcount+i*listchannelcount)] = [value, value]
-                        i += 1
+                        loop_list[(0+loop_idx*listchannelcount):(listchannelcount+loop_idx*listchannelcount)] = [value, value]
             elif (dictchannelcount == 1) and (listchannelcount == 4):
-                i = 0
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
                         value = vert_dict.get(vert_idx, 0.0)
-                        loop_list[(0+i*listchannelcount):(listchannelcount+i*listchannelcount)] = [value, value, value, 1.0]
-                        i += 1
+                        loop_list[(0+loop_idx*listchannelcount):(listchannelcount+loop_idx*listchannelcount)] = [value, value, value, 1.0]
             elif (dictchannelcount == 3) and (listchannelcount == 4):
-                i = 0
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
                         value = vert_dict.get(vert_idx, [0.0, 0.0, 0.0])
-                        loop_list[(0+i*listchannelcount):(listchannelcount+i*listchannelcount)] = [value[0], value[1], value[2], 1.0]
-                        i += 1
+                        loop_list[(0+loop_idx*listchannelcount):(listchannelcount+loop_idx*listchannelcount)] = [value[0], value[1], value[2], 1.0]
         else:
             if listchannelcount == 1:
-                i = 0
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        loop_list[i] = vert_dict.get(vert_idx, 0.0)
-                        i += 1
+                        loop_list[loop_idx] = vert_dict.get(vert_idx, 0.0)
             else:
-                i = 0
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        loop_list[(0+i*listchannelcount):(listchannelcount+i*listchannelcount)] = vert_dict.get(vert_idx, [0.0] * listchannelcount)
-                        i += 1
+                        loop_list[(0+loop_idx*listchannelcount):(listchannelcount+loop_idx*listchannelcount)] = vert_dict.get(vert_idx, [0.0] * listchannelcount)
 
         return loop_list
 
@@ -1521,12 +1511,10 @@ class SXTOOLS2_generate(object):
         if masklayer is not None:
             mask, empty = layers.get_layer_mask(obj, masklayer)
             if not empty:
-                i = 0
                 for poly in mesh.polygons:
                     for vert_id, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        if mask[i] > 0.0:
+                        if mask[loop_idx] > 0.0:
                             vertex_dict[vert_id] = (mesh.vertices[vert_id].co, mesh.vertices[vert_id].normal, mat @ mesh.vertices[vert_id].co, (mat @ mesh.vertices[vert_id].normal - mat @ Vector()).normalized())
-                        i += 1
         elif sxglobals.mode == 'EDIT':
             vert_sel = [None] * len(mesh.vertices)
             mesh.vertices.foreach_get('select', vert_sel)
@@ -1553,31 +1541,26 @@ class SXTOOLS2_generate(object):
                 empty = True
             else:
                 empty = False
-                i = 0
                 if bpy.context.tool_settings.mesh_select_mode[2]:
                     for poly in mesh.polygons:
                         for loop_idx in poly.loop_indices:
-                            mask[i] = float(poly.select)
-                            i += 1
+                            mask[loop_idx] = float(poly.select)
                 else:
                     for poly in mesh.polygons:
                         for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                            mask[i] = float(mesh.vertices[vert_idx].select)
-                            i += 1
+                            mask[loop_idx] = float(mesh.vertices[vert_idx].select)
         else:
             export.composite_color_layers([obj, ])
             colors = layers.get_layer(obj, obj.sx2layers['Composite'])
-            i = 0
+
             if bpy.context.tool_settings.mesh_select_mode[2]:
                 for poly in mesh.polygons:
                     for loop_idx in poly.loop_indices:
-                        mask[i] = float(utils.color_compare(colors[(0+i*4):(4+i*4)], selected_color, 0.01))
-                        i += 1
+                        mask[loop_idx] = float(utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], selected_color, 0.01))
             else:
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        mask[i] = float(utils.color_compare(colors[(0+i*4):(4+i*4)], selected_color, 0.01))
-                        i += 1
+                        mask[loop_idx] = float(utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], selected_color, 0.01))
 
             if 1.0 not in mask:
                 empty = True
@@ -2317,23 +2300,21 @@ class SXTOOLS2_tools(object):
             else:
                 colors = layers.get_layer(obj, obj.sx2layers[obj.sx2.selectedlayer])
             mesh = obj.data
-            i = 0
+
             if bpy.context.tool_settings.mesh_select_mode[2]:
                 for poly in mesh.polygons:
                     for loop_idx in poly.loop_indices:
                         if invertmask:
-                            poly.select = not utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01)
+                            poly.select = not utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01)
                         else:
-                            poly.select = utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01)
-                        i += 1
+                            poly.select = utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01)
             else:
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
                         if invertmask:
-                            mesh.vertices[vert_idx].select = not utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01)
+                            mesh.vertices[vert_idx].select = not utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01)
                         else:
-                            mesh.vertices[vert_idx].select = utils.color_compare(colors[(0+i*4):(4+i*4)], color, 0.01)
-                        i += 1
+                            mesh.vertices[vert_idx].select = utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01)
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
 
@@ -2347,27 +2328,24 @@ class SXTOOLS2_tools(object):
             mesh = obj.data
             mask = (layers.get_layer_mask(obj, layer))[0]
 
-            i = 0
             if bpy.context.tool_settings.mesh_select_mode[2]:
                 for poly in mesh.polygons:
                     for loop_idx in poly.loop_indices:
                         if invertmask:
-                            if mask[i] == 0.0:
+                            if mask[loop_idx] == 0.0:
                                 poly.select = True
                         else:
-                            if mask[i] > 0.0:
+                            if mask[loop_idx] > 0.0:
                                 poly.select = True
-                        i += 1
             else:
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
                         if invertmask:
-                            if mask[i] == 0.0:
+                            if mask[loop_idx] == 0.0:
                                 mesh.vertices[vert_idx].select = True
                         else:
-                            if mask[i] > 0.0:
+                            if mask[loop_idx] > 0.0:
                                 mesh.vertices[vert_idx].select = True
-                        i += 1
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
 
@@ -3136,15 +3114,15 @@ class SXTOOLS2_export(object):
 
             for i, layer in enumerate(layers):
                 for poly in obj.data.polygons:
-                    for idx in poly.loop_indices:
-                        vertex_alpha = 1.0 if i == 0 else obj.data.color_attributes[layer.color_attribute].data[idx].color[3]
+                    for loop_idx in poly.loop_indices:
+                        vertex_alpha = 1.0 if i == 0 else obj.data.color_attributes[layer.color_attribute].data[loop_idx].color[3]
                         if vertex_alpha >= alpha_tolerance:
                             if layer.paletted:
-                                obj.data.uv_layers[uvmap].data[idx].uv[channels[target_channel]] = layer.palette_index + 1
+                                obj.data.uv_layers[uvmap].data[loop_idx].uv[channels[target_channel]] = layer.palette_index + 1
                             elif 'PBR' in layer.name:
-                                obj.data.uv_layers[uvmap].data[idx].uv[channels[target_channel]] = 7
+                                obj.data.uv_layers[uvmap].data[loop_idx].uv[channels[target_channel]] = 7
                             else:
-                                obj.data.uv_layers[uvmap].data[idx].uv[channels[target_channel]] = 6
+                                obj.data.uv_layers[uvmap].data[loop_idx].uv[channels[target_channel]] = 6
 
 
     def generate_uv_channels(self, objs):
@@ -9686,6 +9664,15 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
                     for key in color_uv_coords.keys():
                         if utils.color_compare(color, key, 0.01):
                             uvs[i*2:i*2+2] = color_uv_coords[key]
+
+                # second loop, snap all loop verts into the color of the first to reduce artifacting
+                for poly in obj.data.polygons:
+                    loop_uv = None
+                    for i, loop_idx in enumerate(poly.loop_indices):
+                        if i == 0:
+                            loop_uv = obj.data.uv_layers['UVSet0'].data[loop_idx].uv[:]
+                        else:
+                            obj.data.uv_layers['UVSet0'].data[loop_idx].uv = loop_uv
 
                 layers.set_uvs(obj, 'UVSet0', uvs)
 
