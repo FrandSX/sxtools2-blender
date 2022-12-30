@@ -4923,8 +4923,6 @@ class SXTOOLS2_setup(object):
 
         objs = bpy.context.view_layer.objects
 
-        # TODO: Clear obj.sx2 and scene.sx2 properties
-
         # Clear layers and UV sets
         for obj in objs:
             remove_layer_list = []
@@ -9834,4 +9832,4 @@ if __name__ == '__main__':
 # - keymonitor start requires creating an empty layer
 # - address auto-smooth errors (?!!)
 # - match existing layers when loading category
-# - improve atlas generation by forcing all loop verts of a face to the same color
+# - reset scene: clear obj.sx2 and scene.sx2 properties
