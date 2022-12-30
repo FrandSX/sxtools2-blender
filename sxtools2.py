@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 0, 2),
+    'version': (1, 0, 3),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4226,13 +4226,6 @@ class SXTOOLS2_setup(object):
         return None
 
 
-    def start_modal(self):
-        if (bpy.context.area is not None) and (bpy.context.area.type == 'VIEW_3D'):
-            bpy.ops.sx2.selectionmonitor('EXEC_DEFAULT')
-            bpy.ops.sx2.keymonitor('EXEC_DEFAULT')
-            sxglobals.modal_status = True
-
-
     def create_tiler(self):
         nodetree = bpy.data.node_groups.new(type='GeometryNodeTree', name='sx_tiler')
         group_in = nodetree.nodes.new(type='NodeGroupInput')
@@ -4995,6 +4988,13 @@ class SXTOOLS2_setup(object):
 # ------------------------------------------------------------------------
 #    Update Functions
 # ------------------------------------------------------------------------
+def start_modal():
+    if (bpy.context.area is not None) and (bpy.context.area.type == 'VIEW_3D') and (not sxglobals.modal_status):
+        bpy.ops.sx2.selectionmonitor('EXEC_DEFAULT')
+        bpy.ops.sx2.keymonitor('EXEC_DEFAULT')
+        sxglobals.modal_status = True
+
+
 # Return value eliminates duplicates
 def mesh_selection_validator(self, context):
     mesh_objs = []
@@ -5057,24 +5057,20 @@ def refresh_swatches(self, context):
             obj.sx2.lightnessvalue = lightness
             sxglobals.hsl_update = False
 
-        # 2) Update layer palette elements
-        layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-        colors = utils.find_colors_by_frequency(objs, layer.name, 8)
-        for i, pcol in enumerate(colors):
-            palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
-            setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
+            # 2) Update layer palette elements
+            layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            colors = utils.find_colors_by_frequency(objs, layer.name, 8)
+            for i, pcol in enumerate(colors):
+                palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
+                setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
 
-        # 3) update tool palettes
-        if scene.toolmode == 'COL':
-            update_fillcolor(self, context)
-        elif scene.toolmode == 'PAL':
-            layers.color_layers_to_values(objs)
-        # elif (scene.toolmode == 'MAT'):
-        #     layers.material_layers_to_values(objs)
-
-    # Verify selectionMonitor is running
-    if not sxglobals.modal_status:
-        setup.start_modal()
+            # 3) update tool palettes
+            if scene.toolmode == 'COL':
+                update_fillcolor(self, context)
+            elif scene.toolmode == 'PAL':
+                layers.color_layers_to_values(objs)
+            # elif (scene.toolmode == 'MAT'):
+            #     layers.material_layers_to_values(objs)
 
     utils.mode_manager(objs, revert=True, mode_id='refresh_swatches')
     # sxglobals.refresh_in_progress = False
@@ -5181,10 +5177,6 @@ def update_selected_layer(self, context):
         setup.create_sxtoolmaterial()
 
     refresh_swatches(self, context)
-
-    # Verify selectionMonitor and keyMonitor are running
-    if not sxglobals.modal_status:
-        setup.start_modal()
 
 
 def update_material_props(self, context):
@@ -5647,8 +5639,6 @@ def load_post_handler(dummy):
                 obj.sx2.hardmode = 'SHARP'
 
     bpy.context.view_layer.objects.active = active
-
-    setup.start_modal()
 
 
 # Update revision IDs and save in asset catalogue
@@ -9810,6 +9800,8 @@ def register():
     bpy.app.handlers.save_pre.append(save_pre_handler)
     bpy.app.handlers.save_post.append(save_post_handler)
 
+    bpy.types.SpaceView3D.draw_handler_add(start_modal, (), 'WINDOW', 'POST_VIEW')
+
 def unregister():
     from bpy.utils import unregister_class
     for cls in reversed(export_classes):
@@ -9828,6 +9820,8 @@ def unregister():
     bpy.app.handlers.load_post.remove(load_post_handler)
     bpy.app.handlers.save_pre.remove(save_pre_handler)
     bpy.app.handlers.save_post.remove(save_post_handler)
+
+    bpy.types.SpaceView3D.draw_handler_remove(start_modal, 'WINDOW')
 
 if __name__ == '__main__':
     try:
