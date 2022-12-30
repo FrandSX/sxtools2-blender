@@ -9832,7 +9832,13 @@ if __name__ == '__main__':
 
 
 # TODO:
-# - selection and key monitor to start as early as possible
+# BUG: Grouping of objs with armatures
+# BUG: Refresh modifiers when saving to catalogue to update cost value
+# BUG: Tri count calculator does not update upon adding modifiers
+# FEAT: UI should specify when applying a material overwrites, and when respects the active layer mask
+# FEAT: validate modifier settings, control cage, all meshes have single user?
+# FEAT: Smart Separate should respect user-generated _front, _rear etc. strings
+# FEAT: Strip redundant custom props prior to exporting
+# FEAT: match existing layers when loading category
+# FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
 # - address auto-smooth errors (?!!)
-# - match existing layers when loading category
-# - reset scene: clear obj.sx2 and scene.sx2 properties

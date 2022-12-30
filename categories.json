@@ -13,6 +13,7 @@
         "uv_palette_masks": ["UVSet1", "U"],
         "uv_occlusion": ["UVSet1", "V"],
         "uv_transmission": ["UVSet2", "U"],
+        "uv_subsurface": ["UVSet2", "U"],
         "uv_emission": ["UVSet2", "V"],
         "uv_metallic": ["UVSet3", "U"],
         "uv_roughness": ["UVSet3", "V"],
