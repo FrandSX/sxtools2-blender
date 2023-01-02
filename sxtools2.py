@@ -195,7 +195,11 @@ class SXTOOLS2_files(object):
                             incolor[0] = category_dict[category][entry][i][0]
                             incolor[1] = category_dict[category][entry][i][1]
                             incolor[2] = category_dict[category][entry][i][2]
-                            setattr(item, 'color'+str(i), convert.srgb_to_linear(incolor))
+                            if (swatchcount == 5):
+                                setattr(item, 'color'+str(i), convert.srgb_to_linear(incolor))
+                            else:
+                                setattr(item, 'color'+str(i), incolor)
+
 
 
     def save_ramp(self, rampName):
@@ -2260,11 +2264,6 @@ class SXTOOLS2_tools(object):
         material = bpy.context.scene.sx2materials[material]
         scene = bpy.context.scene.sx2
 
-        # material library contains smoothness values, Blender uses roughness
-        invert_color = [None, None, None, 1.0]
-        for i in range(3):
-            invert_color[i] = 1 - material.color2[i]
-
         # for obj in objs:
         #     scene.toolopacity = 1.0
         #     scene.toolblend = 'ALPHA'
@@ -2279,7 +2278,7 @@ class SXTOOLS2_tools(object):
 
         setattr(scene, 'newmaterial0', material.color0)
         setattr(scene, 'newmaterial1', material.color1)
-        setattr(scene, 'newmaterial2', invert_color)
+        setattr(scene, 'newmaterial2', material.color2)
 
         sxglobals.refresh_in_progress = False
         utils.mode_manager(objs, revert=True, mode_id='apply_material')
@@ -3931,11 +3930,6 @@ class SXTOOLS2_magic(object):
             bpy.context.scene.sx2materials[material].color1,
             bpy.context.scene.sx2materials[material].color2]
 
-        inverted_color = [None, None, None, 1.0]
-        for i in range(3):
-            inverted_color[i] = 1 - palette[2][i]
-        palette[2] = inverted_color
-
         for obj in objs:
             colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
             # Static colors layer is rough
@@ -4000,11 +3994,6 @@ class SXTOOLS2_magic(object):
             bpy.context.scene.sx2materials[material].color0,
             bpy.context.scene.sx2materials[material].color1,
             bpy.context.scene.sx2materials[material].color2]
-
-        inverted_color = [None, None, None, 1.0]
-        for i in range(3):
-            inverted_color[i] = 1 - palette[2][i]
-        palette[2] = inverted_color
 
         for obj in objs:
             colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
@@ -4094,11 +4083,6 @@ class SXTOOLS2_magic(object):
             bpy.context.scene.sx2materials[material].color0,
             bpy.context.scene.sx2materials[material].color1,
             bpy.context.scene.sx2materials[material].color2]
-
-        inverted_color = [None, None, None, 1.0]
-        for i in range(3):
-            inverted_color[i] = 1 - palette[2][i]
-        palette[2] = inverted_color
 
         for obj in objs:
             colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
