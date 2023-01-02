@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 0, 3),
+    'version': (1, 0, 4),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4854,7 +4854,7 @@ class SXTOOLS2_setup(object):
 
 
     def update_sx2material(self, context):
-        if not sxglobals.magic_in_progress:
+        if (not sxglobals.magic_in_progress) and (not bpy.app.background):
             if 'SXToolMaterial' not in bpy.data.materials:
                 setup.create_sxtoolmaterial()
 
@@ -5646,7 +5646,7 @@ def load_post_handler(dummy):
 def save_pre_handler(dummy):
     for obj in bpy.data.objects:
         if (len(obj.sx2.keys()) > 0):
-            obj['sxToolsVersion'] = 'SX Tools for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
+            obj['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
             if ('revision' not in obj.keys()):
                 obj['revision'] = 1
             else:
@@ -9161,6 +9161,9 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
             objs = filtered_objs
 
         if len(objs) > 0:
+            if bpy.app.background:
+                setup.create_sxtoolmaterial()
+
             bpy.context.view_layer.objects.active = objs[0]
             check = export.validate_objects(objs)
             if check:
@@ -9246,7 +9249,7 @@ class SXTOOLS2_OT_catalogue_add(bpy.types.Operator):
             return {'FINISHED'}
 
         for obj in objs:
-            obj['sxToolsVersion'] = 'SX Tools for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
+            obj['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
 
         asset_category = objs[0].sx2.category.lower()
         asset_tags = self.assetTags.split(' ')
@@ -9442,6 +9445,10 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
     bl_options = {'UNDO'}
 
 
+    def execute(self, context):
+        return self.invoke(context, None)
+
+
     def invoke(self, context, event):
         test_objs = mesh_selection_validator(self, context)
         objs = []
@@ -9615,6 +9622,10 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
     bl_label = 'Export FBX files with atlases'
     bl_description = 'Export FBX files with palette atlas texture files'
     bl_options = {'UNDO'}
+
+
+    def execute(self, context):
+        return self.invoke(context, None)
 
 
     def invoke(self, context, event):
@@ -9800,7 +9811,9 @@ def register():
     bpy.app.handlers.save_pre.append(save_pre_handler)
     bpy.app.handlers.save_post.append(save_post_handler)
 
-    bpy.types.SpaceView3D.draw_handler_add(start_modal, (), 'WINDOW', 'POST_VIEW')
+    if not bpy.app.background:
+        bpy.types.SpaceView3D.draw_handler_add(start_modal, (), 'WINDOW', 'POST_VIEW')
+
 
 def unregister():
     from bpy.utils import unregister_class
@@ -9821,7 +9834,8 @@ def unregister():
     bpy.app.handlers.save_pre.remove(save_pre_handler)
     bpy.app.handlers.save_post.remove(save_post_handler)
 
-    bpy.types.SpaceView3D.draw_handler_remove(start_modal, 'WINDOW')
+    if not bpy.app.background:
+        bpy.types.SpaceView3D.draw_handler_remove(start_modal, 'WINDOW')
 
 if __name__ == '__main__':
     try:
