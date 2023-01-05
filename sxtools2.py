@@ -468,15 +468,21 @@ class SXTOOLS2_utils(object):
 
 
     def find_sx2material_name(self, obj):
-        layer_keys = tuple(obj.sx2layers.keys())
-        layer_vis = tuple([layer.visibility for layer in obj.sx2layers])
-        layer_paletted = tuple([layer.paletted for layer in obj.sx2layers])
-        layer_palette_ids = tuple([layer.palette_index for layer in obj.sx2layers])
-        mat_id = (obj.sx2.shadingmode, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
+        mat_id = self.get_mat_id(obj)
         if mat_id in sxglobals.sx2material_dict:
             return 'SX2Material_' + sxglobals.sx2material_dict[mat_id][1]
         else:
             return None
+
+
+    # SX2Materials are generated according to differentiators combined in per-object mat_ids
+    def get_mat_id(self, obj):
+        mat_opaque = True if self.find_color_layers(obj, 0).opacity == 1.0 else False
+        layer_keys = tuple(obj.sx2layers.keys())
+        layer_vis = tuple([layer.visibility for layer in obj.sx2layers])
+        layer_paletted = tuple([layer.paletted for layer in obj.sx2layers])
+        layer_palette_ids = tuple([layer.palette_index for layer in obj.sx2layers])
+        return (obj.sx2.shadingmode, mat_opaque, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
 
 
     def find_layer_by_stack_index(self, obj, index):
@@ -4436,10 +4442,6 @@ class SXTOOLS2_setup(object):
                     material_layers = []
                     if len(sxglobals.layer_stack_dict.get(obj.name, {})) > 0:
                         color_stack = [sxglobals.layer_stack_dict[obj.name][key] for key in sorted(sxglobals.layer_stack_dict[obj.name].keys())]
-                        layer_ids = {}
-                        for key, values in sxglobals.layer_stack_dict[obj.name].items():
-                            layer_ids[values[0]] = key
-
                         for layer in color_stack:
                             if layer[2] == 'COLOR':
                                 color_layers.append(layer)
@@ -4857,11 +4859,7 @@ class SXTOOLS2_setup(object):
             for obj in sx2_objs:
                 utils.sort_stack_indices(obj)
                 obj.data.materials.clear()
-                layer_keys = tuple(obj.sx2layers.keys())
-                layer_vis = tuple([layer.visibility for layer in obj.sx2layers])
-                layer_paletted = tuple([layer.paletted for layer in obj.sx2layers])
-                layer_palette_ids = tuple([layer.palette_index for layer in obj.sx2layers])
-                mat_id = (obj.sx2.shadingmode, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
+                mat_id = utils.get_mat_id(obj)
                 if mat_id not in sxglobals.sx2material_dict.keys():
                     sxglobals.sx2material_dict[mat_id] = (len(sxglobals.sx2material_dict), obj.name)
 
@@ -4891,11 +4889,7 @@ class SXTOOLS2_setup(object):
 
             # Assign materials based on matching layer stacks
             for obj in sx2_objs:
-                layer_keys = tuple(obj.sx2layers.keys())
-                layer_vis = tuple([layer.visibility for layer in obj.sx2layers])
-                layer_paletted = tuple([layer.paletted for layer in obj.sx2layers])
-                layer_palette_ids = tuple([layer.palette_index for layer in obj.sx2layers])
-                mat_id = (obj.sx2.shadingmode, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
+                mat_id = utils.get_mat_id(obj)
                 if (len(obj.sx2layers) > 0) and (mat_id in sxglobals.sx2material_dict):
                     obj.active_material = bpy.data.materials[utils.find_sx2material_name(obj)]
 
@@ -5531,6 +5525,7 @@ def update_obj_props(self, context, prop):
 
 def update_layer_props(self, context, prop):
     if (not sxglobals.magic_in_progress) and (not sxglobals.layer_update_in_progress):
+        print('updating layer props')
         sxglobals.layer_update_in_progress = True
         objs = mesh_selection_validator(self, context)
         for obj in objs:
@@ -5565,6 +5560,7 @@ def update_layer_props(self, context, prop):
                     for i, opacity_vector in enumerate(vectors):
                         while len(opacity_vector) < 3:
                             opacity_vector.append(1.0)
+                        opacity_vector = tuple(opacity_vector)
                         setattr(obj.sx2, 'layer_opacity_list_' + str(i), opacity_vector)
 
                     vectors = []
@@ -5576,13 +5572,13 @@ def update_layer_props(self, context, prop):
                             opacity_vector.append(1.0)
                         setattr(obj.sx2, 'material_opacity_list_' + str(i), opacity_vector)
 
-                if (utils.find_sx2material_name(obj)) is not None and (utils.find_sx2material_name(obj) in bpy.data.materials):
+                    # Create materials if blend method change is needed
                     bg_layer = utils.find_color_layers(obj, 0)
-                    if bg_layer.opacity < 1.0:
-                        bpy.data.materials[utils.find_sx2material_name(obj)].blend_method = 'BLEND'
-                    else:
-                        bpy.data.materials[utils.find_sx2material_name(obj)].blend_method = 'OPAQUE'
-
+                    if (bg_layer.opacity < 1.0) and (obj.active_material.blend_method == 'OPAQUE'):
+                        setup.update_sx2material(context)
+                    elif (bg_layer.opacity == 1.0) and (obj.active_material.blend_method == 'BLEND'):
+                        setup.update_sx2material(context)
+                            
         elif prop == 'palette_index':
             update_paletted_layers(self, context, None)
         sxglobals.layer_update_in_progress = False
@@ -9847,5 +9843,4 @@ if __name__ == '__main__':
 # FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
 # - address auto-smooth errors (?!!)
 # - review non-metallic PBR material values
-# - improve material blend method setting
-# - MUL and OVR layers not included in alpha accumulation
+# - applying color with alpha 0 should work
