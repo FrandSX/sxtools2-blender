@@ -2171,12 +2171,11 @@ class SXTOOLS2_tools(object):
                 colors = generate.luminance_remap_list(obj, targetlayer, masklayer)
 
             if colors is not None:
-                # Write to target
-                target_colors = layers.get_layer(obj, targetlayer)
-                colors = self.blend_values(colors, target_colors, blendmode, blendvalue)
+                if blendmode != 'REP':
+                    target_colors = layers.get_layer(obj, targetlayer)
+                    colors = self.blend_values(colors, target_colors, blendmode, blendvalue)
                 layers.set_layer(obj, colors, targetlayer)
 
-            # obj.data.update()
         utils.mode_manager(objs, revert=True, mode_id='apply_tool')
         # now = time.perf_counter()
         # print('Apply tool ', scene.toolmode, ' duration: ', now-then, ' seconds')
@@ -6226,7 +6225,8 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
             ('ALPHA', 'Alpha', ''),
             ('ADD', 'Additive', ''),
             ('MUL', 'Multiply', ''),
-            ('OVR', 'Overlay', '')],
+            ('OVR', 'Overlay', ''),
+            ('REP', 'Replace', '')],
         default='ALPHA')
 
     fillpalette1: bpy.props.FloatVectorProperty(
@@ -9843,4 +9843,4 @@ if __name__ == '__main__':
 # FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
 # - address auto-smooth errors (?!!)
 # - review non-metallic PBR material values
-# - applying color with alpha 0 should work
+# - store ramp before magic
