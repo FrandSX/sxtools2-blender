@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 1, 0),
+    'version': (1, 1, 1),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2044,7 +2044,7 @@ class SXTOOLS2_tools(object):
         return None
 
 
-    def blend_values(self, topcolors, basecolors, blendmode, blendvalue):
+    def blend_values(self, topcolors, basecolors, blendmode, blendvalue, selectionmask=None):
         if topcolors is None:
             return basecolors
         else:
@@ -2080,7 +2080,13 @@ class SXTOOLS2_tools(object):
                     base = over * b + base * (1.0 - b)
                     base[3] = min(base[3]+a, 1.0)
 
-                if base[3] == 0.0:
+                elif blendmode == 'REP':
+                    if selectionmask is None:
+                        base = top
+                    else:
+                        base = base if selectionmask[i] == 0.0 else top
+
+                if (base[3] == 0.0) and (blendmode != 'REP'):
                     base = [0.0, 0.0, 0.0, 0.0]
 
                 colors[(0+i*4):(4+i*4)] = base
@@ -2141,6 +2147,7 @@ class SXTOOLS2_tools(object):
         blendvalue = scene.toolopacity
         blendmode = scene.toolblend
         rampmode = scene.rampmode
+        selectionmask = None
         if sxglobals.mode == 'EDIT':
             mergebbx = False
         else:
@@ -2171,9 +2178,11 @@ class SXTOOLS2_tools(object):
                 colors = generate.luminance_remap_list(obj, targetlayer, masklayer)
 
             if colors is not None:
-                if blendmode != 'REP':
-                    target_colors = layers.get_layer(obj, targetlayer)
-                    colors = self.blend_values(colors, target_colors, blendmode, blendvalue)
+                target_colors = layers.get_layer(obj, targetlayer)
+                if (blendmode == 'REP') and (sxglobals.mode == 'EDIT'):
+                    bpy.context.tool_settings.mesh_select_mode[2] = False
+                    selectionmask, empty = generate.get_selection_mask(obj)
+                colors = self.blend_values(colors, target_colors, blendmode, blendvalue, selectionmask)
                 layers.set_layer(obj, colors, targetlayer)
 
         utils.mode_manager(objs, revert=True, mode_id='apply_tool')
@@ -7641,6 +7650,43 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
         bpy.context.preferences.filepaths.use_relative_paths = not self.absolutepaths
 
 
+class SXTOOLS2_MT_piemenu(bpy.types.Menu):
+    bl_idname = 'SXTOOLS2_MT_piemenu'
+    bl_label = 'SX Tools 2'
+
+
+    def draw(self, context):
+        objs = mesh_selection_validator(self, context)
+        if len(objs) > 0:
+            obj = objs[0]
+
+            layout = self.layout
+            sx2 = obj.sx2
+            scene = context.scene.sx2
+            layer = obj.sx2layers[obj.sx2.selectedlayer]
+
+            pie = layout.menu_pie()
+            fill_row = pie.row()
+            fill_row.prop(scene, 'fillcolor', text='')
+            fill_row.operator('sx2.applytool', text='Apply Current Fill Tool')
+
+            # grd_col = pie.column()
+            # grd_col.prop(scene, 'rampmode', text='')
+            # grd_col.operator('sxtools.applyramp', text='Apply Gradient')
+
+            layer_col = pie.column()
+            layer_col.prop(layer, 'blend_mode', text='')
+            layer_col.prop(layer, 'opacity', slider=True, text='Layer Opacity')
+
+            pie.prop(sx2, 'shadingmode', text='')
+
+            pie.operator('sx2.copylayer', text='Copy Selection')
+            pie.operator('sx2.pastelayer', text='Paste Selection')
+            pie.operator('sx2.clear', text='Clear Layer')
+
+            pie.operator('sx2.selmask', text='Select Mask')
+
+
 # ------------------------------------------------------------------------
 #   Operators
 # ------------------------------------------------------------------------
@@ -8786,6 +8832,54 @@ class SXTOOLS2_OT_applymaterial(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class SXTOOLS2_OT_selectup(bpy.types.Operator):
+    bl_idname = 'sx2.selectup'
+    bl_label = 'Select Layer Up'
+    bl_description = 'Selects the layer above'
+    bl_options = {'UNDO'}
+
+
+    def execute(self, context):
+        return self.invoke(context, None)
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if len(objs) > 0:
+            for obj in objs:
+                utils.sort_stack_indices(obj)
+
+            layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            layer_above = utils.find_layer_by_stack_index(objs[0], layer.index + 1)
+            if layer_above is not None:
+                objs[0].sx2.selectedlayer = utils.find_layer_index_by_name(objs[0], layer_above.name)
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_selectdown(bpy.types.Operator):
+    bl_idname = 'sx2.selectdown'
+    bl_label = 'Select Layer Down'
+    bl_description = 'Selects the layer below'
+    bl_options = {'UNDO'}
+
+
+    def execute(self, context):
+        return self.invoke(context, None)
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if len(objs) > 0:
+            for obj in objs:
+                utils.sort_stack_indices(obj)
+
+            layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            layer_below = utils.find_layer_by_stack_index(objs[0], layer.index - 1)
+            if layer_below is not None:
+                objs[0].sx2.selectedlayer = utils.find_layer_index_by_name(objs[0], layer_below.name)
+        return {'FINISHED'}
+
+
 # ------------------------------------------------------------------------
 #    Modifier Operators
 # ------------------------------------------------------------------------
@@ -9717,6 +9811,7 @@ core_classes = (
     SXTOOLS2_rampcolor,
     SXTOOLS2_PT_panel,
     SXTOOLS2_UL_layerlist,
+    SXTOOLS2_MT_piemenu,
     SXTOOLS2_OT_selectionmonitor,
     SXTOOLS2_OT_keymonitor,
     SXTOOLS2_OT_layerinfo,
@@ -9742,7 +9837,9 @@ core_classes = (
     SXTOOLS2_OT_addmaterial,
     SXTOOLS2_OT_delmaterial,
     SXTOOLS2_OT_addmaterialcategory,
-    SXTOOLS2_OT_delmaterialcategory)
+    SXTOOLS2_OT_delmaterialcategory,
+    SXTOOLS2_OT_selectup,
+    SXTOOLS2_OT_selectdown)
 
 modifier_classes = (
     SXTOOLS2_OT_setgroup,
@@ -9800,6 +9897,17 @@ def register():
     if not bpy.app.background:
         bpy.types.SpaceView3D.draw_handler_add(start_modal, (), 'WINDOW', 'POST_VIEW')
 
+    wm = bpy.context.window_manager
+    if wm.keyconfigs.addon:
+        km = wm.keyconfigs.addon.keymaps.new(name='3D View', space_type='VIEW_3D')
+        kmi = km.keymap_items.new('SXTOOLS2_OT_selectup', 'UP_ARROW', 'PRESS', ctrl=True, shift=True)
+        addon_keymaps.append((km, kmi))
+        kmi = km.keymap_items.new('SXTOOLS2_OT_selectdown', 'DOWN_ARROW', 'PRESS', ctrl=True, shift=True)
+        addon_keymaps.append((km, kmi))
+        kmi = km.keymap_items.new('wm.call_menu_pie', 'COMMA', 'PRESS', shift=True)
+        kmi.properties.name = SXTOOLS2_MT_piemenu.bl_idname
+        addon_keymaps.append((km, kmi))
+
 
 def unregister():
     from bpy.utils import unregister_class
@@ -9823,6 +9931,13 @@ def unregister():
     if not bpy.app.background:
         bpy.types.SpaceView3D.draw_handler_remove(start_modal, 'WINDOW')
 
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon
+    if kc:
+        for km, kmi in addon_keymaps:
+            km.keymap_items.remove(kmi)
+    addon_keymaps.clear()
+
 if __name__ == '__main__':
     try:
         unregister()
@@ -9841,6 +9956,7 @@ if __name__ == '__main__':
 # FEAT: Strip redundant custom props prior to exporting
 # FEAT: match existing layers when loading category
 # FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
+# FEAT: determine handling of transparent objs (transparent flag vs. category)
 # - address auto-smooth errors (?!!)
 # - review non-metallic PBR material values
 # - store ramp before magic
