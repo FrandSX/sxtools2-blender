@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 2, 3),
+    'version': (1, 2, 4),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -9214,6 +9214,21 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
     bl_options = {'UNDO'}
 
     @classmethod
+    def poll(cls, context):
+        enabled = False
+        objs = context.view_layer.objects.selected
+        mesh_objs = []
+        for obj in objs:
+            if obj.type == 'MESH':
+                mesh_objs.append(obj)
+
+        if len(mesh_objs[0].sx2layers) > 0:
+            enabled = True
+
+        return enabled
+
+
+    @classmethod
     def description(cls, context, properties):
         objs = mesh_selection_validator(cls, context)
         category = objs[0].sx2.category
@@ -9987,7 +10002,6 @@ if __name__ == '__main__':
 # BUG: Check why keymap not working
 # FEAT: UI should specify when applying a material overwrites, and when respects the active layer mask
 # FEAT: validate modifier settings, control cage, all meshes have single user?
-# FEAT: Smart Separate should respect user-generated _front, _rear etc. strings
 # FEAT: Strip redundant custom props prior to exporting
 # FEAT: match existing layers when loading category
 # FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
