@@ -289,28 +289,5 @@
         "uv_gradient1": ["UVSet4", "U"],
         "uv_gradient2": ["UVSet4", "V"],
         "uv_overlay":["UVSet5", "UVSet6"]
-    },
-    "Transparent": {
-        "layers": [
-            ["Layer 0", "COLOR", "ALPHA", 1.0, 0],
-            ["Metallic", "MET", "ALPHA", 1.0, "None"],
-            ["Roughness", "RGH", "ALPHA", 1.0, "None"]
-        ],
-        "metallic_override": 0,
-        "palette_metallic": [0.0, 0.0, 0.0, 0.0, 0.0],
-        "roughness_override": 0,
-        "palette_roughness": [0.0, 0.0, 0.0, 0.0, 0.0],
-        "staticvertexcolors": 1,
-        "blend": "BLEND",
-        "uv_texture": "UVSet0",
-        "uv_palette_masks": ["UVSet1", "U"],
-        "uv_occlusion": ["UVSet1", "V"],
-        "uv_transmission": ["UVSet2", "U"],
-        "uv_emission": ["UVSet2", "V"],
-        "uv_metallic": ["UVSet3", "U"],
-        "uv_roughness": ["UVSet3", "V"],
-        "uv_gradient1": ["UVSet4", "U"],
-        "uv_gradient2": ["UVSet4", "V"],
-        "uv_overlay":["UVSet5", "UVSet6"]
     }
 }

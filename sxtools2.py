@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 1, 1),
+    'version': (1, 1, 7),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -201,24 +201,9 @@ class SXTOOLS2_files(object):
                                 setattr(item, 'color'+str(i), incolor)
 
 
-
-    def save_ramp(self, rampName):
-        temp_dict = {}
-        ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'].color_ramp
-
-        temp_dict['mode'] = ramp.color_mode
-        temp_dict['interpolation'] = ramp.interpolation
-        temp_dict['hue_interpolation'] = ramp.hue_interpolation
-
-        tempColorArray = []
-        for i, element in enumerate(ramp.elements):
-            tempElement = [None, [None, None, None, None], None]
-            tempElement[0] = element.position
-            tempElement[1] = [element.color[0], element.color[1], element.color[2], element.color[3]]
-            tempColorArray.append(tempElement)
-
-        temp_dict['elements'] = tempColorArray
-        sxglobals.ramp_dict[rampName] = temp_dict
+    def save_ramp(self, ramp_name):
+        ramp_dict = utils.get_ramp()
+        sxglobals.ramp_dict[ramp_name] = ramp_dict
 
         self.save_file('gradients')
 
@@ -263,8 +248,10 @@ class SXTOOLS2_files(object):
             objArray = []
             for sel in selArray:
                 if sel.type == 'MESH':
+                    bg_layer = utils.find_color_layers(sel, 0)
                     objArray.append(sel)
                     sel['staticVertexColors'] = sel.sx2.staticvertexcolors
+                    sel['transparent'] = '0' if bg_layer.opacity == 1.0 else '1'
                     sel['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
                     sel['colorSpace'] = export_dict[prefs.exportspace]
 
@@ -353,6 +340,8 @@ class SXTOOLS2_files(object):
             if reset_locations:
                 obj.location = (0, 0, 0)
 
+            bg_layer = utils.find_color_layers(obj, 0)
+            obj['transparent'] = '0' if bg_layer.opacity == 1.0 else '1'
             obj['staticVertexColors'] = obj.sx2.staticvertexcolors
             obj['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
             obj['colorSpace'] = export_dict[prefs.exportspace]
@@ -765,6 +754,24 @@ class SXTOOLS2_utils(object):
                         break
 
         bpy.context.view_layer.objects.active = active
+
+
+    def get_ramp(self):
+        ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'].color_ramp
+        ramp_dict = {}
+        ramp_dict['mode'] = ramp.color_mode
+        ramp_dict['interpolation'] = ramp.interpolation
+        ramp_dict['hue_interpolation'] = ramp.hue_interpolation
+
+        tempColorArray = []
+        for element in ramp.elements:
+            tempElement = [None, [None, None, None, None], None]
+            tempElement[0] = element.position
+            tempElement[1] = [element.color[0], element.color[1], element.color[2], element.color[3]]
+            tempColorArray.append(tempElement)
+
+        ramp_dict['elements'] = tempColorArray
+        return ramp_dict
 
 
     def __del__(self):
@@ -3397,7 +3404,7 @@ class SXTOOLS2_export(object):
         try:
             sxtoolmaterial = bpy.data.materials['SXToolMaterial'].node_tree
         except:
-            print(f'SX Tools Error: Missing SXToolMaterial.\nPerforming SX Material reset.')
+            print(f'SX Tools Error: Missing SXToolMaterial.\nPerforming SXToolMaterial reset.')
             setup.create_sxtoolmaterial()
 
 
@@ -3520,6 +3527,7 @@ class SXTOOLS2_magic(object):
         org_toolblend = scene.toolblend
         org_rampmode = scene.rampmode
         org_ramplist = scene.ramplist
+        org_ramp = utils.get_ramp()
         org_dirangle = scene.dirAngle
         org_dirinclination = scene.dirInclination
         org_dircone = scene.dirCone
@@ -3730,10 +3738,6 @@ class SXTOOLS2_magic(object):
                         if scene.exportquality == 'HI':
                             tools.apply_modifiers(groupObjs)
                         self.process_roadtiles(groupObjs)
-                    elif category == 'TRANSPARENT':
-                        if scene.exportquality == 'HI':
-                            tools.apply_modifiers(groupObjs)
-                        self.process_static(groupObjs)
                     else:
                         if scene.exportquality == 'HI':
                             tools.apply_modifiers(groupObjs)
@@ -3789,6 +3793,7 @@ class SXTOOLS2_magic(object):
         scene.toolblend = org_toolblend
         scene.rampmode = org_rampmode
         scene.ramplist = org_ramplist
+        load_ramp(bpy.context, org_ramp) 
         scene.dirAngle = org_dirangle
         scene.dirInclination = org_dirinclination
         scene.dirCone = org_dircone
@@ -5411,20 +5416,21 @@ def load_category(self, context):
         context.view_layer.objects.active = active
 
 
-def load_ramp(self, context):
-    rampName = sxglobals.preset_lookup[context.scene.sx2.ramplist]
-    ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'].color_ramp
-    temp_dict = sxglobals.ramp_dict[rampName]
+def load_ramp(self, context, ramp_dict=None):
+    if ramp_dict is None:
+        rampName = sxglobals.preset_lookup[context.scene.sx2.ramplist]
+        ramp_dict = sxglobals.ramp_dict[rampName]
 
-    ramp.color_mode = temp_dict['mode']
-    ramp.interpolation = temp_dict['interpolation']
-    ramp.hue_interpolation = temp_dict['hue_interpolation']
+    ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'].color_ramp
+    ramp.color_mode = ramp_dict['mode']
+    ramp.interpolation = ramp_dict['interpolation']
+    ramp.hue_interpolation = ramp_dict['hue_interpolation']
 
     rampLength = len(ramp.elements)
     for i in range(rampLength-1):
         ramp.elements.remove(ramp.elements[0])
 
-    for i, tempElement in enumerate(temp_dict['elements']):
+    for i, tempElement in enumerate(ramp_dict['elements']):
         if i == 0:
             ramp.elements[0].position = tempElement[0]
             ramp.elements[0].color = [tempElement[1][0], tempElement[1][1], tempElement[1][2], tempElement[1][3]]
@@ -5618,6 +5624,8 @@ def load_post_handler(dummy):
 
     if bpy.data.scenes['Scene'].sx2.rampmode == '':
         bpy.data.scenes['Scene'].sx2.rampmode = 'X'
+
+    export.validate_sxtoolmaterial()
 
     active = bpy.context.view_layer.objects.active
     for obj in bpy.data.objects:
@@ -6374,7 +6382,7 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         name='Ramp Presets',
         description='Load stored ramp presets',
         items=lambda self, context: dict_lister(self, context, sxglobals.ramp_dict),
-        update=load_ramp)
+        update=lambda self, context: load_ramp(self, context, None))
 
     mergemode: bpy.props.EnumProperty(
         name='Merge Mode',
@@ -9209,8 +9217,6 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
             modeString += 'Trees batch process:\n1) Overlay bake\n2) Occlusion bake\nNOTE: Overwrites existing overlay and occlusion'
         elif category == 'PARTICLES':
             modeString += 'Particle batch process:\n1) Bake static vtx colors\n2) Strip all UV channels and additional vertex color sets'
-        elif category == 'TRANSPARENT':
-            modeString += 'Transparent batch process:\n1) Overlay bake\n2) Occlusion bake\nNOTE: Overwrites existing overlay and occlusion'
         else:
             modeString += 'Batch process:\nCalculates material channels according to category'
         return modeString
@@ -9628,6 +9634,8 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     sx_category = categories[obj['sxtools'].get('category', 0) + 1].upper()
                     if sx_category == 'DEFAULT':
                         sx_category = 'STATIC'
+                    elif sx_category == 'TRANSPARENT':
+                        sx_category = 'STATIC'
                     obj.sx2.category = sx_category
                     category_data = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]
 
@@ -9956,7 +9964,6 @@ if __name__ == '__main__':
 # FEAT: Strip redundant custom props prior to exporting
 # FEAT: match existing layers when loading category
 # FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
-# FEAT: determine handling of transparent objs (transparent flag vs. category)
 # - address auto-smooth errors (?!!)
 # - review non-metallic PBR material values
-# - store ramp before magic
+# - check why keymap not working
