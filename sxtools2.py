@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 1, 9),
+    'version': (1, 2, 0),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -467,11 +467,12 @@ class SXTOOLS2_utils(object):
     # SX2Materials are generated according to differentiators combined in per-object mat_ids
     def get_mat_id(self, obj):
         mat_opaque = True if self.find_color_layers(obj, 0).opacity == 1.0 else False
+        mat_culling = obj.sx2.backfaceculling
         layer_keys = tuple(obj.sx2layers.keys())
         layer_vis = tuple([layer.visibility for layer in obj.sx2layers])
         layer_paletted = tuple([layer.paletted for layer in obj.sx2layers])
         layer_palette_ids = tuple([layer.palette_index for layer in obj.sx2layers])
-        return (obj.sx2.shadingmode, mat_opaque, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
+        return (obj.sx2.shadingmode, mat_opaque, mat_culling, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
 
 
     def find_layer_by_stack_index(self, obj, index):
@@ -4442,8 +4443,6 @@ class SXTOOLS2_setup(object):
             if len(obj.sx2layers) > 0:
                 sxmaterial = bpy.data.materials.new(name='SX2Material_'+obj.name)
                 sxmaterial.use_nodes = True
-                sxmaterial.use_backface_culling = True
-                sxmaterial.show_transparent_back = False
                 sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'].default_value = [0.0, 0.0, 0.0, 1.0]
                 sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = [0.0, 0.0, 0.0, 1.0]
                 sxmaterial.node_tree.nodes['Principled BSDF'].location = (1000, 0)
@@ -4493,8 +4492,12 @@ class SXTOOLS2_setup(object):
                     # Set shader blend method
                     if obj.sx2layers[color_layers[0][0]].opacity < 1.0:
                         sxmaterial.blend_method = 'BLEND'
+                        sxmaterial.use_backface_culling = obj.sx2.backfaceculling
+                        sxmaterial.show_transparent_back = not obj.sx2.backfaceculling
                     else:
                         sxmaterial.blend_method = 'OPAQUE'
+                        sxmaterial.use_backface_culling = True
+                        sxmaterial.show_transparent_back = False
 
                     # Create color layer groups
                     splitter_index = 0
@@ -5518,7 +5521,8 @@ def update_obj_props(self, context, prop):
             if getattr(obj.sx2, prop) != value:
                 setattr(obj.sx2, prop, value)
 
-        if prop == 'shadingmode':
+        mat_upd_props = ['shadingmode', 'backfaceculling']
+        if prop in mat_upd_props:
             setup.update_sx2material(context)
 
         elif prop == 'selectedlayer':
@@ -5543,7 +5547,6 @@ def update_obj_props(self, context, prop):
 
 def update_layer_props(self, context, prop):
     if (not sxglobals.magic_in_progress) and (not sxglobals.layer_update_in_progress):
-        print('updating layer props')
         sxglobals.layer_update_in_progress = True
         objs = mesh_selection_validator(self, context)
         for obj in objs:
@@ -5760,6 +5763,12 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         max=1.0,
         default=0.0,
         update=lambda self, context: adjust_hsl(self, context, 2))
+
+    backfaceculling: bpy.props.BoolProperty(
+        name='Backface Culling',
+        description='Show backfaces of transparent object',
+        default=True,
+        update=lambda self, context: update_obj_props(self, context, 'backfaceculling'))
 
     # Modifier Module Properties ------------------
 
@@ -6964,6 +6973,10 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         row_sat.prop(sx2, 'saturationvalue', slider=True, text=saturation_text)
                         row_lightness = col_hsl.row(align=True)
                         row_lightness.prop(sx2, 'lightnessvalue', slider=True, text=lightness_text)
+
+                        if (layer == utils.find_color_layers(obj, 0)) and (layer.opacity < 1.0):
+                            col_culling = box_layer.column(align=True)
+                            col_culling.prop(sx2, 'backfaceculling', toggle=True)
 
                         gray_channels = ['OCC', 'MET', 'RGH', 'TRN']
                         if layer.layer_type in gray_channels:
@@ -9973,3 +9986,4 @@ if __name__ == '__main__':
 # - check why keymap not working
 # - selectionmonitor to alert on non-face selections in atlas mode
 # - removing LODs causes material clearing errors
+# - backculling option for transparent?
