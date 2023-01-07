@@ -50,7 +50,6 @@ class SXTOOLS2_sxglobals(object):
         self.ramp_dict = {}
         self.category_dict = {}
         self.preset_lookup = {}
-        self.paletteDict = {}
         self.master_palette_list = []
         self.material_list = []
 
@@ -4958,7 +4957,6 @@ class SXTOOLS2_setup(object):
         sxglobals.prev_selection = []
         sxglobals.prev_component_selection = []
         sxglobals.copy_buffer.clear()
-        sxglobals.paletteDict.clear()
         sxglobals.ramp_dict.clear()
         sxglobals.category_dict.clear()
         sxglobals.preset_lookup.clear()
@@ -9775,6 +9773,7 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
             export.create_uvset0(objs)
 
             # match vertex color with palette color, assign UV accordingly
+            face_colors = True
             for obj in objs:
                 colors = layers.get_layer(obj, obj.sx2layers['Composite'], as_tuple=True)
                 uvs = layers.get_uvs(obj,'UVSet0')
@@ -9791,7 +9790,9 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
                         if i == 0:
                             loop_uv = obj.data.uv_layers['UVSet0'].data[loop_idx].uv[:]
                         else:
-                            obj.data.uv_layers['UVSet0'].data[loop_idx].uv = loop_uv
+                            if obj.data.uv_layers['UVSet0'].data[loop_idx].uv != loop_uv:
+                                obj.data.uv_layers['UVSet0'].data[loop_idx].uv = loop_uv
+                                face_colors = False
 
                 layers.set_uvs(obj, 'UVSet0', uvs)
 
@@ -9813,6 +9814,8 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
             files.export_palette_atlases(palette_dict)
             files.export_files_simple(objs)
             refresh_swatches(self, context)
+            if not face_colors:
+                message_box('Objects have non-uniform face colors.\nPlease assign colors per-face only,\nor switch to vertex color exporting.')
 
         return {'FINISHED'}
 
@@ -9988,6 +9991,5 @@ if __name__ == '__main__':
 # FEAT: Strip redundant custom props prior to exporting
 # FEAT: match existing layers when loading category
 # FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
-# FEAT: selectionmonitor to alert on non-face selections in atlas mode
 # - review non-metallic PBR material values
 # - removing LODs causes material clearing errors
