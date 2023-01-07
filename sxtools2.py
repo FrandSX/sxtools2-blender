@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 2, 0),
+    'version': (1, 2, 1),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -466,7 +466,7 @@ class SXTOOLS2_utils(object):
 
     # SX2Materials are generated according to differentiators combined in per-object mat_ids
     def get_mat_id(self, obj):
-        mat_opaque = True if self.find_color_layers(obj, 0).opacity == 1.0 else False
+        mat_opaque = True if (self.find_color_layers(obj, 0) is not None) and (self.find_color_layers(obj, 0).opacity == 1.0) else False
         mat_culling = obj.sx2.backfaceculling
         layer_keys = tuple(obj.sx2layers.keys())
         layer_vis = tuple([layer.visibility for layer in obj.sx2layers])
@@ -4490,7 +4490,7 @@ class SXTOOLS2_setup(object):
                         sxmaterial.node_tree.links.new(input, output)   
 
                     # Set shader blend method
-                    if obj.sx2layers[color_layers[0][0]].opacity < 1.0:
+                    if (len(color_layers) > 0) and (obj.sx2layers[color_layers[0][0]].opacity < 1.0):
                         sxmaterial.blend_method = 'BLEND'
                         sxmaterial.use_backface_culling = obj.sx2.backfaceculling
                         sxmaterial.show_transparent_back = not obj.sx2.backfaceculling
@@ -9986,4 +9986,3 @@ if __name__ == '__main__':
 # - check why keymap not working
 # - selectionmonitor to alert on non-face selections in atlas mode
 # - removing LODs causes material clearing errors
-# - backculling option for transparent?
