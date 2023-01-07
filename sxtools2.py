@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 1, 7),
+    'version': (1, 1, 9),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2154,7 +2154,6 @@ class SXTOOLS2_tools(object):
         blendvalue = scene.toolopacity
         blendmode = scene.toolblend
         rampmode = scene.rampmode
-        selectionmask = None
         if sxglobals.mode == 'EDIT':
             mergebbx = False
         else:
@@ -2186,10 +2185,14 @@ class SXTOOLS2_tools(object):
 
             if colors is not None:
                 target_colors = layers.get_layer(obj, targetlayer)
-                if (blendmode == 'REP') and (sxglobals.mode == 'EDIT'):
-                    bpy.context.tool_settings.mesh_select_mode[2] = False
-                    selectionmask, empty = generate.get_selection_mask(obj)
-                colors = self.blend_values(colors, target_colors, blendmode, blendvalue, selectionmask)
+                if blendmode == 'REP':
+                    if sxglobals.mode == 'EDIT':
+                        bpy.context.tool_settings.mesh_select_mode[2] = False
+                        mask, empty = generate.get_selection_mask(obj)
+                        colors = self.blend_values(colors, target_colors, blendmode, blendvalue, selectionmask=mask)
+                else:
+                    colors = self.blend_values(colors, target_colors, blendmode, blendvalue, selectionmask=None)
+
                 layers.set_layer(obj, colors, targetlayer)
 
         utils.mode_manager(objs, revert=True, mode_id='apply_tool')
@@ -3344,11 +3347,12 @@ class SXTOOLS2_export(object):
     def revert_objects(self, objs):
         modifiers.remove_modifiers(objs)
 
-        layers.clear_layers(objs, objs[0].sx2layers['Overlay'])
-        layers.clear_layers(objs, objs[0].sx2layers['Occlusion'])
-        layers.clear_layers(objs, objs[0].sx2layers['Metallic'])
-        layers.clear_layers(objs, objs[0].sx2layers['Roughness'])
-        layers.clear_layers(objs, objs[0].sx2layers['Transmission'])
+        for obj in objs:
+            if obj.sx2.category != 'DEFAULT':
+                clr_layers = ['Overlay', 'Occlusion', 'Metallic', 'Roughness', 'Transmission', 'Subsurface']
+                for layer_name in clr_layers:
+                    if layer_name in obj.sx2layers.keys():
+                        layers.clear_layers([obj, ], obj.sx2layers[layer_name])
 
         active = bpy.context.view_layer.objects.active
         for obj in objs:
@@ -3793,7 +3797,7 @@ class SXTOOLS2_magic(object):
         scene.toolblend = org_toolblend
         scene.rampmode = org_rampmode
         scene.ramplist = org_ramplist
-        load_ramp(bpy.context, org_ramp) 
+        load_ramp(self, bpy.context, org_ramp)
         scene.dirAngle = org_dirangle
         scene.dirInclination = org_dirinclination
         scene.dirCone = org_dircone
@@ -5418,7 +5422,7 @@ def load_category(self, context):
 
 def load_ramp(self, context, ramp_dict=None):
     if ramp_dict is None:
-        rampName = sxglobals.preset_lookup[context.scene.sx2.ramplist]
+        rampName = sxglobals.preset_lookup[bpy.context.scene.sx2.ramplist]
         ramp_dict = sxglobals.ramp_dict[rampName]
 
     ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'].color_ramp
@@ -5710,7 +5714,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
 
     shadingmode: bpy.props.EnumProperty(
         name='Shading Mode',
-        description='Full: Composited shading with all channels enabled\nDebug: Display selected layer only, with alpha as black\nAlpha: Display layer alpha or UV values in grayscale',
+        description='Full: Composited shading with all channels enabled\nDebug: Display selected layer only, with alpha as black\nAlpha: Display layer alpha in grayscale',
         items=[
             ('FULL', 'Full', ''),
             ('DEBUG', 'Debug', ''),
@@ -9967,3 +9971,5 @@ if __name__ == '__main__':
 # - address auto-smooth errors (?!!)
 # - review non-metallic PBR material values
 # - check why keymap not working
+# - selectionmonitor to alert on non-face selections in atlas mode
+# - removing LODs causes material clearing errors
