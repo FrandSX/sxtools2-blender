@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 2, 1),
+    'version': (1, 2, 3),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5201,12 +5201,12 @@ def update_modifiers(self, context, prop):
                     else:
                         obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
                 if 'sxDecimate' in obj.modifiers:
-                    if (obj.sx2.subdivisionlevel == 0.0) or (obj.sx2.decimation == 0.0):
+                    if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
                         obj.modifiers['sxDecimate'].show_viewport = False
                     else:
                         obj.modifiers['sxDecimate'].show_viewport = obj.sx2.modifiervisibility
                 if 'sxDecimate2' in obj.modifiers:
-                    if (obj.sx2.subdivisionlevel == 0.0) or (obj.sx2.decimation == 0.0):
+                    if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
                         obj.modifiers['sxDecimate2'].show_viewport = False
                     else:
                         obj.modifiers['sxDecimate2'].show_viewport = obj.sx2.modifiervisibility
@@ -5282,12 +5282,12 @@ def update_modifiers(self, context, prop):
                     else:
                         obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
                 if 'sxDecimate' in obj.modifiers:
-                    if obj.sx2.subdivisionlevel == 0:
+                    if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
                         obj.modifiers['sxDecimate'].show_viewport = False
                     else:
                         obj.modifiers['sxDecimate'].show_viewport = obj.sx2.modifiervisibility
                 if 'sxDecimate2' in obj.modifiers:
-                    if obj.sx2.subdivisionlevel == 0:
+                    if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
                         obj.modifiers['sxDecimate2'].show_viewport = False
                     else:
                         obj.modifiers['sxDecimate2'].show_viewport = obj.sx2.modifiervisibility
@@ -7297,11 +7297,14 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             col3_sds.prop(sx2, 'subdivisionlevel', text='Subdivision Level')
                             col3_sds.prop(sx2, 'smoothangle', text='Normal Smoothing Angle')
                             col3_sds.prop(sx2, 'weldthreshold', text='Weld Threshold')
-                            col3_sds.prop(sx2, 'weightednormals', text='Weighted Normals')
                             if obj.sx2.subdivisionlevel > 0:
                                 col3_sds.prop(sx2, 'decimation', text='Decimation Limit Angle')
-                                col3_sds.label(text='Selection Tri Count: ' + modifiers.calculate_triangles(objs))
-                            # col3_sds.separator()
+                                if obj.sx2.decimation > 0.0:
+                                    row_tris = col3_sds.row()
+                                    row_tris.label(text='Selection Tris:')
+                                    row_tris.label(text=modifiers.calculate_triangles(objs))
+                            col3_sds.separator()
+                            col3_sds.prop(sx2, 'weightednormals', text='Weighted Normals', toggle=True)
                             col4_sds = box_crease.column(align=True)
                             sxmodifiers = '\t'.join(obj.modifiers.keys())
                             if 'sx' in sxmodifiers:
@@ -8260,6 +8263,9 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         utils.mode_manager(objs, set_mode=True, mode_id='add_layer')
+        for obj in objs:
+            if len(obj.sx2layers) == 0:
+                export.create_uvset0([obj, ])
         layers.add_layer(objs)
         setup.update_sx2material(context)
         utils.mode_manager(objs, revert=True, mode_id='add_layer')
@@ -9974,15 +9980,14 @@ if __name__ == '__main__':
 # TODO:
 # BUG: Grouping of objs with armatures
 # BUG: Refresh modifiers when saving to catalogue to update cost value
-# BUG: Tri count calculator does not update upon adding modifiers
+# BUG: Address auto-smooth errors (?!!)
+# BUG: Check why keymap not working
 # FEAT: UI should specify when applying a material overwrites, and when respects the active layer mask
 # FEAT: validate modifier settings, control cage, all meshes have single user?
 # FEAT: Smart Separate should respect user-generated _front, _rear etc. strings
 # FEAT: Strip redundant custom props prior to exporting
 # FEAT: match existing layers when loading category
 # FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
-# - address auto-smooth errors (?!!)
+# FEAT: selectionmonitor to alert on non-face selections in atlas mode
 # - review non-metallic PBR material values
-# - check why keymap not working
-# - selectionmonitor to alert on non-face selections in atlas mode
 # - removing LODs causes material clearing errors
