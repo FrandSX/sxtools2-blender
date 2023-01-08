@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 2, 7),
+    'version': (1, 2, 9),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5401,8 +5401,6 @@ def load_category(self, context):
             obj.sx2.roughness4 = category_data['palette_roughness'][4]
             obj.sx2.selectedlayer = 1
 
-            bpy.data.materials[utils.find_sx2material_name(obj)].blend_method = category_data['blend']
-
             utils.sort_stack_indices(obj)
             context.view_layer.objects.active = None
             obj.select_set(False)
@@ -5628,7 +5626,7 @@ def load_post_handler(dummy):
     for obj in bpy.data.objects:
         bpy.context.view_layer.objects.active = obj
 
-        if (obj.type == 'MESH') and ('sxtools' in obj.keys()) or ('sx2' in obj.keys()):
+        if (obj is not None) and (obj.type == 'MESH') and ('sxtools' in obj.keys()) or ('sx2' in obj.keys()):
             obj.data.use_auto_smooth = True
 
         if (len(obj.sx2.keys()) > 0):
