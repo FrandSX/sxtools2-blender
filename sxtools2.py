@@ -9995,6 +9995,7 @@ if __name__ == '__main__':
 # BUG: Removing LODs causes material clearing errors
 # FEAT: UI should specify when applying a material overwrites, and when respects the active layer mask
 # FEAT: validate modifier settings, control cage, all meshes have single user?
+# FEAT: validate categories vs. layer stacks
 # FEAT: match existing layers when loading category
 # FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
 # FEAT: review non-metallic PBR material values
