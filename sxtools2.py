@@ -9586,7 +9586,6 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
 
                 for obj in objs:
                     context.view_layer.objects.active = obj
-                    print('SX Tools: Converting', obj.name)
                     # grab modifier values
                     obj.sx2.smoothangle = obj['sxtools'].get('smoothangle', 180)
                     obj.sx2.subdivisionlevel = obj['sxtools'].get('subdivisionlevel', 0)
@@ -9703,7 +9702,7 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     obj.sx2.selectedlayer = 1
 
                     utils.sort_stack_indices(obj)
-                    print(f'SX Tools: Assigned {obj.name} to category {sx_category}')
+                    print(f'SX Tools: Converted {obj.name}, assigned to {sx_category}')
 
                 modifiers.remove_modifiers(objs)
                 if ('sx_tiler' in bpy.data.node_groups):
