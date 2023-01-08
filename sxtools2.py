@@ -9051,8 +9051,6 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
 
             if prefs.removelods:
                 export.remove_exports()
-            # sxglobals.composite = True
-            # refresh_actives(self, context)
         return {'FINISHED'}
 
 
@@ -9996,10 +9994,9 @@ if __name__ == '__main__':
 # BUG: Grouping of objs with armatures
 # BUG: Refresh modifiers when saving to catalogue to update cost value
 # BUG: Check why keymap not working
+# BUG: Removing LODs causes material clearing errors
 # FEAT: UI should specify when applying a material overwrites, and when respects the active layer mask
 # FEAT: validate modifier settings, control cage, all meshes have single user?
-# FEAT: Strip redundant custom props prior to exporting
 # FEAT: match existing layers when loading category
 # FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
-# - review non-metallic PBR material values
-# - removing LODs causes material clearing errors
+# FEAT: review non-metallic PBR material values
