@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 2, 4),
+    'version': (1, 2, 7),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -273,7 +273,6 @@ class SXTOOLS2_files(object):
 
                     if 'sxTiler' in obj.modifiers:
                         obj.modifiers.remove(obj.modifiers['sxTiler'])
-                        obj.data.use_auto_smooth = True
 
                 # bpy.context.view_layer.update()
                 bpy.context.view_layer.objects.active = group
@@ -350,7 +349,6 @@ class SXTOOLS2_files(object):
 
             if 'sxTiler' in obj.modifiers:
                 obj.modifiers.remove(obj.modifiers['sxTiler'])
-                obj.data.use_auto_smooth = True
 
             category = objs[0].sx2.category.lower()
             print(f'Determining path: {objs[0].name} {category}')
@@ -530,7 +528,7 @@ class SXTOOLS2_utils(object):
             return sortList
 
 
-    # TODO: handle if index is not in layers to be returned
+    # The index parameter returns the nth color layer in the stack
     def find_color_layers(self, obj, index=None, staticvertexcolors=True):
         color_layers = []
         if len(obj.sx2layers) > 0:
@@ -1337,7 +1335,6 @@ class SXTOOLS2_generate(object):
 
             if obj.sx2.tiling:
                 obj.modifiers['sxTiler'].show_viewport = False
-                obj.data.use_auto_smooth = True
 
             vert_occ_list = generate.vert_dict_to_loop_list(obj, vert_occ_dict, 1, 4)
             return self.mask_list(obj, vert_occ_list, masklayer)
@@ -2540,7 +2537,6 @@ class SXTOOLS2_modifiers(object):
 
     def add_modifiers(self, objs):
         for obj in objs:
-            obj.data.use_auto_smooth = True
             if 'sxMirror' not in obj.modifiers:
                 obj.modifiers.new(type='MIRROR', name='sxMirror')
                 if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror:
@@ -2571,7 +2567,6 @@ class SXTOOLS2_modifiers(object):
                 tiler['Input_7'] = obj.sx2.tile_pos_z
                 tiler.show_viewport = False
                 tiler.show_expanded = False
-                obj.data.use_auto_smooth = True
             if 'sxSubdivision' not in obj.modifiers:
                 obj.modifiers.new(type='SUBSURF', name='sxSubdivision')
                 obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
@@ -2639,8 +2634,7 @@ class SXTOOLS2_modifiers(object):
                 else:
                     obj.modifiers['sxWeightedNormal'].keep_sharp = True
 
-            obj.data.use_auto_smooth = True
-            obj.data.auto_smooth_angle = math.radians(obj.sx2.smoothangle)
+                obj.sx2.smoothangle = obj.sx2.smoothangle
 
 
     def apply_modifiers(self, objs):
@@ -2695,7 +2689,7 @@ class SXTOOLS2_modifiers(object):
                 if modifier in obj.modifiers:
                     obj.modifiers.remove(obj.modifiers.get(modifier))
 
-            obj.data.use_auto_smooth = True
+            obj.sx2.smoothangle = obj.sx2.smoothangle
 
             if reset:
                 obj.sx2.xmirror = False
@@ -5190,7 +5184,6 @@ def update_modifiers(self, context, prop):
     if len(objs) > 0:
         if prop == 'modifiervisibility':
             for obj in objs:
-                obj.data.use_auto_smooth = True
                 if 'sxMirror' in obj.modifiers:
                     obj.modifiers['sxMirror'].show_viewport = obj.sx2.modifiervisibility
                 if 'sxSubdivision' in obj.modifiers:
@@ -5530,8 +5523,7 @@ def update_obj_props(self, context, prop):
             smooth_angle = math.radians(objs[0].sx2.smoothangle)
             for obj in objs:
                 obj.data.use_auto_smooth = True
-                if obj.data.auto_smooth_angle != smooth_angle:
-                    obj.data.auto_smooth_angle = smooth_angle
+                obj.data.auto_smooth_angle = smooth_angle
 
         elif prop == 'staticvertexcolors':
             for obj in objs:
@@ -5635,6 +5627,9 @@ def load_post_handler(dummy):
     active = bpy.context.view_layer.objects.active
     for obj in bpy.data.objects:
         bpy.context.view_layer.objects.active = obj
+
+        if (obj.type == 'MESH') and ('sxtools' in obj.keys()) or ('sx2' in obj.keys()):
+            obj.data.use_auto_smooth = True
 
         if (len(obj.sx2.keys()) > 0):
             if obj.sx2.hardmode == '':
@@ -8925,7 +8920,8 @@ class SXTOOLS2_OT_addmodifiers(bpy.types.Operator):
             modifiers.add_modifiers(objs)
 
             if objs[0].mode == 'OBJECT':
-                bpy.ops.object.shade_smooth()
+                bpy.ops.object.shade_smooth(use_auto_smooth=True)
+                objs[0].sx2.smoothangle = objs[0].sx2.smoothangle
         return {'FINISHED'}
 
 
@@ -9213,6 +9209,7 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
     bl_description = 'Calculates material channels\naccording to category.\nApplies modifiers in High Detail mode'
     bl_options = {'UNDO'}
 
+
     @classmethod
     def poll(cls, context):
         enabled = False
@@ -9298,7 +9295,8 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
                 objs[0].sx2.shadingmode = 'FULL'
                 refresh_swatches(self, context)
 
-                bpy.ops.object.shade_smooth()
+                bpy.ops.object.shade_smooth(use_auto_smooth=True)
+                objs[0].sx2.smoothangle = objs[0].sx2.smoothangle
         return {'FINISHED'}
 
 
@@ -9593,7 +9591,6 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     print('SX Tools: Converting', obj.name)
                     # grab modifier values
                     obj.sx2.smoothangle = obj['sxtools'].get('smoothangle', 180)
-                    obj.data.use_auto_smooth = True
                     obj.sx2.subdivisionlevel = obj['sxtools'].get('subdivisionlevel', 0)
                     mirror_obj_value = obj['sxtools'].get('mirrorobject', None)
                     if type(mirror_obj_value) is None or type(mirror_obj_value) is bpy.types.Object:
@@ -9998,7 +9995,6 @@ if __name__ == '__main__':
 # TODO:
 # BUG: Grouping of objs with armatures
 # BUG: Refresh modifiers when saving to catalogue to update cost value
-# BUG: Address auto-smooth errors (?!!)
 # BUG: Check why keymap not working
 # FEAT: UI should specify when applying a material overwrites, and when respects the active layer mask
 # FEAT: validate modifier settings, control cage, all meshes have single user?
