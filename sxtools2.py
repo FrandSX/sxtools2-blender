@@ -7415,7 +7415,6 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     elif scene.exportmode == 'UTILS':
                         if scene.expandexport:
                             col_utils = box_export.column(align=False)
-                            col_utils.operator('sx2.sxtosx2')
                             if scene.shift:
                                 group_text = 'Group Under World Origin'
                                 pivot_text = 'Set Pivots to Bbox Center'
@@ -7439,6 +7438,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_debug.label(text='Debug Tools')
                             if scene.expanddebug:
                                 col_debug = box_export.column(align=True)
+                                col_debug.operator('sx2.sxtosx2')
                                 col_debug.operator('sx2.smart_separate', text='Debug: Smart Separate sxMirror')
                                 col_debug.operator('sx2.create_sxcollection', text='Debug: Update SXCollection')
                                 col_debug.operator('sx2.applymodifiers', text='Debug: Apply Modifiers')
