@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 2, 17),
+    'version': (1, 2, 18),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3385,6 +3385,7 @@ class SXTOOLS2_export(object):
 
         self.validate_sxtoolmaterial()
 
+        ok0 = self.validate_categories(objs)
         ok1 = self.validate_palette_layers(objs)
         ok2 = self.validate_names(objs)
         ok3 = self.validate_loose(objs)
@@ -3392,7 +3393,7 @@ class SXTOOLS2_export(object):
 
         utils.mode_manager(objs, revert=True, mode_id='validate_objects')
 
-        if ok1 and ok2 and ok3 and ok4:
+        if ok0 and ok1 and ok2 and ok3 and ok4:
             print('SX Tools: Selected objects passed validation tests')
             return True
         else:
@@ -3495,6 +3496,23 @@ class SXTOOLS2_export(object):
                         message_box(obj.name + '\ncontains the substring ' + keyword + '\nreserved for Smart Separate\nfunction of Mirror Modifier')
                         return False
         return True
+
+
+    def validate_categories(self, objs):
+        for obj in objs:
+            if obj.sx2.category != 'DEFAULT':
+                category_data = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]
+                if len(category_data['layers']) == len(obj.sx2layers):
+                    for cat_layer, layer in zip(category_data['layers'], obj.sx2layers):
+                        if (cat_layer[0] != layer.name) or (cat_layer[1] !=layer.layer_type):
+                            print(f'SX Tools Error: {obj.name} {layer.name} does not match the selected category')
+                            message_box(obj.name + ' ' + layer.name + ' does not match the selected category')
+                            return False
+                    return True
+                else:
+                    print(f'SX Tools Error: {obj.name} layers do not match the selected category')
+                    message_box(obj.name + ' layers do not match the selected category')
+                    return False      
 
 
     def __del__(self):
@@ -10007,7 +10025,6 @@ if __name__ == '__main__':
 # BUG: Removing LODs causes material clearing errors
 # FEAT: UI should specify when applying a material overwrites, and when respects the active layer mask
 # FEAT: validate modifier settings, control cage, all meshes have single user?
-# FEAT: validate categories vs. layer stacks
 # FEAT: match existing layers when loading category
 # FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
 # FEAT: review non-metallic PBR material values
