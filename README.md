@@ -1,6 +1,17 @@
 # SX Tools 2 for Blender
 NOTE: Please visit the [Documentation Site](https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6)
 
+## Comparison
+
+SX Tools | SX Tools 2
+---------|-------------
+Static layer stack | Fully dynamic layerstack
+CPU viewport compositing | GPU compositing
+Vertex color exporting | Vertex color and palette texture atlas exporting
+Transparency only as an export category | Transparency as a per-object viewport feature
+
+
+
 ## For Game Developers
 SX Tools 2 is a lightweight content pipeline for vertex-colored assets that drive PBR (Physically Based Rendering) materials in a game. This tool ships with baseline shader networks for Unreal and Unity.
 
