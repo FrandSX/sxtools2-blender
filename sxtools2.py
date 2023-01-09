@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 2, 16),
+    'version': (1, 2, 17),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -9955,9 +9955,9 @@ def register():
     wm = bpy.context.window_manager
     if wm.keyconfigs.addon:
         km = wm.keyconfigs.addon.keymaps.new(name='3D View', space_type='VIEW_3D')
-        kmi = km.keymap_items.new('SXTOOLS2_OT_selectup', 'UP_ARROW', 'PRESS', ctrl=True, shift=True)
+        kmi = km.keymap_items.new('sx2.selectup', 'UP_ARROW', 'PRESS', ctrl=True, shift=True)
         addon_keymaps.append((km, kmi))
-        kmi = km.keymap_items.new('SXTOOLS2_OT_selectdown', 'DOWN_ARROW', 'PRESS', ctrl=True, shift=True)
+        kmi = km.keymap_items.new('sx2.selectdown', 'DOWN_ARROW', 'PRESS', ctrl=True, shift=True)
         addon_keymaps.append((km, kmi))
         kmi = km.keymap_items.new('wm.call_menu_pie', 'COMMA', 'PRESS', shift=True)
         kmi.properties.name = SXTOOLS2_MT_piemenu.bl_idname
@@ -10004,7 +10004,6 @@ if __name__ == '__main__':
 # TODO:
 # BUG: Grouping of objs with armatures
 # BUG: Refresh modifiers when saving to catalogue to update cost value
-# BUG: Check why keymap not working
 # BUG: Removing LODs causes material clearing errors
 # FEAT: UI should specify when applying a material overwrites, and when respects the active layer mask
 # FEAT: validate modifier settings, control cage, all meshes have single user?
