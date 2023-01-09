@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 2, 12),
+    'version': (1, 2, 14),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -38,12 +38,14 @@ class SXTOOLS2_sxglobals(object):
         self.hsl_update = False
         self.mat_update = False
         self.curvature_update = False
-        self.modal_status = False
         self.copy_buffer = {}
         self.prev_mode = 'OBJECT'
         self.mode = None
         self.mode_id = None
         self.randomseed = 42
+
+        self.selection_modal_status = False
+        self.key_modal_status = False
 
         self.prev_selection = []
         self.prev_component_selection = []
@@ -4960,7 +4962,6 @@ class SXTOOLS2_setup(object):
         sxglobals.material_list = []
         sxglobals.prev_mode = 'OBJECT'
         sxglobals.curvature_update = False
-        sxglobals.modal_status = False
         sxglobals.hsl_update = False
         sxglobals.mat_update = False
         sxglobals.mode = None
@@ -4969,6 +4970,9 @@ class SXTOOLS2_setup(object):
         sxglobals.layer_update_in_progress = False
         sxglobals.magic_in_progress = False
         sxglobals.refresh_in_progress = False
+
+        sxglobals.selection_modal_status = False
+        sxglobals.key_modal_status = False
 
 
     def __del__(self):
@@ -4979,10 +4983,13 @@ class SXTOOLS2_setup(object):
 #    Update Functions
 # ------------------------------------------------------------------------
 def start_modal():
-    if (bpy.context.area is not None) and (bpy.context.area.type == 'VIEW_3D') and (not sxglobals.modal_status):
+    if not sxglobals.selection_modal_status:
         bpy.ops.sx2.selectionmonitor('EXEC_DEFAULT')
+        sxglobals.selection_modal_status = True
+
+    if not sxglobals.key_modal_status:
         bpy.ops.sx2.keymonitor('EXEC_DEFAULT')
-        sxglobals.modal_status = True
+        sxglobals.key_modal_status = True
 
 
 # Return value eliminates duplicates
@@ -5617,24 +5624,21 @@ def load_post_handler(dummy):
     sxglobals.layer_stack_dict.clear()
     sxglobals.sx2material_dict.clear()
     sxglobals.librariesLoaded = False
+    sxglobals.selection_modal_status = False
+    sxglobals.key_modal_status = False
 
     if bpy.data.scenes['Scene'].sx2.rampmode == '':
         bpy.data.scenes['Scene'].sx2.rampmode = 'X'
 
     export.validate_sxtoolmaterial()
 
-    active = bpy.context.view_layer.objects.active
     for obj in bpy.data.objects:
-        bpy.context.view_layer.objects.active = obj
-
-        if (obj is not None) and (obj.type == 'MESH') and ('sxtools' in obj.keys()) or ('sx2' in obj.keys()):
+        if (obj is not None) and (obj.type == 'MESH') and (('sxtools' in obj.keys()) or ('sx2' in obj.keys())):
             obj.data.use_auto_smooth = True
 
         if (len(obj.sx2.keys()) > 0):
             if obj.sx2.hardmode == '':
                 obj.sx2.hardmode = 'SHARP'
-
-    bpy.context.view_layer.objects.active = active
 
 
 # Update revision IDs and save in asset catalogue
@@ -7731,7 +7735,7 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
     def modal(self, context, event):
         if not context.area:
             print('Selection Monitor: Context Lost')
-            sxglobals.modal_status = False
+            sxglobals.selection_modal_status = False
             return {'CANCELLED'}
 
         if (len(sxglobals.master_palette_list) == 0) or (len(sxglobals.material_list) == 0) or (len(sxglobals.ramp_dict) == 0) or (len(sxglobals.category_dict) == 0):
@@ -7813,7 +7817,7 @@ class SXTOOLS2_OT_keymonitor(bpy.types.Operator):
     def modal(self, context, event):
         if not context.area:
             print('Key Monitor: Context Lost')
-            sxglobals.modal_status = False
+            sxglobals.key_modal_status = False
             return {'CANCELLED'}
 
         scene = context.scene.sx2
