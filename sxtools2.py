@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 2, 14),
+    'version': (1, 2, 15),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5090,17 +5090,13 @@ def update_paletted_layers(self, context, index):
     objs = mesh_selection_validator(self, context)
     scene = context.scene.sx2
     for obj in objs:
-        if objs[0].mode != 'OBJECT':
-            bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-
-        if obj.sx2.shadingmode == 'FULL':
+        # If update_paletted_layers is called during object category change, materials may not exist
+        mat_name = utils.find_sx2material_name(obj)
+        if (mat_name is not None) and (obj.sx2.shadingmode == 'FULL'):
             for layer in obj.sx2layers:
                 if layer.paletted:
                     color = getattr(scene, 'newpalette'+str(layer.palette_index))
-                    # If update_paletted_layers is called during object category change, materials may not exist
-                    mat_name = utils.find_sx2material_name(obj)
-                    if mat_name is not None:
-                        bpy.data.materials[mat_name].node_tree.nodes['PaletteColor' + str(layer.name)].outputs[0].default_value = color[:]
+                    bpy.data.materials[mat_name].node_tree.nodes['PaletteColor' + str(layer.name)].outputs[0].default_value = color[:]
 
 
 def update_material_layer(self, context, index):
@@ -5549,7 +5545,7 @@ def update_layer_props(self, context, prop):
             if getattr(obj.sx2layers[self.name], prop) != getattr(objs[0].sx2layers[self.name], prop):
                 setattr(obj.sx2layers[self.name], prop, getattr(objs[0].sx2layers[self.name], prop))
 
-        mat_props = ['paletted', 'visibility', 'blend_mode']
+        mat_props = ['paletted', 'palette_index', 'visibility', 'blend_mode']
         if prop in mat_props:
             setup.update_sx2material(context)
 
@@ -5595,9 +5591,7 @@ def update_layer_props(self, context, prop):
                         setup.update_sx2material(context)
                     elif (bg_layer.opacity == 1.0) and (obj.active_material.blend_method == 'BLEND'):
                         setup.update_sx2material(context)
-                            
-        elif prop == 'palette_index':
-            update_paletted_layers(self, context, None)
+
         sxglobals.layer_update_in_progress = False
 
 
