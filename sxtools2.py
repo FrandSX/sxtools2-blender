@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 2, 15),
+    'version': (1, 2, 16),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5065,8 +5065,8 @@ def refresh_swatches(self, context):
                 # 3) update tool palettes
                 if scene.toolmode == 'COL':
                     update_fillcolor(self, context)
-                elif scene.toolmode == 'PAL':
-                    layers.color_layers_to_values(objs)
+                # elif scene.toolmode == 'PAL':
+                #     layers.color_layers_to_values(objs)
                 # elif (scene.toolmode == 'MAT'):
                 #     layers.material_layers_to_values(objs)
 
@@ -7131,6 +7131,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     col_preview.prop(sx2, 'palettedshading', slider=True)
                     col_preview.operator('sx2.applypalette', text='Apply Palette')
                     row_newpalette = box_fill.row(align=True)
+                    row_newpalette.operator('sx2.layerstopalette', text='', icon='EYEDROPPER')
                     for i in range(5):
                         row_newpalette.prop(scene, 'newpalette'+str(i), text='')
                     row_newpalette.operator('sx2.addpalette', text='', icon='ADD')
@@ -8038,6 +8039,19 @@ class SXTOOLS2_OT_delmaterialcategory(bpy.types.Operator):
 
         files.save_file('materials')
         files.load_file('materials')
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_layers_to_palette(bpy.types.Operator):
+    bl_idname = 'sx2.layerstopalette'
+    bl_label = 'Layer Colors to Palette'
+    bl_description = 'Picks current layer colors to palette swatches'
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if len(objs) > 0:
+            layers.color_layers_to_values(objs)
         return {'FINISHED'}
 
 
@@ -9870,6 +9884,7 @@ core_classes = (
     SXTOOLS2_OT_selmask,
     SXTOOLS2_OT_add_ramp,
     SXTOOLS2_OT_del_ramp,
+    SXTOOLS2_OT_layers_to_palette,
     SXTOOLS2_OT_addpalette,
     SXTOOLS2_OT_delpalette,
     SXTOOLS2_OT_addpalettecategory,
