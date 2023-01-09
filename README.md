@@ -1,5 +1,5 @@
 # sxtools2-blender
-NOTE: Please visit the new [Documentation Site](https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6) This readme is partially out of date.
+NOTE: Please visit the [Documentation Site](https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6)
 
 ## For Game Developers
 SX Tools 2 is a lightweight content pipeline for vertex-colored assets that drive PBR (Physically Based Rendering) materials in a game. This tool ships with baseline shader networks for Unreal and Unity.
@@ -33,15 +33,13 @@ The artist can therefore apply per-vertex occlusion/metallic/smoothness/transmis
 ## Installation:
 - Download the zip file, uncompress it, then install and enable sxtools2.py through the Blender add-on interface
 - Point the library folder in SX Tools 2 prefs to the unzipped folder
-- SX Tools 2 will appear in the top right corner of the 3D view
-- Open the Misc-tab in the top right corner of the 3D View, pull the tab in from side of the screen
+- Pick your asset library .json file if you also use [SX Batcher](https://github.com/FrandSX/sxbatcher-blender)
+- SX Tools 2 will appear as a tab in the top right corner of the 3D view
 
 ## Getting Started:
-
-Now would be a good time to visit the new [Documentation Site](https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6)
+Now would be a good time to visit the [Documentation Site](https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6)
 
 ## Exporting to Game Engines
-
 ![Pipeline Overview](/images/sxtools-pipeline.png)
 
 The basic flow for using SX Tools in game development is as follows:
@@ -72,7 +70,7 @@ UV5/UV6 | RGBA Overlay, an optional additional color layer
 UV7 | Currently not in use
 
 Vertex colors are exported from the Composite/VertexColor0 layer. Material properties are assigned according to the list above.
-Note that emission is only an 8-bit mask for base vertex color, not a full RGBA-channel.
+Note that emission is exported only as an 8-bit mask for base vertex color, not a full RGBA-channel.
 
 (c) 2017-2023 Jani Kahrama / Secret Exit Ltd.
 
