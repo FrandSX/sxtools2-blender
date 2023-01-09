@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 2, 18),
+    'version': (1, 2, 19),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1471,17 +1471,13 @@ class SXTOOLS2_generate(object):
 
 
     def vertex_id_list(self, obj):
-        mesh = obj.data
-        count = len(mesh.vertices)
-        ids = [None] * count
-        mesh.vertices.foreach_get('index', ids)
+        ids = [None] * len(obj.data.vertices)
+        obj.data.vertices.foreach_get('index', ids)
         return ids
 
 
     def empty_list(self, obj, channelcount):
-        count = len(obj.data.loops)
-        looplist = [0.0] * count * channelcount
-        return looplist
+        return [0.0] * len(obj.data.loops) * channelcount
 
 
     def vert_dict_to_loop_list(self, obj, vert_dict, dictchannelcount, listchannelcount):
@@ -1668,6 +1664,7 @@ class SXTOOLS2_layers(object):
 
 
     # wrapper for low-level functions, always returns layerdata in RGBA
+    # TODO: clear out old uv and uv4 bits
     def get_layer(self, obj, sourcelayer, as_tuple=False, single_as_alpha=False, apply_layer_opacity=False, gradient_with_palette=False):
         rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP']
         alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
@@ -1731,6 +1728,7 @@ class SXTOOLS2_layers(object):
 
 
     # takes RGBA buffers, converts and writes to appropriate uv and vertex sets
+    # TODO: clear out old UV-setting parts
     def set_layer(self, obj, colors, targetlayer):
         def constant_alpha_test(values):
             for value in values:
@@ -2233,17 +2231,11 @@ class SXTOOLS2_tools(object):
 
     def preview_palette(self, objs, palette):
         utils.mode_manager(objs, set_mode=True, mode_id='apply_palette')
-
         scene = bpy.context.scene
-        palette = [
-            scene.sx2palettes[palette].color0,
-            scene.sx2palettes[palette].color1,
-            scene.sx2palettes[palette].color2,
-            scene.sx2palettes[palette].color3,
-            scene.sx2palettes[palette].color4]
 
         for i in range(5):
-            setattr(scene.sx2, 'newpalette'+str(i), palette[i])
+            palette_color = getattr(scene.sx2palettes[palette], 'color'+str(i), (0.0, 0.0, 0.0, 0.0))
+            setattr(scene.sx2, 'newpalette'+str(i), palette_color)
 
         for obj in objs:
             obj.sx2.palettedshading = 1.0
@@ -2278,7 +2270,6 @@ class SXTOOLS2_tools(object):
         utils.mode_manager(objs, revert=True, mode_id='apply_palette')
 
 
-    # NOTE: Material library file contains all entries in srgb color change by default
     def apply_material(self, objs, targetlayer, material):
         utils.mode_manager(objs, set_mode=True, mode_id='apply_material')
         if not sxglobals.refresh_in_progress:
@@ -2286,18 +2277,6 @@ class SXTOOLS2_tools(object):
 
         material = bpy.context.scene.sx2materials[material]
         scene = bpy.context.scene.sx2
-
-        # for obj in objs:
-        #     scene.toolopacity = 1.0
-        #     scene.toolblend = 'ALPHA'
-        #     self.apply_tool([obj, ], targetlayer, color=material.color0)
-
-        #     if sxglobals.mode == 'EDIT':
-        #         self.apply_tool([obj, ], obj.sx2layers['Metallic'], color=material.color1)
-        #         self.apply_tool([obj, ], obj.sx2layers['Roughness'], color=material.color2)
-        #     else:
-        #         self.apply_tool([obj, ], obj.sx2layers['Metallic'], masklayer=targetlayer, color=material.color1)
-        #         self.apply_tool([obj, ], obj.sx2layers['Roughness'], masklayer=targetlayer, color=material.color2)
 
         setattr(scene, 'newmaterial0', material.color0)
         setattr(scene, 'newmaterial1', material.color1)
@@ -3049,24 +3028,6 @@ class SXTOOLS2_export(object):
         for obj in org_objs:
             obj.select_set(True)
         bpy.context.view_layer.objects.active = active_obj
-
-
-    def export_to_linear(self, objs):
-        for obj in objs:
-            vcolors = layers.get_colors(obj, 'VertexColor0')
-            count = len(vcolors)//4
-            for i in range(count):
-                vcolors[(0+i*4):(4+i*4)] = convert.srgb_to_linear(vcolors[(0+i*4):(4+i*4)])
-            layers.set_colors(obj, 'VertexColor0', vcolors)
-
-
-    def export_to_srgb(self, objs):
-        for obj in objs:
-            vcolors = layers.get_colors(obj, 'VertexColor0')
-            count = len(vcolors)//4
-            for i in range(count):
-                vcolors[(0+i*4):(4+i*4)] = convert.linear_to_srgb(vcolors[(0+i*4):(4+i*4)])
-            layers.set_colors(obj, 'VertexColor0', vcolors)
 
 
     def remove_exports(self):
@@ -10029,3 +9990,4 @@ if __name__ == '__main__':
 # FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
 # FEAT: review non-metallic PBR material values
 # FEAT: Improve handling of multi-category selections
+# - Check needs for combine_layers
