@@ -1,4 +1,4 @@
-# sxtools2-blender
+# SX Tools 2 for Blender
 NOTE: Please visit the [Documentation Site](https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6)
 
 ## For Game Developers
