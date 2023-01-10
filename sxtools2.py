@@ -31,7 +31,7 @@ from mathutils import Vector
 # ------------------------------------------------------------------------
 class SXTOOLS2_sxglobals(object):
     def __init__(self):
-        self.librariesLoaded = False
+        self.libraries_status = False
         self.refresh_in_progress = False
         self.layer_update_in_progress = False
         self.magic_in_progress = False
@@ -4928,7 +4928,7 @@ class SXTOOLS2_setup(object):
             bpy.data.materials.remove(bpy.data.materials['SXToolMaterial'], do_unlink=True)
 
         # Clear globals
-        sxglobals.librariesLoaded = False
+        sxglobals.libraries_status = False
         sxglobals.prev_selection = []
         sxglobals.prev_component_selection = []
         sxglobals.copy_buffer.clear()
@@ -5424,9 +5424,12 @@ def load_libraries(self, context):
     status3 = files.load_file('gradients')
     status4 = files.load_file('categories')
 
-    if status1 and status2 and status3 and status4:
-        message_box('Libraries loaded successfully')
-        sxglobals.librariesLoaded = True
+    if not (status1 and status2 and status3 and status4):
+        message_box('SX Tools libraries not loaded.', 'SX Tools Error', 'ERROR')
+
+        sxglobals.libraries_status = False
+    else:
+        sxglobals.libraries_status = True
 
 
 # Fillcolor is automatically converted to grayscale on specific material layers
@@ -5596,14 +5599,16 @@ def export_validator(self, context):
 def load_post_handler(dummy):
     sxglobals.layer_stack_dict.clear()
     sxglobals.sx2material_dict.clear()
-    sxglobals.librariesLoaded = False
+    sxglobals.libraries_status = False
     sxglobals.selection_modal_status = False
     sxglobals.key_modal_status = False
+
+    load_libraries(dummy, bpy.context)
 
     if bpy.data.scenes['Scene'].sx2.rampmode == '':
         bpy.data.scenes['Scene'].sx2.rampmode = 'X'
 
-    export.validate_sxtoolmaterial()
+    setup.update_sx2material(bpy.context)
 
     for obj in bpy.data.objects:
         if (obj is not None) and (obj.type == 'MESH') and (('sxtools' in obj.keys()) or ('sx2' in obj.keys())):
@@ -6877,7 +6882,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
         objs = mesh_selection_validator(self, context)
         layout = self.layout
 
-        if not sxglobals.librariesLoaded:
+        if not sxglobals.libraries_status:
             col = layout.column()
             col.label(text='Libraries not loaded')
             col.label(text='Check Add-on Preferences')
@@ -7713,7 +7718,7 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
             return {'CANCELLED'}
 
         if (len(sxglobals.master_palette_list) == 0) or (len(sxglobals.material_list) == 0) or (len(sxglobals.ramp_dict) == 0) or (len(sxglobals.category_dict) == 0):
-            sxglobals.librariesLoaded = False
+            sxglobals.libraries_status = False
             load_libraries(self, context)
             return {'PASS_THROUGH'}
 
@@ -9568,7 +9573,7 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
             if not sxglobals.refresh_in_progress:
                 sxglobals.refresh_in_progress = True
                 sxglobals.magic_in_progress = True
-                if not sxglobals.librariesLoaded:
+                if not sxglobals.libraries_status:
                     load_libraries(self, context)
 
                 utils.mode_manager(objs, set_mode=True, mode_id='sxtosx2')
