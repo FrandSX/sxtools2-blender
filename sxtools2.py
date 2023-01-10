@@ -3844,7 +3844,7 @@ class SXTOOLS2_magic(object):
         scene = bpy.context.scene.sx2
         layer = objs[0].sx2layers['Overlay']
         scene.toolmode = 'CRV'
-        scene.toolopacity = opacity
+        scene.toolopacity = 1.0
         scene.curvaturenormalize = True
 
         tools.apply_tool(objs, layer)
@@ -3857,7 +3857,7 @@ class SXTOOLS2_magic(object):
         tools.apply_tool(objs, layer)
         for obj in objs:
             obj.sx2layers['Overlay'].blend_mode = 'OVR'
-            # obj.sx2layers['Overlay'].opacity = obj.sx2.overlaystrength
+            obj.sx2layers['Overlay'].opacity = opacity
 
         scene.toolopacity = 1.0
 
@@ -3985,7 +3985,7 @@ class SXTOOLS2_magic(object):
 
         self.apply_palette_overrides(objs, clear=True)
         self.apply_occlusion(objs, masklayername='Emission')
-        self.apply_curvature_overlay(objs)
+        self.apply_curvature_overlay(objs, opacity=0.6)
 
         material = 'Iron'
         palette = [
@@ -4074,7 +4074,7 @@ class SXTOOLS2_magic(object):
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             layers.set_layer(obj, colors, obj.sx2layers['Overlay'])
             obj.sx2layers['Overlay'].blend_mode = 'OVR'
-            # obj.sx2layers['Overlay'].opacity = obj.sx2.overlaystrength
+            obj.sx2layers['Overlay'].opacity = 0.6
 
         material = 'Silver'
         palette = [
@@ -4158,7 +4158,7 @@ class SXTOOLS2_magic(object):
             colors = tools.blend_values(colors1, colors, 'OVR', 1.0)
             layers.set_layer(obj, colors, layer)
             obj.sx2layers['Overlay'].blend_mode = 'OVR'
-            # obj.sx2layers['Overlay'].opacity = obj.sx2.overlaystrength
+            obj.sx2layers['Overlay'].opacity = 1.0
 
         # Apply thickness to transmission
         layers.clear_layers(objs, obj.sx2layers['Transmission'])
