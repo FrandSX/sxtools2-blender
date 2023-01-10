@@ -5,7 +5,7 @@ bl_info = {
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
-    'doc_url': 'https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6',
+    'doc_url': 'https://secretexit.notion.site/SX-Tools-2-for-Blender-Documentation-1681c68851fb4d018d1f9ec762e5aec9',
     'tracker_url': 'https://github.com/FrandSX/sxtools2-blender/issues',
     'category': 'Development',
 }
@@ -6902,7 +6902,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
             row_shading = layout.row()
             row_shading.prop(sx2, 'shadingmode', expand=True)
-            row_shading.operator("wm.url_open", text='', icon='URL').url = 'https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6'
+            row_shading.operator("wm.url_open", text='', icon='URL').url = 'https://secretexit.notion.site/SX-Tools-2-for-Blender-Documentation-1681c68851fb4d018d1f9ec762e5aec9'
 
             # Layer Controls -----------------------------------------------
             if not layer_validator(self, context):
