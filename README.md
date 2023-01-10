@@ -15,8 +15,6 @@ Transparency only as an export category | Transparency as a per-object viewport 
 ## For Game Developers
 SX Tools 2 is a lightweight content pipeline for vertex-colored assets that drive PBR (Physically Based Rendering) materials in a game. This tool ships with baseline shader networks for Unreal and Unity.
 
-![Asset Pipeline](/images/sxtools-magic.png)
-
 ## For 3D Artists
 SX Tools is a multi-layer vertex coloring toolbox, referencing a workflow from common 2D image editing programs.
 
@@ -51,8 +49,6 @@ The artist can therefore apply per-vertex occlusion/metallic/smoothness/transmis
 Now would be a good time to visit the [Documentation Site](https://secretexit.notion.site/SX-Tools-2-for-Blender-Documentation-1681c68851fb4d018d1f9ec762e5aec9)
 
 ## Exporting to Game Engines
-![Pipeline Overview](/images/sxtools-pipeline.png)
-
 The basic flow for using SX Tools in game development is as follows:
 1) Model your assets as low-poly control cages for subdivision
 2) Define the categories needed for your objects in your game
