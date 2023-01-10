@@ -1,5 +1,5 @@
 # SX Tools 2 for Blender
-NOTE: Please visit the [Documentation Site](https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6)
+NOTE: Please visit the [Documentation Site](https://secretexit.notion.site/SX-Tools-2-for-Blender-Documentation-1681c68851fb4d018d1f9ec762e5aec9)
 
 ## Comparison
 
@@ -48,7 +48,7 @@ The artist can therefore apply per-vertex occlusion/metallic/smoothness/transmis
 - SX Tools 2 will appear as a tab in the top right corner of the 3D view
 
 ## Getting Started:
-Now would be a good time to visit the [Documentation Site](https://www.notion.so/SX-Tools-for-Blender-Documentation-9ad98e239f224624bf98246822a671a6)
+Now would be a good time to visit the [Documentation Site](https://secretexit.notion.site/SX-Tools-2-for-Blender-Documentation-1681c68851fb4d018d1f9ec762e5aec9)
 
 ## Exporting to Game Engines
 ![Pipeline Overview](/images/sxtools-pipeline.png)
