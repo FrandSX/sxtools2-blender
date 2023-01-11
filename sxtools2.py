@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 3, 0),
+    'version': (1, 3, 1),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -501,6 +501,7 @@ class SXTOOLS2_utils(object):
                 return i
 
 
+    # obj_sel_override allows object-level mask evaluation even if the object is in edit mode
     def find_colors_by_frequency(self, objs, layer_name, numcolors=None, masklayer=None, maskcolor=None, obj_sel_override=False, alphavalues=False):
         color_array = []
 
@@ -515,10 +516,16 @@ class SXTOOLS2_utils(object):
 
         if alphavalues:
             color_array = [convert.luminance_to_color(color[3]) for color in color_array]
+            colors = list(filter(lambda a: a != (0.0, 0.0, 0.0, 1.0), color_array))
+        else:
+            colors = list(filter(lambda a: a[3] != 0.0, color_array))
 
-        # colors = list(filter(lambda a: a != (0.0, 0.0, 0.0, 0.0), colorArray))
-        colors = list(filter(lambda a: a[3] != 0.0, color_array))
-        sort_list = [color for color, count in Counter(colors).most_common(numcolors)]
+        quantized_colors = []
+        for color in colors:
+            qc = (self.round_stepped(color[0]), self.round_stepped(color[1]), self.round_stepped(color[2]), 1.0)
+            quantized_colors.append(qc)
+
+        sort_list = [color for color, count in Counter(quantized_colors).most_common(numcolors)]
 
         if numcolors is not None:
             while len(sort_list) < numcolors:
@@ -712,6 +719,9 @@ class SXTOOLS2_utils(object):
 
         return difference.length <= tolerance
 
+
+    def round_stepped(self, x, step=0.005):
+        return round(round(x / step) * step, 3)
 
     # if vertex pos x y z is at bbx limit, and mirror axis is set, round vertex position
     def round_tiling_verts(self, objs):
@@ -929,7 +939,7 @@ class SXTOOLS2_convert(object):
             return values
 
 
-    def values_to_colors(self, values, invert=False, as_alpha=False, with_mask=False):
+    def values_to_colors(self, values, invert=False, as_alpha=False, with_mask=False, as_tuple=False):
         if invert:
             for i, uv in enumerate(values):
                 values[i] = 1.0 - uv
@@ -943,7 +953,14 @@ class SXTOOLS2_convert(object):
                 colors[(0+i*4):(4+i*4)] = [values[i], values[i], values[i], alpha]
             else:
                 colors[(0+i*4):(4+i*4)] = self.luminance_to_color(values[i])
-        return colors
+
+        if as_tuple:
+            rgba = [None] * count
+            for i in range(count):
+                rgba[i] = tuple(colors[(0+i*4):(4+i*4)])
+            return rgba
+        else:
+            return colors
 
 
     def invert_values(self, values):
@@ -1684,8 +1701,7 @@ class SXTOOLS2_layers(object):
 
 
     # wrapper for low-level functions, always returns layerdata in RGBA
-    # TODO: clear out old uv and uv4 bits
-    def get_layer(self, obj, sourcelayer, as_tuple=False, single_as_alpha=False, apply_layer_opacity=False, gradient_with_palette=False):
+    def get_layer(self, obj, sourcelayer, as_tuple=False, single_as_alpha=False, apply_layer_opacity=False):
         rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP']
         alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
         dv = [1.0, 1.0, 1.0, 1.0]
@@ -1707,30 +1723,6 @@ class SXTOOLS2_layers(object):
                 else:
                     values[(0+i*4):(4+i*4)] = [value, value, value, 1.0]
 
-        elif sourcelayer.layer_type == 'UV':
-            uvs = self.get_uvs(obj, sourcelayer.uvLayer0, channel=sourcelayer.uvChannel0)
-            count = len(uvs)  # len(obj.data.uv_layers[0].data)
-            values = [None] * count * 4
-
-            # if gradient_with_palette:
-            #     if sourcelayer.name == 'Gradient1':
-            #         dv = sxmaterial.nodes['PaletteColor3'].outputs[0].default_value
-            #     elif sourcelayer.name == 'Gradient2':
-            #         dv = sxmaterial.nodes['PaletteColor4'].outputs[0].default_value
-
-            if single_as_alpha:
-                for i in range(count):
-                    if uvs[i] > 0.0:
-                        values[(0+i*4):(4+i*4)] = [dv[0], dv[1], dv[2], uvs[i]]
-                    else:
-                        values[(0+i*4):(4+i*4)] = [0.0, 0.0, 0.0, uvs[i]]
-            else:
-                for i in range(count):
-                    values[(0+i*4):(4+i*4)] = [uvs[i], uvs[i], uvs[i], 1.0]
-
-        elif sourcelayer.layer_type == 'UV4':
-            values = layers.get_uv4(obj, sourcelayer)
-
         if apply_layer_opacity and sourcelayer.opacity != 1.0:
             count = len(values)//4
             for i in range(count):
@@ -1747,15 +1739,8 @@ class SXTOOLS2_layers(object):
             return values
 
 
-    # takes RGBA buffers, converts and writes to appropriate uv and vertex sets
-    # TODO: clear out old UV-setting parts
+    # takes RGBA buffers, converts and writes to appropriate channels
     def set_layer(self, obj, colors, targetlayer):
-        def constant_alpha_test(values):
-            for value in values:
-                if value != 1.0:
-                    return False
-            return True
-
         rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP']
         alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
         target_type = targetlayer.layer_type
@@ -1770,19 +1755,6 @@ class SXTOOLS2_layers(object):
                 target_values[alpha_targets[target_type]+i*4] = values[i]
             self.set_colors(obj, 'Alpha Materials', target_values)
 
-        elif target_type == 'UV':
-            if (targetlayer.name == 'Gradient1') or (targetlayer.name == 'Gradient2'):
-                target_uvs = colors[3::4]
-                if constant_alpha_test(target_uvs):
-                    target_uvs = layers.get_luminances(obj, sourcelayer=None, colors=colors, as_rgba=False)
-            else:
-                target_uvs = layers.get_luminances(obj, sourcelayer=None, colors=colors, as_rgba=False)
-
-            layers.set_uvs(obj, targetlayer.uvLayer0, target_uvs, targetlayer.uvChannel0)
-
-        elif target_type == 'UV4':
-            layers.set_uv4(obj, targetlayer, colors)
-
 
     def get_layer_mask(self, obj, sourcelayer):
         rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP']
@@ -1795,10 +1767,6 @@ class SXTOOLS2_layers(object):
         elif layer_type in alpha_targets:
             colors = self.get_colors(obj, sourcelayer.color_attribute)
             values = colors[alpha_targets[layer_type]::4]
-        elif layer_type == 'UV':
-            values = self.get_uvs(obj, sourcelayer.uvLayer0, sourcelayer.uvChannel0)
-        elif layer_type == 'UV4':
-            values = self.get_uvs(obj, sourcelayer.uvLayer3, sourcelayer.uvChannel3)
 
         if any(v != 0.0 for v in values):
             return values, False
@@ -1891,50 +1859,6 @@ class SXTOOLS2_layers(object):
             target_uvs.foreach_set('uv', target_values)
 
 
-    def get_uv4(self, obj, sourcelayer):
-        channels = {'U': 0, 'V': 1}
-        sourceUVs0 = obj.data.uv_layers[sourcelayer.uvLayer0].data
-        sourceUVs1 = obj.data.uv_layers[sourcelayer.uvLayer2].data
-        count = len(sourceUVs0)
-        source_uvs0 = [None] * count * 2
-        source_uvs1 = [None] * count * 2
-        sourceUVs0.foreach_get('uv', source_uvs0)
-        sourceUVs1.foreach_get('uv', source_uvs1)
-
-        uv0 = channels[sourcelayer.uvChannel0]
-        uv1 = channels[sourcelayer.uvChannel1]
-        uv2 = channels[sourcelayer.uvChannel2]
-        uv3 = channels[sourcelayer.uvChannel3]
-
-        colors = [None] * count * 4
-        for i in range(count):
-            colors[(0+i*4):(4+i*4)] = [source_uvs0[uv0+i*2], source_uvs0[uv1+i*2], source_uvs1[uv2+i*2], source_uvs1[uv3+i*2]]
-
-        return colors
-
-
-    def set_uv4(self, obj, targetlayer, colors):
-        channels = {'U': 0, 'V': 1}
-
-        uvs0 = generate.empty_list(obj, 2)
-        uvs1 = generate.empty_list(obj, 2)
-
-        uv0 = channels[targetlayer.uvChannel0]
-        uv1 = channels[targetlayer.uvChannel1]
-        uv2 = channels[targetlayer.uvChannel2]
-        uv3 = channels[targetlayer.uvChannel3]
-
-        target1 = targetlayer.uvLayer0
-        target2 = targetlayer.uvLayer2
-
-        count = len(uvs0)//2
-        for i in range(count):
-            [uvs0[(uv0+i*2)], uvs0[(uv1+i*2)], uvs1[(uv2+i*2)], uvs1[(uv3+i*2)]] = colors[(0+i*4):(4+i*4)]
-
-        self.set_uvs(obj, target1, uvs0, None)
-        self.set_uvs(obj, target2, uvs1, None)
-
-
     def clear_layers(self, objs, targetlayer=None):
         scene = bpy.context.scene.sx2
 
@@ -1981,7 +1905,7 @@ class SXTOOLS2_layers(object):
                 if getattr(obj.sx2layers[layer.name], 'visibility'):
                     blendmode = getattr(obj.sx2layers[layer.name], 'blend_mode')
                     layeralpha = getattr(obj.sx2layers[layer.name], 'opacity')
-                    topcolors = self.get_layer(obj, obj.sx2layers[layer.name], single_as_alpha=single_as_alpha, gradient_with_palette=True)
+                    topcolors = self.get_layer(obj, obj.sx2layers[layer.name], single_as_alpha=single_as_alpha)
                     basecolors = tools.blend_values(topcolors, basecolors, blendmode, layeralpha)
 
             self.set_layer(obj, basecolors, resultLayer)
@@ -2337,6 +2261,9 @@ class SXTOOLS2_tools(object):
         for obj in objs:
             if objs[0].sx2.shadingmode == 'FULL':
                 colors = layers.get_layer(obj, obj.sx2layers['Composite'])
+            elif objs[0].sx2.shadingmode == 'ALPHA':
+                values = layers.get_layer_mask(obj, obj.sx2layers[obj.sx2.selectedlayer])[0]
+                colors = convert.values_to_colors(values)
             else:
                 colors = layers.get_layer(obj, obj.sx2layers[obj.sx2.selectedlayer])
             mesh = obj.data
@@ -5077,9 +5004,9 @@ def refresh_swatches(self, context):
                 # 2) Update layer palette elements
                 layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
                 if mode == 'ALPHA':
-                    colors = utils.find_colors_by_frequency([obj, ], layer.name, 8, alphavalues=True)
+                    colors = utils.find_colors_by_frequency(objs, layer.name, 8, alphavalues=True)
                 else:
-                    colors = utils.find_colors_by_frequency([obj, ], layer.name, 8)
+                    colors = utils.find_colors_by_frequency(objs, layer.name, 8)
 
                 for i, pcol in enumerate(colors):
                     palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
@@ -6746,14 +6673,6 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
             ('CMP', 'Composite', '')],
         default='COLOR')
 
-    export_type: bpy.props.EnumProperty(
-        name='Export Type',
-        items=[
-            ('COLOR', 'Color', ''),
-            ('UV', 'UV', ''),
-            ('UV4', 'UV4', '')],
-        default='COLOR')
-
     default_color: bpy.props.FloatVectorProperty(
         name='Default Color',
         subtype='COLOR',
@@ -7029,7 +6948,10 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     paste_text = 'Paste'
                 elif scene.ctrl:
                     clr_text = 'Flatten'
-                    sel_text = 'Select Color'
+                    if obj.sx2.shadingmode == 'ALPHA':
+                        sel_text = 'Select Value'
+                    else:
+                        sel_text = 'Select Color'
                     paste_text = 'Paste Alpha'
 
                 col_misc = layout.column(align=True)
