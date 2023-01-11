@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 2, 20),
+    'version': (1, 3, 0),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -501,8 +501,8 @@ class SXTOOLS2_utils(object):
                 return i
 
 
-    def find_colors_by_frequency(self, objs, layer_name, numcolors=None, masklayer=None, maskcolor=None, obj_sel_override=False):
-        colorArray = []
+    def find_colors_by_frequency(self, objs, layer_name, numcolors=None, masklayer=None, maskcolor=None, obj_sel_override=False, alphavalues=False):
+        color_array = []
 
         for obj in objs:
             if obj_sel_override:
@@ -511,23 +511,26 @@ class SXTOOLS2_utils(object):
                 values = generate.mask_list(obj, layers.get_layer(obj, obj.sx2layers[layer_name]), masklayer=masklayer, maskcolor=maskcolor, as_tuple=True)
 
             if values is not None:
-                colorArray.extend(values)
+                color_array.extend(values)
+
+        if alphavalues:
+            color_array = [convert.luminance_to_color(color[3]) for color in color_array]
 
         # colors = list(filter(lambda a: a != (0.0, 0.0, 0.0, 0.0), colorArray))
-        colors = list(filter(lambda a: a[3] != 0.0, colorArray))
-        sortList = [color for color, count in Counter(colors).most_common(numcolors)]
+        colors = list(filter(lambda a: a[3] != 0.0, color_array))
+        sort_list = [color for color, count in Counter(colors).most_common(numcolors)]
 
         if numcolors is not None:
-            while len(sortList) < numcolors:
-                sortList.append([0.0, 0.0, 0.0, 1.0])
+            while len(sort_list) < numcolors:
+                sort_list.append([0.0, 0.0, 0.0, 1.0])
 
-            sortColors = []
+            sort_colors = []
             for i in range(numcolors):
-                sortColors.append(sortList[i])
+                sort_colors.append(sort_list[i])
 
-            return sortColors
+            return sort_colors
         else:
-            return sortList
+            return sort_list
 
 
     # The index parameter returns the nth color layer in the stack
@@ -786,7 +789,7 @@ class SXTOOLS2_convert(object):
         return None
 
 
-    def color_to_luminance(self, in_rgba):
+    def color_to_luminance(self, in_rgba, premul=True):
         lumR = 0.212655
         lumG = 0.715158
         lumB = 0.072187
@@ -794,7 +797,10 @@ class SXTOOLS2_convert(object):
 
         linLum = lumR * in_rgba[0] + lumG * in_rgba[1] + lumB * in_rgba[2]
         # luminance = convert.linear_to_srgb((linLum, linLum, linLum, alpha))[0]
-        return linLum * alpha  # luminance * alpha
+        if premul:
+            return linLum * alpha  # luminance * alpha
+        else:
+            return linLum
 
 
     def luminance_to_color(self, value):
@@ -908,22 +914,36 @@ class SXTOOLS2_convert(object):
         return rgb
 
 
-    def uvs_to_colors(self, obj, layer_name, channel, invert=False, as_alpha=False, with_mask=False):
-        uvs = layers.get_uvs(obj, layer_name, channel)
+    def colors_to_values(self, colors, as_rgba=False):
+        count = len(colors)//4
+        if as_rgba:
+            for i in range(count):
+                color = colors[(0+i*4):(4+i*4)]
+                lum = self.color_to_luminance(color, premul=False)
+                colors[(0+i*4):(4+i*4)] = [lum, lum, lum, color[3]]
+            return colors
+        else:
+            values = [None] * count
+            for i in range(count):
+                values[i] = self.color_to_luminance(colors[(0+i*4):(4+i*4)])
+            return values
+
+
+    def values_to_colors(self, values, invert=False, as_alpha=False, with_mask=False):
         if invert:
-            for i, uv in enumerate(uvs):
-                uvs[i] = 1.0 - uv
-        count = len(uvs) 
-        values = [None] * count * 4
+            for i, uv in enumerate(values):
+                values[i] = 1.0 - uv
+        count = len(values) 
+        colors = [None] * count * 4
         for i in range(count):
             if as_alpha:
-                values[(0+i*4):(4+i*4)] = [1.0, 1.0, 1.0, uvs[i]]
+                colors[(0+i*4):(4+i*4)] = [1.0, 1.0, 1.0, values[i]]
             elif with_mask:
-                alpha = 1.0 if uvs[i] > 0.0 else 0.0
-                values[(0+i*4):(4+i*4)] = [uvs[i], uvs[i], uvs[i], alpha]
+                alpha = 1.0 if values[i] > 0.0 else 0.0
+                colors[(0+i*4):(4+i*4)] = [values[i], values[i], values[i], alpha]
             else:
-                values[(0+i*4):(4+i*4)] = self.luminance_to_color(uvs[i])
-        return values
+                colors[(0+i*4):(4+i*4)] = self.luminance_to_color(values[i])
+        return colors
 
 
     def invert_values(self, values):
@@ -1799,6 +1819,18 @@ class SXTOOLS2_layers(object):
         obj.data.update()
 
 
+    def set_alphas(self, obj, target, values):
+        colors = self.get_colors(obj, target)
+        count = len(values)
+        for i in range(count):
+            color = colors[(0+i*4):(4+i*4)]
+            color = [color[0], color[1], color[2], values[i]]
+            colors[(0+i*4):(4+i*4)] = color
+        target_colors = obj.data.color_attributes[target].data
+        target_colors.foreach_set('color', colors)
+        obj.data.update()  
+
+
     def get_luminances(self, obj, sourcelayer=None, colors=None, as_rgba=False, as_alpha=False):
         if colors is None:
             if sourcelayer is not None:
@@ -2007,7 +2039,7 @@ class SXTOOLS2_layers(object):
             for i in range(5):
                 for layer in obj.sx2layers:
                     if layer.paletted and (layer.palette_index == i):
-                        palettecolor = utils.find_colors_by_frequency(objs, layer.name, 1, obj_sel_override=True)[0]
+                        palettecolor = utils.find_colors_by_frequency(objs, layer.name, numcolors=1, obj_sel_override=True)[0]
                         tabcolor = getattr(scene, 'newpalette' + str(i))
 
                         if not utils.color_compare(palettecolor, tabcolor) and not utils.color_compare(palettecolor, (0.0, 0.0, 0.0, 1.0)):
@@ -2141,7 +2173,7 @@ class SXTOOLS2_tools(object):
 
 
     # NOTE: Make sure color parameter is always provided in linear color space!
-    def apply_tool(self, objs, targetlayer, masklayer=None, invertmask=False, color=None):
+    def apply_tool(self, objs, targetlayer, masklayer=None, invertmask=False, color=None, apply_to_alpha=False):
         # then = time.perf_counter()
         utils.mode_manager(objs, set_mode=True, mode_id='apply_tool')
         scene = bpy.context.scene.sx2
@@ -2181,16 +2213,24 @@ class SXTOOLS2_tools(object):
                 colors = generate.luminance_remap_list(obj, targetlayer, masklayer)
 
             if colors is not None:
-                target_colors = layers.get_layer(obj, targetlayer)
-                if blendmode == 'REP':
-                    if sxglobals.mode == 'EDIT':
-                        bpy.context.tool_settings.mesh_select_mode[2] = False
-                        mask, empty = generate.get_selection_mask(obj)
-                        colors = self.blend_values(colors, target_colors, blendmode, blendvalue, selectionmask=mask)
-                else:
-                    colors = self.blend_values(colors, target_colors, blendmode, blendvalue, selectionmask=None)
+                mask = None
+                if (blendmode == 'REP') and (sxglobals.mode == 'EDIT'):
+                    bpy.context.tool_settings.mesh_select_mode[2] = False
+                    mask, empty = generate.get_selection_mask(obj)
 
-                layers.set_layer(obj, colors, targetlayer)
+                if apply_to_alpha:
+                    grayscales = convert.colors_to_values(colors, as_rgba=True)
+                    values = layers.get_layer_mask(obj, targetlayer)[0]
+                    target_grayscales = convert.values_to_colors(values)
+                    target_grayscales = self.blend_values(grayscales, target_grayscales, blendmode, blendvalue, selectionmask=mask)
+
+                    target_values = convert.colors_to_values(target_grayscales)
+                    layers.set_alphas(obj, targetlayer.color_attribute, target_values)
+                else:
+                    target_colors = layers.get_layer(obj, targetlayer)
+                    colors = self.blend_values(colors, target_colors, blendmode, blendvalue, selectionmask=mask)
+
+                    layers.set_layer(obj, colors, targetlayer)
 
         utils.mode_manager(objs, revert=True, mode_id='apply_tool')
         # now = time.perf_counter()
@@ -5004,7 +5044,7 @@ def refresh_swatches(self, context):
 
         scene = context.scene.sx2
         objs = mesh_selection_validator(self, context)
-        # mode = objs[0].sx2.shadingmode
+        mode = objs[0].sx2.shadingmode
 
         utils.mode_manager(objs, set_mode=True, mode_id='refresh_swatches')
 
@@ -5036,7 +5076,11 @@ def refresh_swatches(self, context):
 
                 # 2) Update layer palette elements
                 layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-                colors = utils.find_colors_by_frequency(objs, layer.name, 8)
+                if mode == 'ALPHA':
+                    colors = utils.find_colors_by_frequency([obj, ], layer.name, 8, alphavalues=True)
+                else:
+                    colors = utils.find_colors_by_frequency([obj, ], layer.name, 8)
+
                 for i, pcol in enumerate(colors):
                     palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
                     setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
@@ -5044,8 +5088,6 @@ def refresh_swatches(self, context):
                 # 3) update tool palettes
                 if scene.toolmode == 'COL':
                     update_fillcolor(self, context)
-                # elif scene.toolmode == 'PAL':
-                #     layers.color_layers_to_values(objs)
                 # elif (scene.toolmode == 'MAT'):
                 #     layers.material_layers_to_values(objs)
 
@@ -5118,9 +5160,9 @@ def update_material_layer(self, context, index):
             objs[0].sx2.selectedlayer = selected_layer
 
         if sxglobals.mode == 'EDIT':
-            modecolor = utils.find_colors_by_frequency(objs, layer_ids[index], 1)[0]
+            modecolor = utils.find_colors_by_frequency(objs, layer_ids[index], numcolors=1)[0]
         else:
-            modecolor = utils.find_colors_by_frequency(objs, layer_ids[index], 1, masklayer=layer)[0]
+            modecolor = utils.find_colors_by_frequency(objs, layer_ids[index], numcolors=1, masklayer=layer)[0]
 
         if not utils.color_compare(modecolor, pbr_values[index]):
             if sxglobals.mode == 'EDIT':
@@ -5439,7 +5481,7 @@ def update_fillcolor(self, context):
     layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
 
     gray_types = ['MET', 'RGH', 'OCC', 'TRN']
-    if layer.layer_type in gray_types:
+    if (layer.layer_type in gray_types) or (objs[0].sx2.shadingmode == 'ALPHA'):
         color = scene.fillcolor[:]
         hsl = convert.rgb_to_hsl(color)
         hsl = [0.0, 0.0, hsl[2]]
@@ -5499,6 +5541,7 @@ def update_obj_props(self, context, prop):
         mat_upd_props = ['shadingmode', 'backfaceculling']
         if prop in mat_upd_props:
             setup.update_sx2material(context)
+            refresh_swatches(self, context)
 
         elif prop == 'selectedlayer':
             update_selected_layer(self, context)
@@ -6881,6 +6924,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
         prefs = context.preferences.addons['sxtools2'].preferences
         objs = mesh_selection_validator(self, context)
         layout = self.layout
+        gray_channels = ['OCC', 'MET', 'RGH', 'TRN']
 
         if not sxglobals.libraries_status:
             col = layout.column()
@@ -6952,7 +6996,6 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             col_culling = box_layer.column(align=True)
                             col_culling.prop(sx2, 'backfaceculling', toggle=True)
 
-                        gray_channels = ['OCC', 'MET', 'RGH', 'TRN']
                         if layer.layer_type in gray_channels:
                             row_hue.enabled = False
                             row_sat.enabled = False
@@ -7008,12 +7051,16 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     icon_only=True, emboss=False)
                 row_fill.prop(scene, 'toolmode', text='')
                 if scene.toolmode != 'PAL' and scene.toolmode != 'MAT':
-                    row_fill.operator('sx2.applytool', text='Apply')
+                    if (obj.sx2.shadingmode == 'ALPHA') and (layer.layer_type not in gray_channels):
+                        apply_text = 'Apply to Alpha'
+                    else:
+                        apply_text = 'Apply'
+                    row_fill.operator('sx2.applytool', text=apply_text)
 
                 # Color Tool --------------------------------------------------------
                 if scene.toolmode == 'COL':
                     split1_fill = box_fill.split(factor=0.33)
-                    if (layer is None) or (layer.layer_type == 'COLOR') or (layer.layer_type == 'EMI') or (layer.layer_type == 'SSS'):
+                    if ((layer is None) or (layer.layer_type == 'COLOR') or (layer.layer_type == 'EMI') or (layer.layer_type == 'SSS')) and (obj.sx2.shadingmode != 'ALPHA'):
                         fill_text = 'Fill Color'
                     else:
                         fill_text = 'Fill Value'
@@ -7550,7 +7597,7 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
 
     libraryfolder: bpy.props.StringProperty(
         name='Library Folder',
-        description='Folder containing SX Tools data files\n(materials.json, palettes.json, gradients.json)',
+        description='Folder containing SX Tools 2 data files\n(materials.json, palettes.json, gradients.json)',
         default='',
         maxlen=1024,
         subtype='DIR_PATH',
@@ -7858,7 +7905,7 @@ class SXTOOLS2_OT_layerinfo(bpy.types.Operator):
 
 
     def invoke(self, context, event):
-        message_box('SPECIAL LAYERS:\nGradient1, Gradient2\nGrayscale layers that receive color from Palette Color 4 and 5\n(i.e. the primary colors of Layer 4 and 5)\n\nOcclusion, Metallic, Roughness, Transmission, Emission\nGrayscale layers, filled with the luminance of the selected color.')
+        message_box('SPECIAL LAYERS:\nGradient1, Gradient2\nGrayscale layers that receive color from Palette Color 3 and 4\n\nOcclusion, Metallic, Roughness, Transmission, Emission\nGrayscale layers, filled with the luminance of the selected color.')
         return {'FINISHED'}
 
 
@@ -8216,11 +8263,16 @@ class SXTOOLS2_OT_applytool(bpy.types.Operator):
             if objs[0].mode == 'EDIT':
                 context.scene.sx2.rampalpha = True
 
+            if objs[0].sx2.shadingmode == 'ALPHA':
+                apply_alpha = True
+            else:
+                apply_alpha = False
+
             if context.scene.sx2.toolmode == 'COL':
-                tools.apply_tool(objs, layer, color=fillcolor)
+                tools.apply_tool(objs, layer, color=fillcolor, apply_to_alpha=apply_alpha)
                 tools.update_recent_colors(fillcolor)
             else:
-                tools.apply_tool(objs, layer)
+                tools.apply_tool(objs, layer, apply_to_alpha=apply_alpha)
 
             refresh_swatches(self, context)
         return {'FINISHED'}
@@ -9629,25 +9681,32 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                             pass
                         elif uv.name == 'UVSet1':
                             # grab occlusion from V
-                            colors = convert.uvs_to_colors(obj, uv.name, 'V')
+                            values = layers.get_uvs(obj, uv.name, 'V')
+                            colors = convert.values_to_colors(values)
                             layers.set_layer(obj, colors, obj.sx2layers['Occlusion'])
                         elif uv.name == 'UVSet2':
                             # grab transmission, emission
-                            colors = convert.uvs_to_colors(obj, uv.name, 'U')
+                            values = layers.get_uvs(obj, uv.name, 'U')
+                            colors = convert.values_to_colors(values)
                             layers.set_layer(obj, colors, obj.sx2layers['Transmission'])
-                            colors = convert.uvs_to_colors(obj, uv.name, 'V', with_mask=True)
+                            values = layers.get_uvs(obj, uv.name, 'V')
+                            colors = convert.values_to_colors(values, with_mask=True)
                             layers.set_layer(obj, colors, obj.sx2layers['Emission'])
                         elif uv.name == 'UVSet3':
                             # grab metallic, smoothness
-                            colors = convert.uvs_to_colors(obj, uv.name, 'U')
+                            values = layers.get_uvs(obj, uv.name, 'U')
+                            colors = convert.values_to_colors(values)
                             layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
-                            colors = convert.uvs_to_colors(obj, uv.name, 'V', invert=True)
+                            values = layers.get_uvs(obj, uv.name, 'V')
+                            colors = convert.values_to_colors(values, invert=True)
                             layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
                         elif uv.name == 'UVSet4':
                             # grab gradient 1, 2
-                            colors = convert.uvs_to_colors(obj, uv.name, 'U', as_alpha=True)
+                            values = layers.get_uvs(obj, uv.name, 'U')
+                            colors = convert.values_to_colors(values, as_alpha=True)
                             layers.set_layer(obj, colors, obj.sx2layers['Gradient1'])
-                            colors = convert.uvs_to_colors(obj, uv.name, 'V', as_alpha=True)
+                            values = layers.get_uvs(obj, uv.name, 'V')
+                            colors = convert.values_to_colors(values, as_alpha=True)
                             layers.set_layer(obj, colors, obj.sx2layers['Gradient2'])
                         elif uv.name == 'UVSet5':
                             # grab and store overlay RG
@@ -9812,7 +9871,7 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
                 # color = convert.linear_to_srgb(color)
                 for source in material_sources:
                     if source in objs[0].sx2layers.keys():
-                        typical_color = utils.find_colors_by_frequency(objs, source, 1, maskcolor=color)[0]
+                        typical_color = utils.find_colors_by_frequency(objs, source, numcolors=1, maskcolor=color)[0]
                         palette_dict[source][i] = typical_color
 
             files.export_palette_atlases(palette_dict)
