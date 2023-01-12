@@ -226,8 +226,8 @@ class SXTOOLS2_files(object):
             org_loc = group.location.copy()
             group.location = (0, 0, 0)
 
-            selArray = utils.find_children(group, recursive=True)
-            for sel in selArray:
+            sel_array = utils.find_children(group, recursive=True)
+            for sel in sel_array:
                 sel.select_set(True)
             group.select_set(False)
 
@@ -246,27 +246,27 @@ class SXTOOLS2_files(object):
                         collider['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
 
             # Only groups with meshes and armatures as children are exported
-            objArray = []
-            for sel in selArray:
+            obj_array = []
+            for sel in sel_array:
                 if sel.type == 'MESH':
                     bg_layer = utils.find_color_layers(sel, 0)
-                    objArray.append(sel)
+                    obj_array.append(sel)
                     sel['staticVertexColors'] = sel.sx2.staticvertexcolors
                     sel['transparent'] = '0' if bg_layer.opacity == 1.0 else '1'
                     sel['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
                     sel['colorSpace'] = export_dict[prefs.exportspace]
 
-            if len(objArray) > 0:
+            if len(obj_array) > 0:
                 empty = False
 
                 # Create palette masks
-                export.reset_uv_layers(objArray)
-                export.generate_palette_masks(objArray)
-                export.generate_uv_channels(objArray)
+                export.reset_uv_layers(obj_array)
+                export.generate_palette_masks(obj_array)
+                export.generate_uv_channels(obj_array)
+                export.composite_color_layers(obj_array)
 
-                for obj in objArray:
+                for obj in obj_array:
                     bpy.context.view_layer.objects.active = obj
-                    export.composite_color_layers([obj, ])
                     obj.data.attributes.active_color = obj.data.color_attributes['Composite']
                     bpy.ops.geometry.color_attribute_render_set(name='Composite')
 
@@ -276,11 +276,10 @@ class SXTOOLS2_files(object):
                     if 'sxTiler' in obj.modifiers:
                         obj.modifiers.remove(obj.modifiers['sxTiler'])
 
-                # bpy.context.view_layer.update()
                 bpy.context.view_layer.objects.active = group
 
-                category = objArray[0].sx2.category.lower()
-                print(f'Determining path: {objArray[0].name} {category}')
+                category = obj_array[0].sx2.category.lower()
+                print(f'Determining path: {obj_array[0].name} {category}')
                 path = scene.exportfolder + category + os.path.sep
                 pathlib.Path(path).mkdir(exist_ok=True)
 
@@ -313,8 +312,8 @@ class SXTOOLS2_files(object):
                 groupNames.append(group.name)
                 group.location = org_loc
 
-                modifiers.remove_modifiers(objArray)
-                modifiers.add_modifiers(objArray)
+                modifiers.remove_modifiers(obj_array)
+                modifiers.add_modifiers(obj_array)
 
                 bpy.context.view_layer.objects.active = group
 
@@ -1667,12 +1666,10 @@ class SXTOOLS2_layers(object):
                     colors = generate.color_list(obj, layer.default_color)
                     layers.set_layer(obj, colors, obj.sx2layers[len(obj.sx2layers) - 1])
                 layer_dict[obj] = layer
-
-            # Second loop needed for proper operation in multi-object cases
-            # selectedlayer needs to point to an existing layer on all objs
-            for obj in objs:
-                obj.sx2.selectedlayer = len(obj.sx2layers) - 1
                 obj.sx2.layercount = layercount + 1
+
+            # selectedlayer needs to point to an existing layer on all objs
+            objs[0].sx2.selectedlayer = len(objs[0].sx2layers) - 1
 
         return layer_dict
 
@@ -3102,10 +3099,12 @@ class SXTOOLS2_export(object):
                 elif layer.name == 'Overlay':
                     channel_name = 'uv_' + layer.name.lower()
                     target0, target1 = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]][channel_name]
-                    colors = layers.get_layer(obj, obj.sx2layers['Overlay'], apply_layer_opacity=True)
+                    colors = layers.get_layer(obj, obj.sx2layers['Overlay'])
+                    gray = generate.color_list(obj, (0.5, 0.5, 0.5, 1.0))
+                    colors = tools.blend_values(colors, gray, 'ALPHA', obj.sx2layers['Overlay'].opacity)
+
                     values0 = generate.empty_list(obj, 2)
                     values1 = generate.empty_list(obj, 2)
-
                     count = len(values0)//2
                     for i in range(count):
                         [values0[(0+i*2)], values0[(1+i*2)], values1[(0+i*2)], values1[(1+i*2)]] = colors[(0+i*4):(4+i*4)]
@@ -3848,17 +3847,24 @@ class SXTOOLS2_magic(object):
 
     def process_roadtiles(self, objs):
         print('SX Tools: Processing Roadtiles')
+        scene = bpy.context.scene.sx2
+        self.apply_palette_overrides(objs, clear=False)
+        self.apply_occlusion(objs, blend=0.0, groundplane=False, distance=50.0)
 
         # Apply Gradient1 to roughness and metallic
         for obj in objs:
             obj.sx2layers['Gradient1'].opacity = 1.0
             colors = layers.get_layer(obj, obj.sx2layers['Gradient1'])
             if colors is not None:
-                layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
-                layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
+                scene.toolmode = 'COL'
+                scene.toolopacity = 1.0
+                scene.toolblend = 'ALPHA'
+                tools.apply_tool(objs, obj.sx2layers['Metallic'], masklayer=obj.sx2layers['Gradient1'], color=(1.0, 1.0, 1.0, 1.0))
+                tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Gradient1'], color=(0.0, 0.0, 0.0, 1.0))
 
-        self.apply_palette_overrides(objs, clear=False)
-        self.apply_occlusion(objs, blend=0.0, groundplane=False, distance=50.0)
+        # Flat overlay
+        colors = generate.color_list(obj, color=(0.5, 0.5, 0.5, 1.0))
+        layers.set_layer(obj, colors, obj.sx2layers['Overlay'])
 
         # Emissives are smooth
         tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Emission'], color=(0.0, 0.0, 0.0, 1.0))
@@ -3929,14 +3935,6 @@ class SXTOOLS2_magic(object):
             # Write roughness
             layer = obj.sx2layers['Roughness']
             layers.set_layer(obj, colors, layer)
-            # layer.locked = True
-
-            # Apply PBR metal based on layer7
-            # noise = 0.01
-            # mono = True
-            scene.toolmode = 'COL'
-            scene.toolopacity = 1.0
-            scene.toolblend = 'ALPHA'
 
             # Mix metallic with occlusion (dirt in crevices)
             colors = generate.color_list(obj, color=palette[1], masklayer=utils.find_color_layers(obj, 6))
@@ -4083,12 +4081,6 @@ class SXTOOLS2_magic(object):
             # layer.locked = True
 
             # Apply PBR metal based on layer7
-            # noise = 0.01
-            # mono = True
-            scene.toolmode = 'COL'
-            scene.toolopacity = 1.0
-            scene.toolblend = 'ALPHA'
-
             colors = generate.color_list(obj, color=palette[0], masklayer=utils.find_color_layers(obj, 6))
             if colors is not None:
                 layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
@@ -5120,6 +5112,11 @@ def update_selected_layer(self, context):
             if space.type == 'VIEW_3D':
                 if space.shading.type not in shading_types:
                     space.shading.type = 'MATERIAL'
+
+    # print('magic:', sxglobals.magic_in_progress)
+    # print('refresh:', sxglobals.refresh_in_progress)
+    # print('hue:', sxglobals.hsl_update)
+    # print('layer:', sxglobals.layer_update_in_progress)
 
     if objs[0].sx2.shadingmode != 'FULL':
         setup.update_sx2material(context)
