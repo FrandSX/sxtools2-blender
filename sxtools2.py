@@ -7709,10 +7709,14 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
                 return {'PASS_THROUGH'}
 
             if (objs[0].mode == 'EDIT'):
-                objs[0].update_from_editmode()
-                mesh = objs[0].data
-                selection = [None] * len(mesh.vertices)
-                mesh.vertices.foreach_get('select', selection)
+                selection = []
+                for obj in objs:
+                    if obj.mode == 'EDIT':
+                        obj.update_from_editmode()
+                        mesh = obj.data
+                        obj_selection = [None] * len(mesh.vertices)
+                        mesh.vertices.foreach_get('select', obj_selection)
+                        selection.extend(obj_selection)
                 # print('selectionmonitor: componentselection ', selection)
 
                 if selection != sxglobals.prev_component_selection:
@@ -8180,7 +8184,10 @@ class SXTOOLS2_OT_applytool(bpy.types.Operator):
                 setup.update_sx2material(context)
 
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-            fillcolor = convert.srgb_to_linear(context.scene.sx2.fillcolor)
+            if objs[0].sx2.shadingmode != 'ALPHA':
+                fillcolor = convert.srgb_to_linear(context.scene.sx2.fillcolor)
+            else:
+                fillcolor = context.scene.sx2.fillcolor
 
             if objs[0].mode == 'EDIT':
                 context.scene.sx2.rampalpha = True
