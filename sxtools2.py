@@ -4861,6 +4861,7 @@ class SXTOOLS2_setup(object):
         sxglobals.layer_update_in_progress = True
 
         objs = bpy.context.view_layer.objects
+        scene = bpy.context.scene
 
         # Clear layers and UV sets
         for obj in objs:
@@ -4880,11 +4881,16 @@ class SXTOOLS2_setup(object):
                 for uv_layer_name in remove_uv_list:
                     obj.data.uv_layers.remove(obj.data.uv_layers[uv_layer_name])
 
-            # Clear object properties
+            # Reset object properties
             obj.sx2.selectedlayer = 0
             obj.sx2.layercount = 0
             obj.sx2.shadingmode = 'FULL'
             obj.sx2.category = 'DEFAULT'
+
+        # Reset scene properties
+        scene.sx2.toolmode = 'COL'
+        scene.sx2.toolopacity = 1.0
+        scene.sx2.toolblend = 'ALPHA'
 
         # Clear SX2 Materials
         sx_mats = []
@@ -9985,7 +9991,6 @@ if __name__ == '__main__':
 # FEAT: UI should specify when applying a material overwrites, and when respects the active layer mask
 # FEAT: validate modifier settings, control cage, all meshes have single user?
 # FEAT: match existing layers when loading category
-# FEAT: reset scene: clear obj.sx2 and scene.sx2 properties
 # FEAT: review non-metallic PBR material values
 # FEAT: Improve handling of multi-category selections
 # - Check needs for combine_layers
