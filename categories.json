@@ -22,10 +22,21 @@
     },
     "Static": {
         "layers": [
-            ["Layer 0", "COLOR", "ALPHA", 1.0, "None"],
+            ["Layer 0", "COLOR", "ALPHA", 1.0, 0],
+            ["Layer 1", "COLOR", "ALPHA", 1.0, 1],
+            ["Layer 2", "COLOR", "ALPHA", 1.0, 2],
+            ["Layer 3", "COLOR", "ALPHA", 1.0, 3],
+            ["Layer 4", "COLOR", "ALPHA", 1.0, 4],
+            ["Static Colors", "COLOR", "ALPHA", 1.0, "None"],
+            ["PBR Material Color", "COLOR", "ALPHA", 1.0, "None"],
+            ["Gradient1", "COLOR", "ALPHA", 1.0, 3],
+            ["Gradient2", "COLOR", "ALPHA", 1.0, 4],
+            ["Overlay", "COLOR", "OVR", 1.0, "None"],
             ["Occlusion", "OCC", "ALPHA", 1.0, "None"],
             ["Metallic", "MET", "ALPHA", 1.0, "None"],
-            ["Roughness", "RGH", "ALPHA", 1.0, "None"]
+            ["Roughness", "RGH", "ALPHA", 1.0, "None"],
+            ["Transmission", "TRN", "ALPHA", 1.0, "None"],
+            ["Emission", "EMI", "ALPHA", 1.0, "None"]
         ],
         "metallic_override": 0,
         "palette_metallic": [0.0, 0.0, 0.0, 0.0, 0.0],
@@ -66,7 +77,6 @@
         "roughness_override": 1,
         "palette_roughness": [1.0, 1.0, 1.0, 1.0, 1.0],
         "staticvertexcolors": 0,
-        "blend": "OPAQUE",
         "uv_texture": "UVSet0",
         "uv_palette_masks": ["UVSet1", "U"],
         "uv_occlusion": ["UVSet1", "V"],

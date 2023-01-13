@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 3, 2),
+    'version': (1, 3, 5),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1385,7 +1385,7 @@ class SXTOOLS2_generate(object):
         count = len(colors)//4
 
         # No mask, colors pass through
-        if (masklayer is None) and (maskcolor is None) and (sxglobals.mode == 'OBJECT'):
+        if (masklayer is None) and (maskcolor is None) and (sxglobals.mode != 'EDIT'):
             if as_tuple:
                 rgba = [None] * count
                 for i in range(count):
@@ -1441,7 +1441,7 @@ class SXTOOLS2_generate(object):
 
 
     def color_list(self, obj, color, masklayer=None, as_tuple=False):
-        count = len(obj.data.color_attributes[0].data)
+        count = len(obj.data.loops)
         colors = [color[0], color[1], color[2], color[3]] * count
         return self.mask_list(obj, colors, masklayer, as_tuple=as_tuple)
 
@@ -1692,9 +1692,10 @@ class SXTOOLS2_layers(object):
 
         for obj in objs:
             utils.sort_stack_indices(obj)
-            for i, layer in enumerate(obj.sx2layers):
-                if layer.index == bottom_layer_index:
-                    obj.sx2.selectedlayer = i
+
+        for i, layer in enumerate(objs[0].sx2layers):
+            if layer.index == bottom_layer_index:
+                objs[0].sx2.selectedlayer = i
 
 
     # wrapper for low-level functions, always returns layerdata in RGBA
@@ -3426,6 +3427,13 @@ class SXTOOLS2_export(object):
 
 
     def validate_categories(self, objs):
+        cmp_objs = []
+        for obj in objs:
+            if ('Composite' in obj.sx2layers.keys()) and (obj.sx2layers['Composite'].layer_type == 'CMP'):
+                cmp_objs.append(obj)
+        if len(cmp_objs) > 0:
+            layers.del_layer(cmp_objs, 'Composite')
+
         for obj in objs:
             if obj.sx2.category != 'DEFAULT':
                 category_data = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]
@@ -4872,6 +4880,12 @@ class SXTOOLS2_setup(object):
                 for uv_layer_name in remove_uv_list:
                     obj.data.uv_layers.remove(obj.data.uv_layers[uv_layer_name])
 
+            # Clear object properties
+            obj.sx2.selectedlayer = 0
+            obj.sx2.layercount = 0
+            obj.sx2.shadingmode = 'FULL'
+            obj.sx2.category = 'DEFAULT'
+
         # Clear SX2 Materials
         sx_mats = []
         for mat in bpy.data.materials:
@@ -4902,7 +4916,7 @@ class SXTOOLS2_setup(object):
         sxglobals.curvature_update = False
         sxglobals.hsl_update = False
         sxglobals.mat_update = False
-        sxglobals.mode = None
+        sxglobals.mode = 'OBJECT'
         sxglobals.mode_id = None
 
         sxglobals.layer_update_in_progress = False
@@ -5098,33 +5112,27 @@ def update_material_layer(self, context, index):
 
 # With multi-object selection, this requires identical layersets
 def update_selected_layer(self, context):
-    objs = mesh_selection_validator(self, context)
-    for obj in objs:
-        if len(obj.sx2layers) > 0:
-            obj.data.attributes.active_color = obj.data.attributes[obj.sx2layers[obj.sx2.selectedlayer].color_attribute]
+    if (not sxglobals.magic_in_progress) and (not bpy.app.background):
+        objs = mesh_selection_validator(self, context)
+        for obj in objs:
+            if len(obj.sx2layers) > 0:
+                obj.data.attributes.active_color = obj.data.attributes[obj.sx2layers[obj.sx2.selectedlayer].color_attribute]
 
-        # utils.sort_stack_indices(obj)
+        areas = bpy.context.workspace.screens[0].areas
+        shading_types = ['MATERIAL', 'RENDERED']  # 'WIREFRAME' 'SOLID' 'MATERIAL' 'RENDERED'
+        for area in areas:
+            for space in area.spaces:
+                if space.type == 'VIEW_3D':
+                    if space.shading.type not in shading_types:
+                        space.shading.type = 'MATERIAL'
 
-    areas = bpy.context.workspace.screens[0].areas
-    shading_types = ['MATERIAL', 'RENDERED']  # 'WIREFRAME' 'SOLID' 'MATERIAL' 'RENDERED'
-    for area in areas:
-        for space in area.spaces:
-            if space.type == 'VIEW_3D':
-                if space.shading.type not in shading_types:
-                    space.shading.type = 'MATERIAL'
+        if objs[0].sx2.shadingmode != 'FULL':
+            setup.update_sx2material(context)
 
-    # print('magic:', sxglobals.magic_in_progress)
-    # print('refresh:', sxglobals.refresh_in_progress)
-    # print('hue:', sxglobals.hsl_update)
-    # print('layer:', sxglobals.layer_update_in_progress)
+        if 'SXToolMaterial' not in bpy.data.materials:
+            setup.create_sxtoolmaterial()
 
-    if objs[0].sx2.shadingmode != 'FULL':
-        setup.update_sx2material(context)
-
-    if 'SXToolMaterial' not in bpy.data.materials:
-        setup.create_sxtoolmaterial()
-
-    refresh_swatches(self, context)
+        refresh_swatches(self, context)
 
 
 def update_modifiers(self, context, prop):
