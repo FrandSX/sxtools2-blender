@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 3, 6),
+    'version': (1, 4, 0),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -226,11 +226,6 @@ class SXTOOLS2_files(object):
             org_loc = group.location.copy()
             group.location = (0, 0, 0)
 
-            sel_array = utils.find_children(group, recursive=True)
-            for sel in sel_array:
-                sel.select_set(True)
-            group.select_set(False)
-
             # Check for mesh colliders
             collider_array = []
             if 'SXColliders' in bpy.data.collections:
@@ -244,6 +239,15 @@ class SXTOOLS2_files(object):
                     if collider_id in collider.name:
                         collider_array.append(collider)
                         collider['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
+
+                child_array = utils.find_children(group, recursive=True)
+                sel_array = [child for child in child_array if child.name not in colliders.keys()]
+            else:
+                sel_array = utils.find_children(group, recursive=True)
+
+            for sel in sel_array:
+                sel.select_set(True)
+            group.select_set(False)
 
             # Only groups with meshes and armatures as children are exported
             obj_array = []
@@ -279,7 +283,7 @@ class SXTOOLS2_files(object):
                 bpy.context.view_layer.objects.active = group
 
                 category = obj_array[0].sx2.category.lower()
-                print(f'Determining path: {obj_array[0].name} {category}')
+                print(f'Determining path: {group.name} {category}')
                 path = scene.exportfolder + category + os.path.sep
                 pathlib.Path(path).mkdir(exist_ok=True)
 
@@ -784,6 +788,33 @@ class SXTOOLS2_utils(object):
 
         ramp_dict['elements'] = tempColorArray
         return ramp_dict
+
+
+    # uses raycheck to calculate safe distance for shrinking mesh colliders
+    def find_safe_mesh_offset(self, obj):
+        bias = 0.0001
+
+        mesh = obj.data
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+
+        max_distances = []
+
+        for vert in bm.verts:
+            vert_loc = vert.co
+            inv_normal = -1.0 * vert.normal.normalized()
+            bias_vec = inv_normal * bias
+            ray_origin = (vert_loc[0] + bias_vec[0], vert_loc[1] + bias_vec[1], vert_loc[2] + bias_vec[2])
+
+            hit, loc, normal, index = obj.ray_cast(ray_origin, inv_normal)
+
+            if hit:
+                dist = Vector((loc[0] - vert_loc[0], loc[1] - vert_loc[1], loc[2] - vert_loc[2])).length
+                if dist > 0.0:
+                    max_distances.append(dist)
+
+        bm.free
+        return min(max_distances)
 
 
     def __del__(self):
@@ -2700,44 +2731,44 @@ class SXTOOLS2_export(object):
             mode = objs[0].mode
             objs = objs[:]
 
-            sepObjs = []
+            sep_objs = []
             for obj in objs:
                 if obj.sx2.smartseparate:
                     if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror:
-                        sepObjs.append(obj)
+                        sep_objs.append(obj)
 
             if 'ExportObjects' not in bpy.data.collections:
-                exportObjects = bpy.data.collections.new('ExportObjects')
+                export_objects = bpy.data.collections.new('ExportObjects')
             else:
-                exportObjects = bpy.data.collections['ExportObjects']
+                export_objects = bpy.data.collections['ExportObjects']
 
             if 'SourceObjects' not in bpy.data.collections:
-                sourceObjects = bpy.data.collections.new('SourceObjects')
+                source_objects = bpy.data.collections.new('SourceObjects')
             else:
-                sourceObjects = bpy.data.collections['SourceObjects']
+                source_objects = bpy.data.collections['SourceObjects']
 
-            if len(sepObjs) > 0:
-                for obj in sepObjs:
-                    if (scene.exportquality == 'LO') and (obj.name not in sourceObjects.objects.keys()) and (obj.name not in exportObjects.objects.keys()) and (obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror):
-                        sourceObjects.objects.link(obj)
+            if len(sep_objs) > 0:
+                for obj in sep_objs:
+                    if (scene.exportquality == 'LO') and (obj.name not in source_objects.objects.keys()) and (obj.name not in export_objects.objects.keys()) and (obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror):
+                        source_objects.objects.link(obj)
 
-            separatedObjs = []
-            if len(sepObjs) > 0:
+            separated_objs = []
+            if len(sep_objs) > 0:
                 active = view_layer.objects.active
                 bpy.ops.object.select_all(action='DESELECT')
-                for obj in sepObjs:
+                for obj in sep_objs:
                     obj.select_set(True)
                     view_layer.objects.active = obj
-                    refObjs = view_layer.objects[:]
+                    ref_objs = view_layer.objects[:]
                     orgname = obj.name[:]
                     xmirror = obj.sx2.xmirror
                     ymirror = obj.sx2.ymirror
                     zmirror = obj.sx2.zmirror
 
                     if obj.modifiers['sxMirror'].mirror_object is not None:
-                        refLoc = obj.modifiers['sxMirror'].mirror_object.matrix_world.to_translation()
+                        ref_loc = obj.modifiers['sxMirror'].mirror_object.matrix_world.to_translation()
                     else:
-                        refLoc = obj.matrix_world.to_translation()
+                        ref_loc = obj.matrix_world.to_translation()
 
                     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
                     bpy.ops.object.modifier_apply(modifier='sxMirror')
@@ -2747,46 +2778,46 @@ class SXTOOLS2_export(object):
                     bpy.ops.mesh.separate(type='LOOSE')
 
                     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                    newObjArray = [view_layer.objects[orgname], ]
+                    new_obj_array = [view_layer.objects[orgname], ]
 
-                    for vlObj in view_layer.objects:
-                        if vlObj not in refObjs:
-                            newObjArray.append(vlObj)
-                            exportObjects.objects.link(vlObj)
+                    for vl_obj in view_layer.objects:
+                        if vl_obj not in ref_objs:
+                            new_obj_array.append(vl_obj)
+                            export_objects.objects.link(vl_obj)
 
-                    if len(newObjArray) > 1:
-                        export.set_pivots(newObjArray)
+                    if len(new_obj_array) > 1:
+                        export.set_pivots(new_obj_array)
                         suffixDict = {}
-                        for newObj in newObjArray:
-                            view_layer.objects.active = newObj
+                        for new_obj in new_obj_array:
+                            view_layer.objects.active = new_obj
                             zstring = ystring = xstring = ''
-                            xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([newObj, ])
+                            xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([new_obj, ])
 
                             # 1) compare bounding box max to reference pivot
                             # 2) flip result with xor according to SX Tools prefs
                             # 3) look up matching sub-string from mirror_pairs
                             if zmirror:
-                                zstring = mirror_pairs[0][int(zmax < refLoc[2])]
+                                zstring = mirror_pairs[0][int(zmax < ref_loc[2])]
                             if ymirror:
-                                ystring = mirror_pairs[1][int((ymax < refLoc[1]) ^ prefs.flipsmarty)]
+                                ystring = mirror_pairs[1][int((ymax < ref_loc[1]) ^ prefs.flipsmarty)]
                             if xmirror:
-                                xstring = mirror_pairs[2][int((xmax < refLoc[0]) ^ prefs.flipsmartx)]
+                                xstring = mirror_pairs[2][int((xmax < ref_loc[0]) ^ prefs.flipsmartx)]
 
-                            if len(newObjArray) > 2 ** (zmirror + ymirror + xmirror):
+                            if len(new_obj_array) > 2 ** (zmirror + ymirror + xmirror):
                                 if zstring+ystring+xstring not in suffixDict:
                                     suffixDict[zstring+ystring+xstring] = 0
                                 else:
                                     suffixDict[zstring+ystring+xstring] += 1
-                                newObj.name = orgname + str(suffixDict[zstring+ystring+xstring]) + zstring + ystring + xstring
+                                new_obj.name = orgname + str(suffixDict[zstring+ystring+xstring]) + zstring + ystring + xstring
                             else:
-                                newObj.name = orgname + zstring + ystring + xstring
+                                new_obj.name = orgname + zstring + ystring + xstring
 
-                            newObj.data.name = newObj.name + '_mesh'
+                            new_obj.data.name = new_obj.name + '_mesh'
 
-                    separatedObjs.extend(newObjArray)
+                    separated_objs.extend(new_obj_array)
 
                     # Parent new children to their matching parents
-                    for obj in separatedObjs:
+                    for obj in separated_objs:
                         for mirror_pair in mirror_pairs:
                             if mirror_pair[0] in obj.name:
                                 if mirror_pair[1] in obj.parent.name:
@@ -2796,7 +2827,7 @@ class SXTOOLS2_export(object):
 
                 view_layer.objects.active = active
             bpy.ops.object.mode_set(mode=mode)
-            return separatedObjs
+            return separated_objs
 
 
     # LOD levels:
@@ -2812,8 +2843,8 @@ class SXTOOLS2_export(object):
     def generate_lods(self, objs):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         orgObjArray = objs[:]
-        nameArray = []
-        newObjArray = []
+        name_array = []
+        new_obj_array = []
         activeObj = bpy.context.view_layer.objects.active
         scene = bpy.context.scene.sx2
 
@@ -2822,18 +2853,18 @@ class SXTOOLS2_export(object):
 
         # Make sure source and export Collections exist
         if 'ExportObjects' not in bpy.data.collections:
-            exportObjects = bpy.data.collections.new('ExportObjects')
+            export_objects = bpy.data.collections.new('ExportObjects')
         else:
-            exportObjects = bpy.data.collections['ExportObjects']
+            export_objects = bpy.data.collections['ExportObjects']
 
         if 'SourceObjects' not in bpy.data.collections:
-            sourceObjects = bpy.data.collections.new('SourceObjects')
+            source_objects = bpy.data.collections.new('SourceObjects')
         else:
-            sourceObjects = bpy.data.collections['SourceObjects']
+            source_objects = bpy.data.collections['SourceObjects']
 
         lodCount = 1
         for obj in orgObjArray:
-            nameArray.append((obj.name[:], obj.data.name[:]))
+            name_array.append((obj.name[:], obj.data.name[:]))
             if obj.sx2.subdivisionlevel >= 1:
                 lodCount = min(3, obj.sx2.subdivisionlevel + 1)
             elif (obj.sx2.subdivisionlevel == 0) and ((obj.sx2.bevelsegments) > 0):
@@ -2846,63 +2877,162 @@ class SXTOOLS2_export(object):
                     for obj in orgObjArray:
                         obj.data.name = obj.data.name + '_LOD' + str(i)
                         obj.name = obj.name + '_LOD' + str(i)
-                        newObjArray.append(obj)
+                        new_obj_array.append(obj)
                         if scene.exportquality == 'LO':
-                            sourceObjects.objects.link(obj)
+                            source_objects.objects.link(obj)
                 else:
                     for j, obj in enumerate(orgObjArray):
-                        newObj = obj.copy()
-                        newObj.data = obj.data.copy()
+                        new_obj = obj.copy()
+                        new_obj.data = obj.data.copy()
 
-                        newObj.data.name = nameArray[j][1] + '_LOD' + str(i)
-                        newObj.name = nameArray[j][0] + '_LOD' + str(i)
+                        new_obj.data.name = name_array[j][1] + '_LOD' + str(i)
+                        new_obj.name = name_array[j][0] + '_LOD' + str(i)
 
-                        newObj.location += Vector((0.0, 0.0, (bbxheight+prefs.lodoffset)*i))
+                        new_obj.location += Vector((0.0, 0.0, (bbxheight+prefs.lodoffset)*i))
 
-                        bpy.context.scene.collection.objects.link(newObj)
-                        exportObjects.objects.link(newObj)
+                        bpy.context.scene.collection.objects.link(new_obj)
+                        export_objects.objects.link(new_obj)
 
-                        newObj.parent = bpy.context.view_layer.objects[obj.parent.name]
+                        new_obj.parent = bpy.context.view_layer.objects[obj.parent.name]
 
                         bpy.ops.object.select_all(action='DESELECT')
-                        newObj.select_set(True)
-                        bpy.context.view_layer.objects.active = newObj
+                        new_obj.select_set(True)
+                        bpy.context.view_layer.objects.active = new_obj
 
                         if i == 1:
                             if obj.sx2.subdivisionlevel > 0:
-                                newObj.sx2.subdivisionlevel = 1
+                                new_obj.sx2.subdivisionlevel = 1
                                 if obj.sx2.bevelsegments > 0:
-                                    newObj.sx2.bevelsegments = obj.sx2.bevelsegments
+                                    new_obj.sx2.bevelsegments = obj.sx2.bevelsegments
                                 else:
-                                    newObj.sx2.bevelsegments = 0
+                                    new_obj.sx2.bevelsegments = 0
                             elif obj.sx2.subdivisionlevel == 0:
-                                newObj.sx2.subdivisionlevel = 0
-                                newObj.sx2.bevelsegments = 0
-                                newObj.sx2.weldthreshold = 0
+                                new_obj.sx2.subdivisionlevel = 0
+                                new_obj.sx2.bevelsegments = 0
+                                new_obj.sx2.weldthreshold = 0
                         else:
-                            newObj.sx2.subdivisionlevel = 0
-                            newObj.sx2.bevelsegments = 0
-                            newObj.sx2.weldthreshold = 0
+                            new_obj.sx2.subdivisionlevel = 0
+                            new_obj.sx2.bevelsegments = 0
+                            new_obj.sx2.weldthreshold = 0
 
-                        newObjArray.append(newObj)
+                        new_obj_array.append(new_obj)
 
         # activeObj.select_set(True)
         bpy.context.view_layer.objects.active = activeObj
 
-        return newObjArray
+        return new_obj_array
+
+
+    # Multi-pass convex hull generator, latter convex hull generation
+    # necessary to guarantee convex shape after shrink and weld
+    def generate_hulls(self, objs):
+        if len(objs) > 0:
+            hull_objs = []
+            for obj in objs:
+                if obj.sx2.generatehulls:
+                    hull_objs.append(obj)
+            if len(hull_objs) > 0:
+                org_objs = hull_objs[:]
+                new_objs = []
+                active_obj = bpy.context.view_layer.objects.active
+
+                if 'SXColliders' not in bpy.data.collections:
+                    colliders = bpy.data.collections.new('SXColliders')
+                else:
+                    colliders = bpy.data.collections['SXColliders']
+
+                if colliders.name not in bpy.context.scene.collection.children:
+                    bpy.context.scene.collection.children.link(colliders)
+
+                # Create hull meshes
+                for obj in org_objs:
+                    new_obj = obj.copy()
+                    new_obj.data = obj.data.copy()
+
+                    new_obj.data.name = obj.name[:] + '_hull_mesh'
+                    new_obj.name = obj.name[:] + '_hull'
+
+                    new_obj.sx2.weldthreshold = 0.0
+                    new_obj.sx2.decimation = 0.0
+
+                    bpy.context.scene.collection.objects.link(new_obj)
+                    bpy.context.view_layer.objects.active = new_obj
+                    colliders.objects.link(new_obj)
+
+                    new_obj.parent = bpy.context.view_layer.objects[obj.parent.name]
+                    new_objs.append(new_obj)
+
+                # Clear existing modifier stacks
+                modifiers.apply_modifiers(new_objs)
+                bpy.ops.object.select_all(action='DESELECT')
+
+                for new_obj in new_objs:
+                    new_obj.select_set(True)
+                    bpy.context.view_layer.objects.active = new_obj
+                    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+                    bpy.ops.mesh.select_all(action='SELECT')
+                    bpy.ops.mesh.convex_hull(use_existing_faces=True, face_threshold=math.radians(15.0), shape_threshold=math.radians(15.0))
+
+                    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                    new_obj.modifiers.new(type='DECIMATE', name='hullDecimate')
+                    new_obj.modifiers['hullDecimate'].show_viewport = True
+                    new_obj.modifiers['hullDecimate'].show_expanded = False
+                    new_obj.modifiers['hullDecimate'].decimate_type = 'DISSOLVE'
+                    new_obj.modifiers['hullDecimate'].angle_limit = math.radians(0.0)
+                    new_obj.modifiers['hullDecimate'].use_dissolve_boundaries = False
+
+                    new_obj.modifiers.new(type='TRIANGULATE', name='hullTriangulate')
+
+                    # Decimate until below face count limit
+                    angle = 0.0
+                    while (new_obj.modifiers['hullDecimate'].face_count > new_obj.sx2.hullfacemax) and (angle < 180.0):
+                        angle += 0.1
+                        new_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
+                        new_obj.modifiers.update()
+                        bpy.context.view_layer.update()
+
+                    bpy.ops.object.modifier_apply(modifier='hullDecimate')
+                    bpy.ops.object.modifier_apply(modifier='hullTriangulate')
+
+                    # Shrink hull according to factor
+                    if new_obj.sx2.collideroffsetfactor > 0.0:
+                        offset = -1.0 * new_obj.sx2.collideroffsetfactor * utils.find_safe_mesh_offset(new_obj)
+                        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+                        bpy.ops.mesh.select_all(action='SELECT')
+                        bpy.ops.transform.shrink_fatten(value=offset)
+
+                        # Weld after shrink to clean up clumped verts
+                        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                        new_obj.modifiers.new(type='WELD', name='hullWeld')
+                        new_obj.modifiers["hullWeld"].merge_threshold = min(new_obj.dimensions) * 0.1
+                        bpy.ops.object.modifier_apply(modifier='hullWeld')
+
+                    # Final convex conversion
+                    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+                    bpy.ops.mesh.select_all(action='SELECT')
+                    bpy.ops.mesh.convex_hull(use_existing_faces=True, face_threshold=math.radians(15.0), shape_threshold=math.radians(15.0))
+                    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+
+                    # Clear sx2layers
+                    new_obj.sx2layers.clear()
+                    new_obj.select_set(False)
+
+                for obj in org_objs:
+                    obj.select_set(True)
+                bpy.context.view_layer.objects.active = active_obj
 
 
     def generate_mesh_colliders(self, objs):
         org_objs = objs[:]
-        nameArray = []
+        name_array = []
         new_objs = []
         active_obj = bpy.context.view_layer.objects.active
         scene = bpy.context.scene.sx2
 
         if 'ExportObjects' not in bpy.data.collections:
-            exportObjects = bpy.data.collections.new('ExportObjects')
+            export_objects = bpy.data.collections.new('ExportObjects')
         else:
-            exportObjects = bpy.data.collections['ExportObjects']
+            export_objects = bpy.data.collections['ExportObjects']
 
         if 'SXColliders' not in bpy.data.collections:
             colliders = bpy.data.collections.new('SXColliders')
@@ -2910,31 +3040,30 @@ class SXTOOLS2_export(object):
             colliders = bpy.data.collections['SXColliders']
 
         if 'CollisionSourceObjects' not in bpy.data.collections:
-            collisionSourceObjects = bpy.data.collections.new('CollisionSourceObjects')
+            collision_source_objs = bpy.data.collections.new('CollisionSourceObjects')
         else:
-            collisionSourceObjects = bpy.data.collections['CollisionSourceObjects']
+            collision_source_objs = bpy.data.collections['CollisionSourceObjects']
 
         if colliders.name not in bpy.context.scene.collection.children:
             bpy.context.scene.collection.children.link(colliders)
 
         for obj in org_objs:
-            nameArray.append((obj.name[:], obj.data.name[:]))
+            name_array.append((obj.name[:], obj.data.name[:]))
 
         for j, obj in enumerate(org_objs):
-            newObj = obj.copy()
-            newObj.data = obj.data.copy()
+            new_obj = obj.copy()
+            new_obj.data = obj.data.copy()
 
-            newObj.data.name = nameArray[j][1] + '_collision'
-            newObj.name = nameArray[j][0] + '_collision'
+            new_obj.data.name = name_array[j][1] + '_collision'
+            new_obj.name = name_array[j][0] + '_collision'
 
-            bpy.context.scene.collection.objects.link(newObj)
-            collisionSourceObjects.objects.link(newObj)
+            bpy.context.scene.collection.objects.link(new_obj)
+            collision_source_objs.objects.link(new_obj)
 
-            newObj.parent = bpy.context.view_layer.objects[obj.parent.name]
+            new_obj.parent = bpy.context.view_layer.objects[obj.parent.name]
+            new_obj.sx2.subdivisionlevel = scene.sourcesubdivision
 
-            newObj.sx2.subdivisionlevel = scene.sourcesubdivision
-
-            new_objs.append(newObj)
+            new_objs.append(new_obj)
 
         tools.apply_modifiers(new_objs)
 
@@ -2952,7 +3081,7 @@ class SXTOOLS2_export(object):
 
         bpy.ops.object.vhacd('EXEC_DEFAULT', remove_doubles=scene.removedoubles, apply_transforms='NONE', resolution=scene.voxelresolution, concavity=scene.maxconcavity, planeDownsampling=scene.planedownsampling, convexhullDownsampling=scene.hulldownsampling, alpha=scene.collalpha, beta=scene.collbeta, maxHulls=scene.maxhulls, pca=False, projectHullVertices=True, mode='VOXEL', maxNumVerticesPerCH=scene.maxvertsperhull, minVolumePerCH=scene.minvolumeperhull)
 
-        for src_obj in collisionSourceObjects.objects:
+        for src_obj in collision_source_objs.objects:
             bpy.data.objects.remove(src_obj, do_unlink=True)
 
         bpy.ops.object.select_all(action='DESELECT')
@@ -2997,14 +3126,19 @@ class SXTOOLS2_export(object):
 
     def remove_exports(self):
         if 'ExportObjects' in bpy.data.collections:
-            exportObjects = bpy.data.collections['ExportObjects'].objects
-            for obj in exportObjects:
+            export_objects = bpy.data.collections['ExportObjects'].objects
+            for obj in export_objects:
+                bpy.data.objects.remove(obj, do_unlink=True)
+
+        if 'SXColliders' in bpy.data.collections:
+            collider_objects = bpy.data.collections['SXColliders'].objects
+            for obj in collider_objects:
                 bpy.data.objects.remove(obj, do_unlink=True)
 
         if 'SourceObjects' in bpy.data.collections:
-            sourceObjects = bpy.data.collections['SourceObjects'].objects
+            source_objects = bpy.data.collections['SourceObjects'].objects
             tags = sxglobals.keywords
-            for obj in sourceObjects:
+            for obj in source_objects:
                 if obj.type == 'MESH':
                     name = obj.name[:]
                     dataname = obj.data.name[:]
@@ -3022,7 +3156,7 @@ class SXTOOLS2_export(object):
                     obj.name = name
 
                 obj.hide_viewport = False
-                sourceObjects.unlink(obj)
+                source_objects.unlink(obj)
 
 
     def reset_uv_layers(self, objs):
@@ -3125,6 +3259,8 @@ class SXTOOLS2_export(object):
 
         if sxObjects.name not in bpy.context.scene.collection.children:
             bpy.context.scene.collection.children.link(sxObjects)
+
+        return sxObjects.all_objects
 
 
     def group_objects(self, objs, origin=False):
@@ -3443,11 +3579,11 @@ class SXTOOLS2_export(object):
                             print(f'SX Tools Error: {obj.name} {layer.name} does not match the selected category')
                             message_box(obj.name + ' ' + layer.name + ' does not match the selected category')
                             return False
-                    return True
                 else:
                     print(f'SX Tools Error: {obj.name} layers do not match the selected category')
                     message_box(obj.name + ' layers do not match the selected category')
-                    return False      
+                    return False
+        return True
 
 
     def __del__(self):
@@ -3473,7 +3609,7 @@ class SXTOOLS2_magic(object):
         then = time.perf_counter()
         scene = bpy.context.scene.sx2
         viewlayer = bpy.context.view_layer
-        orgObjNames = {}
+        org_obj_names = {}
 
         org_toolmode = scene.toolmode
         org_toolopacity = scene.toolopacity
@@ -3495,14 +3631,14 @@ class SXTOOLS2_magic(object):
 
         # Make sure export and source Collections exist
         if 'ExportObjects' not in bpy.data.collections:
-            exportObjects = bpy.data.collections.new('ExportObjects')
+            export_objects = bpy.data.collections.new('ExportObjects')
         else:
-            exportObjects = bpy.data.collections['ExportObjects']
+            export_objects = bpy.data.collections['ExportObjects']
 
         if 'SourceObjects' not in bpy.data.collections:
-            sourceObjects = bpy.data.collections.new('SourceObjects')
+            source_objects = bpy.data.collections.new('SourceObjects')
         else:
-            sourceObjects = bpy.data.collections['SourceObjects']
+            source_objects = bpy.data.collections['SourceObjects']
 
         # Make sure objects are in groups
         for obj in objs:
@@ -3530,61 +3666,61 @@ class SXTOOLS2_magic(object):
 
         # Create high-poly bake meshes
         if scene.exportquality == 'HI':
-            newObjs = []
-            lodObjs = []
-            sepObjs = []
-            partObjs = []
+            new_objs = []
+            lod_objs = []
+            sep_objs = []
+            part_objs = []
 
             for obj in objs:
                 if obj.sx2.smartseparate:
                     if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror:
-                        sepObjs.append(obj)
+                        sep_objs.append(obj)
 
-            if len(sepObjs) > 0:
-                partObjs = export.smart_separate(sepObjs)
-                for obj in partObjs:
+            if len(sep_objs) > 0:
+                part_objs = export.smart_separate(sep_objs)
+                for obj in part_objs:
                     if obj not in objs:
                         objs.append(obj)
 
             groups = utils.find_groups(objs)
             for group in groups:
-                orgGroup = bpy.data.objects.new('empty', None)
-                bpy.context.scene.collection.objects.link(orgGroup)
-                orgGroup.empty_display_size = 2
-                orgGroup.empty_display_type = 'PLAIN_AXES'
-                orgGroup.location = group.location
-                orgGroup.name = group.name + '_org'
-                orgGroup.hide_viewport = True
-                sourceObjects.objects.link(orgGroup)
-                exportObjects.objects.link(group)
+                org_group = bpy.data.objects.new('empty', None)
+                bpy.context.scene.collection.objects.link(org_group)
+                org_group.empty_display_size = 2
+                org_group.empty_display_type = 'PLAIN_AXES'
+                org_group.location = group.location
+                org_group.name = group.name + '_org'
+                org_group.hide_viewport = True
+                source_objects.objects.link(org_group)
+                export_objects.objects.link(group)
 
             for obj in objs:
-                if obj.name not in sourceObjects.objects:
-                    sourceObjects.objects.link(obj)
-                orgObjNames[obj] = [obj.name, obj.data.name][:]
+                if obj.name not in source_objects.objects:
+                    source_objects.objects.link(obj)
+                org_obj_names[obj] = [obj.name, obj.data.name][:]
                 obj.data.name = obj.data.name + '_org'
                 obj.name = obj.name + '_org'
 
-                newObj = obj.copy()
-                newObj.data = obj.data.copy()
-                newObj.name = orgObjNames[obj][0]
-                newObj.data.name = orgObjNames[obj][1]
-                bpy.context.scene.collection.objects.link(newObj)
-                exportObjects.objects.link(newObj)
+                new_obj = obj.copy()
+                new_obj.data = obj.data.copy()
+                new_obj.name = org_obj_names[obj][0]
+                new_obj.data.name = org_obj_names[obj][1]
+                bpy.context.scene.collection.objects.link(new_obj)
+                export_objects.objects.link(new_obj)
 
                 if obj.sx2.lodmeshes:
-                    lodObjs.append(newObj)
+                    lod_objs.append(new_obj)
                 else:
-                    newObjs.append(newObj)
+                    new_objs.append(new_obj)
 
                 obj.parent = viewlayer.objects[obj.parent.name + '_org']
 
-            if len(lodObjs) > 0:
-                newObjArray = export.generate_lods(lodObjs)
-                for newObj in newObjArray:
-                    newObjs.append(newObj)
+            if len(lod_objs) > 0:
+                new_obj_array = export.generate_lods(lod_objs)
+                for new_obj in new_obj_array:
+                    new_objs.append(new_obj)
 
-            objs = newObjs
+            objs = new_objs
 
         # Place pivots
         export.set_pivots(objs, force=True)
@@ -3611,28 +3747,28 @@ class SXTOOLS2_magic(object):
         # Mandatory to update visibility?
         viewlayer.update()
 
-        categoryList = list(sxglobals.category_dict.keys())
+        category_list = list(sxglobals.category_dict.keys())
         categories = []
-        for category in categoryList:
+        for category in category_list:
             categories.append(category.replace(" ", "_").upper())
         for category in categories:
-            categoryObjs = []
+            category_objs = []
             for obj in objs:
                 if obj.sx2.category == category:
-                    categoryObjs.append(obj)
+                    category_objs.append(obj)
 
-            if len(categoryObjs) > 0:
-                groupList = utils.find_groups(categoryObjs)
+            if len(category_objs) > 0:
+                groupList = utils.find_groups(category_objs)
                 for group in groupList:
                     createLODs = False
-                    groupObjs = utils.find_children(group, categoryObjs)
+                    group_objs = utils.find_children(group, category_objs)
                     filter_list = []
-                    for groupObj in groupObjs:
-                        if groupObj.type == 'MESH':
-                            filter_list.append(groupObj)
-                    groupObjs = filter_list
-                    viewlayer.objects.active = groupObjs[0]
-                    for obj in groupObjs:
+                    for group_obj in group_objs:
+                        if group_obj.type == 'MESH':
+                            filter_list.append(group_obj)
+                    group_objs = filter_list
+                    viewlayer.objects.active = group_objs[0]
+                    for obj in group_objs:
                         if obj.sx2.lodmeshes:
                             createLODs = True
                         obj.hide_viewport = False
@@ -3640,18 +3776,18 @@ class SXTOOLS2_magic(object):
 
                     if category == 'DEFAULT':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(groupObjs)
-                        self.process_default(groupObjs)
+                            tools.apply_modifiers(group_objs)
+                        self.process_default(group_objs)
                     if category == 'STATIC':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(groupObjs)
-                        self.process_static(groupObjs)
+                            tools.apply_modifiers(group_objs)
+                        self.process_static(group_objs)
                     elif category == 'PALETTED':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(groupObjs)
-                        self.process_paletted(groupObjs)
+                            tools.apply_modifiers(group_objs)
+                        self.process_paletted(group_objs)
                     elif category == 'VEHICLES':
-                        for obj in groupObjs:
+                        for obj in group_objs:
                             if ('wheel' in obj.name) or ('tire' in obj.name):
                                 scene.occlusionblend = 0.0
                             else:
@@ -3659,44 +3795,44 @@ class SXTOOLS2_magic(object):
                             if obj.name.endswith('_roof') or obj.name.endswith('_frame') or obj.name.endswith('_dash') or obj.name.endswith('_hood') or ('bumper' in obj.name):
                                 obj.modifiers['sxDecimate2'].use_symmetry = True
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(groupObjs)
+                            tools.apply_modifiers(group_objs)
                         if (scene.exportquality == 'HI') and (createLODs is True):
                             for i in range(3):
-                                lodObjs = []
-                                for obj in groupObjs:
+                                lod_objs = []
+                                for obj in group_objs:
                                     if '_LOD'+str(i) in obj.name:
-                                        lodObjs.append(obj)
+                                        lod_objs.append(obj)
                                         # obj.select_set(True)
                                         obj.hide_viewport = False
                                     else:
                                         # obj.select_set(False)
                                         obj.hide_viewport = True
-                                viewlayer.objects.active = lodObjs[0]
-                                self.process_vehicles(lodObjs)
+                                viewlayer.objects.active = lod_objs[0]
+                                self.process_vehicles(lod_objs)
                         else:
-                            self.process_vehicles(groupObjs)
+                            self.process_vehicles(group_objs)
                     elif category == 'BUILDINGS':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(groupObjs)
-                        self.process_buildings(groupObjs)
+                            tools.apply_modifiers(group_objs)
+                        self.process_buildings(group_objs)
                     elif category == 'TREES':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(groupObjs)
-                        self.process_trees(groupObjs)
+                            tools.apply_modifiers(group_objs)
+                        self.process_trees(group_objs)
                     elif category == 'CHARACTERS':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(groupObjs)
-                        self.process_characters(groupObjs)
+                            tools.apply_modifiers(group_objs)
+                        self.process_characters(group_objs)
                     elif category == 'ROADTILES':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(groupObjs)
-                        self.process_roadtiles(groupObjs)
+                            tools.apply_modifiers(group_objs)
+                        self.process_roadtiles(group_objs)
                     else:
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(groupObjs)
-                        self.process_default(groupObjs)
+                            tools.apply_modifiers(group_objs)
+                        self.process_default(group_objs)
 
-                    for obj in groupObjs:
+                    for obj in group_objs:
                         obj.select_set(False)
                         obj.hide_viewport = True
 
@@ -3711,20 +3847,20 @@ class SXTOOLS2_magic(object):
 
         # LOD mesh generation for low-detail
         if scene.exportquality == 'LO':
-            nonLodObjs = []
+            non_lod_objs = []
             for obj in objs:
                 if obj.sx2.lodmeshes is True:
                     if '_LOD' not in obj.name:
-                        nonLodObjs.append(obj)
+                        non_lod_objs.append(obj)
                 else:
                     obj.select_set(True)
 
-            if len(nonLodObjs) > 0:
-                lodObjs = export.generate_lods(nonLodObjs)
+            if len(non_lod_objs) > 0:
+                lod_objs = export.generate_lods(non_lod_objs)
                 bpy.ops.object.select_all(action='DESELECT')
-                for obj in nonLodObjs:
+                for obj in non_lod_objs:
                     obj.select_set(True)
-                for obj in lodObjs:
+                for obj in lod_objs:
                     obj.select_set(True)
 
         if scene.exportquality == 'HI':
@@ -4808,7 +4944,7 @@ class SXTOOLS2_setup(object):
             # Get all objects in the scene with sx2 data
             sx2_objs = []
             for obj in context.view_layer.objects:
-                if (obj.type == 'MESH') and ('sx2layers' in obj.keys()):
+                if (obj is not None) and (obj.type == 'MESH') and ('sx2layers' in obj.keys()):
                     sx2_objs.append(obj)
 
             sx2_objs = list(set(sx2_objs))
@@ -4833,7 +4969,6 @@ class SXTOOLS2_setup(object):
 
             if len(sx_mats) > 0:
                 for mat in sx_mats:
-                    mat.user_clear()
                     bpy.data.materials.remove(mat, do_unlink=True)
 
             bpy.context.view_layer.update()
@@ -4900,7 +5035,6 @@ class SXTOOLS2_setup(object):
 
         if len(sx_mats) > 0:
             for mat in sx_mats:
-                mat.user_clear()
                 bpy.data.materials.remove(mat, do_unlink=True)
 
         if 'SXToolMaterial' in bpy.data.materials:
@@ -4954,7 +5088,9 @@ def start_modal():
 def mesh_selection_validator(self, context):
     mesh_objs = []
     for obj in context.view_layer.objects.selected:
-        if obj.type == 'MESH' and obj.hide_viewport is False:
+        if obj is None:
+            pass
+        elif (obj.type == 'MESH') and (obj.hide_viewport is False):
             mesh_objs.append(obj)
         elif obj.type == 'ARMATURE':
             all_children = utils.find_children(obj, recursive=True)
@@ -5570,7 +5706,7 @@ def export_validator(self, context):
             obj.select_set(True)
 
         bpy.context.view_layer.update()
-        # validate.validate_objects(objs)
+        export.validate_objects(objs)
         root_group.select_set(True)
 
         export.create_sxcollection()
@@ -6009,6 +6145,19 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
             ('PAR', 'Parent', '')],
         default='OFF',
         update=lambda self, context: update_obj_props(self, context, 'pivotmode'))
+
+    generatehulls: bpy.props.BoolProperty(
+        name='Generate Convex Hulls',
+        default=False,
+        update=lambda self, context: update_obj_props(self, context, 'generatehulls'))
+
+    hullfacemax: bpy.props.IntProperty(
+        name='Max Hull Faces',
+        description='Max number of faces allowed in the convex hull',
+        min=4,
+        max=1000,
+        default=250,
+        update=lambda self, context: update_obj_props(self, context, 'hullfacemax'))
 
     collideroffset: bpy.props.BoolProperty(
         name='Collision Mesh Auto-Offset',
@@ -7335,8 +7484,16 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_separate.prop(sx2, 'smartseparate', text='', toggle=False)
 
                             row_lod = col_export.row(align=True)
-                            row_lod.label(text='Generate LOD Meshes:')
+                            row_lod.label(text='Generate LOD Meshes on Export:')
                             row_lod.prop(sx2, 'lodmeshes', text='', toggle=False)
+
+                            row_hulls = col_export.row(align=True)
+                            row_hulls.label(text='Generate Convex Hulls on Export:')
+                            row_hulls.prop(sx2, 'generatehulls', text='', toggle=False)
+
+                            if obj.sx2.generatehulls:
+                                col_export.prop(sx2, 'hullfacemax', text='Hull Face Count Limit')
+                                col_export.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Factor', slider=True)
 
                             if hasattr(bpy.types, bpy.ops.object.vhacd.idname()):
                                 col_export.separator()
@@ -7344,7 +7501,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 if scene.exportcolliders:
                                     box_colliders = box_export.box()
                                     col_collideroffset = box_colliders.column(align=True)
-                                    col_collideroffset.prop(sx2, 'collideroffset', text='Auto-Shrink Collision Mesh')
+                                    col_collideroffset.prop(sx2, 'collideroffset', text='Shrink Collision Mesh')
                                     col_collideroffset.prop(sx2, 'collideroffsetfactor', text='Shrink Factor', slider=True)
                                     row_colliders = box_colliders.row()
                                     row_colliders.prop(
@@ -7367,12 +7524,18 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                         col_colliders.prop(scene, 'minvolumeperhull', text='Min Volume Per Convex Hull', slider=True)
 
                             col_export.separator()
+                            remove_generated = False
+                            if ('ExportObjects' in bpy.data.collections.keys()) and (len(bpy.data.collections['ExportObjects'].objects) > 0):
+                                remove_generated = True
+                            if ('SXColliders' in bpy.data.collections.keys()) and (len(bpy.data.collections['SXColliders'].objects) > 0):
+                                remove_generated = True
+                            if remove_generated:
+                                col_export.operator('sx2.removeexports', text='Remove Generated Objects')
+                            col_export.separator()
                             if scene.shift:
                                 col_export.operator('sx2.revertobjects', text='Revert to Control Cages')
                             else:
                                 col_export.operator('sx2.macro', text='Magic Button')
-                            if ('ExportObjects' in bpy.data.collections.keys()) and (len(bpy.data.collections['ExportObjects'].objects) > 0):
-                                col_export.operator('sx2.removeexports', text='Remove LODs and Parts')
 
                     elif scene.exportmode == 'UTILS':
                         if scene.expandexport:
@@ -7402,6 +7565,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 col_debug = box_export.column(align=True)
                                 col_debug.operator('sx2.sxtosx2')
                                 col_debug.operator('sx2.smart_separate', text='Debug: Smart Separate sxMirror')
+                                col_debug.operator('sx2.generatehulls', text='Debug: Generate Convex Hulls')
                                 col_debug.operator('sx2.create_sxcollection', text='Debug: Update SXCollection')
                                 col_debug.operator('sx2.applymodifiers', text='Debug: Apply Modifiers')
                                 col_debug.operator('sx2.generatemasks', text='Debug: Generate Masks')
@@ -9004,8 +9168,7 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
         selected = None
 
         if ((event is not None) and (event.shift)) or bpy.app.background:
-            export.create_sxcollection()
-            selected = bpy.data.collections['SXObjects'].all_objects
+            selected = export.create_sxcollection()
         else:
             selected = mesh_selection_validator(self, context)
 
@@ -9015,6 +9178,14 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
             if context.scene.sx2.exportquality == 'LO':
                 export.smart_separate(selected)
                 export.create_sxcollection()
+
+                hull_objs = []
+                for group in groups:
+                    all_children = utils.find_children(group, recursive=True)
+                    for child in all_children:
+                        if child.type == 'MESH':
+                            hull_objs.append(child)
+                export.generate_hulls(hull_objs)
 
             # Make sure objects are in groups
             if ((event is not None) and (event.shift)) or bpy.app.background:
@@ -9038,6 +9209,7 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
 
             if prefs.removelods:
                 export.remove_exports()
+                setup.update_sx2material(context)
         return {'FINISHED'}
 
 
@@ -9056,9 +9228,12 @@ class SXTOOLS2_OT_exportgroups(bpy.types.Operator):
         group = context.view_layer.objects.selected[0]
         all_children = utils.find_children(group, recursive=True)
         export.smart_separate(all_children)
+        all_children = utils.find_children(group, recursive=True)
+        export.generate_hulls(all_children)
         files.export_files([group, ])
         if prefs.removelods:
             export.remove_exports()
+            setup.update_sx2material(context)
         return {'FINISHED'}
 
 
@@ -9095,6 +9270,7 @@ class SXTOOLS2_OT_removeexports(bpy.types.Operator):
 
     def invoke(self, context, event):
         export.remove_exports()
+        setup.update_sx2material(context)
         return {'FINISHED'}
 
 
@@ -9484,7 +9660,6 @@ class SXTOOLS2_OT_create_sxcollection(bpy.types.Operator):
 
     def invoke(self, context, event):
         export.create_sxcollection()
-
         return {'FINISHED'}
 
 
@@ -9502,7 +9677,6 @@ class SXTOOLS2_OT_smart_separate(bpy.types.Operator):
             if obj.sx2.smartseparate:
                 if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror:
                     sep_objs.append(obj)
-
         if len(sep_objs) > 0:
             for obj in sep_objs:
                 if obj.parent is None:
@@ -9512,6 +9686,27 @@ class SXTOOLS2_OT_smart_separate(bpy.types.Operator):
             export.smart_separate(sep_objs)
         else:
             message_box('No objects selected with Smart Separate enabled!')
+
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_generate_hulls(bpy.types.Operator):
+    bl_idname = 'sx2.generatehulls'
+    bl_label = 'Generate Hulls'
+    bl_description = 'Creates convex hull colliders'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        hull_objs = []
+        for obj in objs:
+            if obj.sx2.generatehulls:
+                hull_objs.append(obj)
+        if len(hull_objs) > 0:
+            export.generate_hulls(hull_objs)
+        else:
+            message_box('No objects selected with Generate Convex Hulls enabled!')
 
         return {'FINISHED'}
 
@@ -9905,6 +10100,7 @@ export_classes = (
     SXTOOLS2_OT_catalogue_remove,
     SXTOOLS2_OT_create_sxcollection,
     SXTOOLS2_OT_smart_separate,
+    SXTOOLS2_OT_generate_hulls,
     SXTOOLS2_OT_generatemasks,
     SXTOOLS2_OT_resetscene,
     SXTOOLS2_OT_sxtosx2,
@@ -9987,7 +10183,6 @@ if __name__ == '__main__':
 # TODO:
 # BUG: Grouping of objs with armatures
 # BUG: Refresh modifiers when saving to catalogue to update cost value
-# BUG: Removing LODs causes material clearing errors
 # FEAT: UI should specify when applying a material overwrites, and when respects the active layer mask
 # FEAT: validate modifier settings, control cage, all meshes have single user?
 # FEAT: match existing layers when loading category
