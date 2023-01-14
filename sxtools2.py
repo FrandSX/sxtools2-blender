@@ -2516,18 +2516,12 @@ class SXTOOLS2_modifiers(object):
         for obj in objs:
             if 'sxMirror' not in obj.modifiers:
                 obj.modifiers.new(type='MIRROR', name='sxMirror')
-                if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror:
-                    obj.modifiers['sxMirror'].show_viewport = True
-                else:
-                    obj.modifiers['sxMirror'].show_viewport = False
+                obj.modifiers['sxMirror'].show_viewport = True if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror else False
                 obj.modifiers['sxMirror'].show_expanded = False
                 obj.modifiers['sxMirror'].use_axis[0] = obj.sx2.xmirror
                 obj.modifiers['sxMirror'].use_axis[1] = obj.sx2.ymirror
                 obj.modifiers['sxMirror'].use_axis[2] = obj.sx2.zmirror
-                if obj.sx2.mirrorobject is not None:
-                    obj.modifiers['sxMirror'].mirror_object = obj.sx2.mirrorobject
-                else:
-                    obj.modifiers['sxMirror'].mirror_object = None
+                obj.modifiers['sxMirror'].mirror_object = obj.sx2.mirrorobject if obj.sx2.mirrorobject is not None else None
                 obj.modifiers['sxMirror'].use_clip = True
                 obj.modifiers['sxMirror'].use_mirror_merge = True
             if 'sxTiler' not in obj.modifiers:
@@ -2569,19 +2563,12 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxBevel'].miter_outer = 'MITER_ARC'
             if 'sxWeld' not in obj.modifiers:
                 obj.modifiers.new(type='WELD', name='sxWeld')
-                if obj.sx2.weldthreshold == 0:
-                    obj.modifiers['sxWeld'].show_viewport = False
-                else:
-                    obj.modifiers['sxWeld'].show_viewport = obj.sx2.modifiervisibility
-                obj.modifiers['sxWeld'].show_viewport = obj.sx2.modifiervisibility
+                obj.modifiers['sxWeld'].show_viewport = False if obj.sx2.weldthreshold == 0 else obj.sx2.modifiervisibility
                 obj.modifiers['sxWeld'].show_expanded = False
                 obj.modifiers['sxWeld'].merge_threshold = obj.sx2.weldthreshold
             if 'sxDecimate' not in obj.modifiers:
                 obj.modifiers.new(type='DECIMATE', name='sxDecimate')
-                if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
-                    obj.modifiers['sxDecimate'].show_viewport = False
-                else:
-                    obj.modifiers['sxDecimate'].show_viewport = obj.sx2.modifiervisibility
+                obj.modifiers['sxDecimate'].show_viewport = False if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0) else obj.sx2.modifiervisibility
                 obj.modifiers['sxDecimate'].show_expanded = False
                 obj.modifiers['sxDecimate'].decimate_type = 'DISSOLVE'
                 obj.modifiers['sxDecimate'].angle_limit = math.radians(obj.sx2.decimation)
@@ -2589,27 +2576,23 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxDecimate'].delimit = {'SHARP', 'UV'}
             if 'sxDecimate2' not in obj.modifiers:
                 obj.modifiers.new(type='DECIMATE', name='sxDecimate2')
-                if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
-                    obj.modifiers['sxDecimate2'].show_viewport = False
-                else:
-                    obj.modifiers['sxDecimate2'].show_viewport = obj.sx2.modifiervisibility
                 obj.modifiers['sxDecimate2'].show_expanded = False
                 obj.modifiers['sxDecimate2'].decimate_type = 'COLLAPSE'
                 obj.modifiers['sxDecimate2'].ratio = 0.99
                 obj.modifiers['sxDecimate2'].use_collapse_triangulate = True
+                # Toggle visibility to calculate poly count
+                obj.modifiers['sxDecimate2'].show_viewport = True
+                bpy.context.view_layer.update()
+                obj.modifiers['sxDecimate2'].show_viewport = False if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0) else obj.sx2.modifiervisibility
+                bpy.context.view_layer.update()
+
             if 'sxWeightedNormal' not in obj.modifiers:
                 obj.modifiers.new(type='WEIGHTED_NORMAL', name='sxWeightedNormal')
-                if not obj.sx2.weightednormals:
-                    obj.modifiers['sxWeightedNormal'].show_viewport = False
-                else:
-                    obj.modifiers['sxWeightedNormal'].show_viewport = obj.sx2.modifiervisibility
+                obj.modifiers['sxWeightedNormal'].show_viewport = obj.sx2.modifiervisibility if obj.sx2.weightednormals else False
                 obj.modifiers['sxWeightedNormal'].show_expanded = False
                 obj.modifiers['sxWeightedNormal'].mode = 'FACE_AREA_WITH_ANGLE'
                 obj.modifiers['sxWeightedNormal'].weight = 50
-                if obj.sx2.hardmode == 'SMOOTH':
-                    obj.modifiers['sxWeightedNormal'].keep_sharp = False
-                else:
-                    obj.modifiers['sxWeightedNormal'].keep_sharp = True
+                obj.modifiers['sxWeightedNormal'].keep_sharp = False if obj.sx2.hardmode == 'SMOOTH' else True
 
                 obj.sx2.smoothangle = obj.sx2.smoothangle
 
@@ -3022,6 +3005,7 @@ class SXTOOLS2_export(object):
                 for obj in org_objs:
                     obj.select_set(True)
                 bpy.context.view_layer.objects.active = active_obj
+                setup.update_sx2material(bpy.context)
 
 
     def generate_mesh_colliders(self, objs):
