@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 4, 1),
+    'version': (1, 4, 2),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5220,14 +5220,15 @@ def update_material_layer(self, context, index):
 
             objs[0].sx2.selectedlayer = selected_layer
 
+        mask = objs[0].sx2layers[layer_ids[0]] if objs[0].sx2layers[layer_ids[0]].locked else None
         if sxglobals.mode == 'EDIT':
-            modecolor = utils.find_colors_by_frequency(objs, layer_ids[index], numcolors=1)[0]
+            modecolor = utils.find_colors_by_frequency(objs, layer_ids[index], numcolors=1, masklayer=mask)[0]
         else:
             modecolor = utils.find_colors_by_frequency(objs, layer_ids[index], numcolors=1, masklayer=layer)[0]
 
         if not utils.color_compare(modecolor, pbr_values[index]):
             if sxglobals.mode == 'EDIT':
-                tools.apply_tool(objs, objs[0].sx2layers[layer_ids[index]], color=pbr_values[index])
+                tools.apply_tool(objs, objs[0].sx2layers[layer_ids[index]], masklayer=mask, color=pbr_values[index])
             else:
                 tools.apply_tool(objs, objs[0].sx2layers[layer_ids[index]], masklayer=objs[0].sx2layers[layer_ids[0]], color=pbr_values[index])
 
@@ -7651,7 +7652,7 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
             else:
                 row_item.label(icon=hide_icon[(utils.find_layer_index_by_name(objs[0], item.name) == objs[0].sx2.selectedlayer)])
 
-            if scene.toolmode == 'PAL':
+            if (scene.toolmode == 'PAL') or (scene.toolmode == 'MAT'):
                 row_item.label(text='', icon='LOCKED')
             else:
                 row_item.prop(item, 'locked', text='', icon=lock_icon[item.locked])
@@ -10177,7 +10178,6 @@ if __name__ == '__main__':
 
 # TODO:
 # BUG: Grouping of objs with armatures
-# FEAT: UI should specify when applying a material overwrites, and when respects the active layer mask
 # FEAT: validate modifier settings, control cage, all meshes have single user?
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
