@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 4, 0),
+    'version': (1, 4, 1),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2981,7 +2981,8 @@ class SXTOOLS2_export(object):
                     new_obj.modifiers['hullDecimate'].angle_limit = math.radians(0.0)
                     new_obj.modifiers['hullDecimate'].use_dissolve_boundaries = False
 
-                    new_obj.modifiers.new(type='TRIANGULATE', name='hullTriangulate')
+                    new_obj.modifiers.update()
+                    bpy.context.view_layer.update()
 
                     # Decimate until below face count limit
                     angle = 0.0
@@ -2992,7 +2993,6 @@ class SXTOOLS2_export(object):
                         bpy.context.view_layer.update()
 
                     bpy.ops.object.modifier_apply(modifier='hullDecimate')
-                    bpy.ops.object.modifier_apply(modifier='hullTriangulate')
 
                     # Shrink hull according to factor
                     if new_obj.sx2.collideroffsetfactor > 0.0:
@@ -3004,7 +3004,7 @@ class SXTOOLS2_export(object):
                         # Weld after shrink to clean up clumped verts
                         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
                         new_obj.modifiers.new(type='WELD', name='hullWeld')
-                        new_obj.modifiers["hullWeld"].merge_threshold = min(new_obj.dimensions) * 0.1
+                        new_obj.modifiers["hullWeld"].merge_threshold = min(new_obj.dimensions) * 0.15
                         bpy.ops.object.modifier_apply(modifier='hullWeld')
 
                     # Final convex conversion
@@ -3012,6 +3012,8 @@ class SXTOOLS2_export(object):
                     bpy.ops.mesh.select_all(action='SELECT')
                     bpy.ops.mesh.convex_hull(use_existing_faces=True, face_threshold=math.radians(15.0), shape_threshold=math.radians(15.0))
                     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+
+                    print(f'SX Tools: {new_obj.name} face count {len(new_obj.data.polygons)}')
 
                     # Clear sx2layers
                     new_obj.sx2layers.clear()
