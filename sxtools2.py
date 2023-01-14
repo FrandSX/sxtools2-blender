@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 4, 2),
+    'version': (1, 4, 3),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1018,6 +1018,7 @@ class SXTOOLS2_generate(object):
     def curvature_list(self, obj, masklayer=None, returndict=False):
         scene = bpy.context.scene.sx2
         normalize = scene.curvaturenormalize
+        invert = scene.toolinvert
         vert_curv_dict = {}
         mesh = obj.data
         bm = bmesh.new()
@@ -1066,6 +1067,10 @@ class SXTOOLS2_generate(object):
         else:
             for vert, vtxCurvature in vert_curv_dict.items():
                 vert_curv_dict[vert] = (vtxCurvature + 0.5)
+
+        if invert:
+            for key, value in vert_curv_dict.items():
+                vert_curv_dict[key] = 1.0 - value
 
         if returndict:
             return vert_curv_dict
@@ -6164,6 +6169,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         name='Auto-Offset Factor',
         min=0.0,
         max=1.0,
+        step=0.01,
         default=0.25,
         update=lambda self, context: update_obj_props(self, context, 'collideroffsetfactor'))
 
@@ -6358,6 +6364,11 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
             ('OVR', 'Overlay', ''),
             ('REP', 'Replace', '')],
         default='ALPHA')
+
+    toolinvert: bpy.props.BoolProperty(
+        name='Invert',
+        description='Invert Fill Value',
+        default=False)
 
     fillpalette1: bpy.props.FloatVectorProperty(
         name='Recent Color 1',
@@ -7199,6 +7210,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     if scene.expandfill:
                         col_fill = box_fill.column(align=True)
                         col_fill.prop(scene, 'curvaturenormalize', text='Normalize')
+                        col_fill.prop(scene, 'toolinvert', text='Invert')
                         col_fill.prop(sx2, 'tiling', text='Tiling Object')
 
                 # Noise Tool -------------------------------------------------------
