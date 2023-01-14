@@ -5748,11 +5748,20 @@ def save_post_handler(dummy):
             if obj['revision'] > revision:
                 revision = obj['revision']
 
+    # Update modifier stack for poly counts
+    for obj in objs:
+        if 'sxDecimate2' in obj.modifiers:
+            obj.modifiers['sxDecimate2'].show_viewport = True
+    bpy.context.view_layer.update()
+    for obj in objs:
+        if 'sxDecimate2' in obj.modifiers:
+            obj.modifiers['sxDecimate2'].show_viewport = False if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0) else obj.sx2.modifiervisibility
+    bpy.context.view_layer.update()
+
     cost = modifiers.calculate_triangles(objs)
     if cost == '0':
         s = bpy.context.scene.statistics(bpy.context.view_layer)
         cost = s.split("Tris:")[1].split(' ')[0].replace(',', '')
-
 
     if len(prefs.cataloguepath) > 0:
         try:
@@ -10168,7 +10177,6 @@ if __name__ == '__main__':
 
 # TODO:
 # BUG: Grouping of objs with armatures
-# BUG: Refresh modifiers when saving to catalogue to update cost value
 # FEAT: UI should specify when applying a material overwrites, and when respects the active layer mask
 # FEAT: validate modifier settings, control cage, all meshes have single user?
 # FEAT: match existing layers when loading category
