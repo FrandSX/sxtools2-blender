@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 4, 4),
+    'version': (1, 4, 5),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1952,7 +1952,7 @@ class SXTOOLS2_layers(object):
             topcolors = self.get_layer(obj, toplayer, apply_layer_opacity=True, single_as_alpha=True)
 
             blendmode = toplayer.blend_mode
-            colors = tools.combine_layers(topcolors, basecolors, blendmode)
+            colors = tools.blend_values(topcolors, basecolors, blendmode, 1.0)
             self.set_layer(obj, colors, targetlayer)
 
         for obj in objs:
@@ -1960,11 +1960,6 @@ class SXTOOLS2_layers(object):
             setattr(obj.sx2layers[targetlayer.name], 'blend_mode', 'ALPHA')
             setattr(obj.sx2layers[targetlayer.name], 'opacity', 1.0)
             obj.sx2.selectedlayer = utils.find_layer_index_by_name(obj, targetlayer.name)
-
-        if toplayer.name == targetlayer.name:
-            self.clear_layers(objs, baselayer)
-        else:
-            self.clear_layers(objs, toplayer)
 
 
     def paste_layer(self, objs, targetlayer, fillmode):
@@ -2080,54 +2075,12 @@ class SXTOOLS2_tools(object):
                     else:
                         base = base if selectionmask[i] == 0.0 else top
 
+                # TODO: Check if writing black to transparents is still needed for masks
                 if (base[3] == 0.0) and (blendmode != 'REP'):
                     base = [0.0, 0.0, 0.0, 0.0]
 
                 colors[(0+i*4):(4+i*4)] = base
             return colors
-
-
-    def combine_layers(self, topcolors, basecolors, blendmode):
-        count = len(basecolors)//4
-        colors = [None] * count * 4
-        midpoint = 0.5  # convert.srgb_to_linear([0.5, 0.5, 0.5, 1.0])[0]
-
-        for i in range(count):
-            top_rgb = Vector(topcolors[(0+i*4):(3+i*4)])
-            top_alpha = topcolors[3+i*4]
-            base_rgb = Vector(basecolors[(0+i*4):(3+i*4)])
-            base_alpha = basecolors[3+i*4]
-            result_rgb = [0.0, 0.0, 0.0]
-            result_alpha = min((base_alpha + top_alpha), 1.0)
-
-            if result_alpha > 0.0:
-                if blendmode == 'ALPHA':
-                    result_rgb = (top_rgb * top_alpha + base_rgb * (1.0 - top_alpha))
-
-                elif blendmode == 'ADD':
-                    result_rgb = base_rgb + top_rgb
-
-                elif blendmode == 'MUL':
-                    for j in range(3):
-                        result_rgb[j] = base_rgb[j] * (top_rgb[j] * top_alpha + (1.0 - top_alpha))
-
-                elif blendmode == 'OVR':
-                    over = Vector([0.0, 0.0, 0.0])
-                    over_alpha = top_alpha
-                    for j in range(3):
-                        if base_rgb[j] < midpoint:
-                            over[j] = 2.0 * base_rgb[j] * top_rgb[j]
-                        else:
-                            over[j] = 1.0 - 2.0 * (1.0 - base_rgb[j]) * (1.0 - top_rgb[j])
-                    result_rgb = over * over_alpha + base_rgb * (1.0 - over_alpha)
-
-            # print('blendmode: ', blendmode)
-            # print('top:       ', top_rgb[0], top_rgb[1], top_rgb[2], top_alpha)
-            # print('base:      ', base_rgb[0], base_rgb[1], base_rgb[2], base_alpha)
-            # print('result:    ', result_rgb[0], result_rgb[1], result_rgb[2], result_alpha, '\n')
-
-            colors[(0+i*4):(4+i*4)] = [result_rgb[0], result_rgb[1], result_rgb[2], result_alpha]
-        return colors
 
 
     # NOTE: Make sure color parameter is always provided in linear color space!
@@ -8714,6 +8667,8 @@ class SXTOOLS2_OT_mergeup(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         if len(objs) > 0:
+            for obj in objs:
+                utils.sort_stack_indices(obj)
             baseLayer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             topLayer = utils.find_layer_by_stack_index(objs[0], baseLayer.index + 1)
             layers.merge_layers(objs, topLayer, baseLayer, topLayer)
@@ -8762,6 +8717,8 @@ class SXTOOLS2_OT_mergedown(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         if len(objs) > 0:
+            for obj in objs:
+                utils.sort_stack_indices(obj)
             topLayer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             baseLayer = utils.find_layer_by_stack_index(objs[0], topLayer.index - 1)
             layers.merge_layers(objs, topLayer, baseLayer, baseLayer)
@@ -10191,4 +10148,3 @@ if __name__ == '__main__':
 # FEAT: validate modifier settings, control cage, all meshes have single user?
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
-# - Check needs for combine_layers
