@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 4, 3),
+    'version': (1, 4, 4),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -7011,6 +7011,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
         objs = mesh_selection_validator(self, context)
         layout = self.layout
         gray_channels = ['OCC', 'MET', 'RGH', 'TRN']
+        valid_stacks = layer_validator(self, context)
 
         if not sxglobals.libraries_status:
             col = layout.column()
@@ -7030,66 +7031,61 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
             else:
                 layer = obj.sx2layers[sx2.selectedlayer]
 
+            # Layer Controls -----------------------------------------------
             row_shading = layout.row()
-            row_shading.prop(sx2, 'shadingmode', expand=True)
             row_shading.operator("wm.url_open", text='', icon='URL').url = 'https://secretexit.notion.site/SX-Tools-2-for-Blender-Documentation-1681c68851fb4d018d1f9ec762e5aec9'
 
-            # Layer Controls -----------------------------------------------
-            if not layer_validator(self, context):
-                col = layout.column()
-                col.label(text='Multi-editing requires')
-                col.label(text='objects with identical layer sets.')
+            if layer is None:
+                row_shading.label(text='No layers')
+
+            elif not valid_stacks:
+                row_shading.label(text='Mismatching layer sets')
+
             else:
+                row_shading.prop(sx2, 'shadingmode', expand=True)
 
                 box_layer = layout.box()
                 row_layer = box_layer.row()
+                row_layer.prop(
+                    scene, 'expandlayer',
+                    icon='TRIA_DOWN' if scene.expandlayer else 'TRIA_RIGHT',
+                    icon_only=True, emboss=False)
 
-                if layer is None:
-                    box_layer.enabled = False
-                    row_layer.label(text='No layers')
-                elif not layer_validator(self, context):
-                    box_layer.enabled = False
-                    row_layer.label(text='Mismatching layers sets!')
-                else:
-                    row_layer.prop(
-                        scene, 'expandlayer',
-                        icon='TRIA_DOWN' if scene.expandlayer else 'TRIA_RIGHT',
-                        icon_only=True, emboss=False)
+                split_basics = row_layer.split(factor=0.3)
+                split_basics.prop(layer, 'blend_mode', text='')
+                split_basics.prop(layer, 'opacity', slider=True, text='Layer Opacity')
 
-                    split_basics = row_layer.split(factor=0.3)
-                    split_basics.prop(layer, 'blend_mode', text='')
-                    split_basics.prop(layer, 'opacity', slider=True, text='Layer Opacity')
+                if scene.expandlayer:
+                    if obj.mode == 'OBJECT':
+                        hue_text = 'Layer Hue'
+                        saturation_text = 'Layer Saturation'
+                        lightness_text = 'Layer Lightness'
+                    else:
+                        hue_text = 'Selection Hue'
+                        saturation_text = 'Selection Saturation'
+                        lightness_text = 'Selection Lightness'
 
-                    if scene.expandlayer:
-                        if obj.mode == 'OBJECT':
-                            hue_text = 'Layer Hue'
-                            saturation_text = 'Layer Saturation'
-                            lightness_text = 'Layer Lightness'
-                        else:
-                            hue_text = 'Selection Hue'
-                            saturation_text = 'Selection Saturation'
-                            lightness_text = 'Selection Lightness'
+                    col_hsl = box_layer.column(align=True)
+                    row_hue = col_hsl.row(align=True)
+                    row_hue.prop(sx2, 'huevalue', slider=True, text=hue_text)
+                    row_sat = col_hsl.row(align=True)
+                    row_sat.prop(sx2, 'saturationvalue', slider=True, text=saturation_text)
+                    row_lightness = col_hsl.row(align=True)
+                    row_lightness.prop(sx2, 'lightnessvalue', slider=True, text=lightness_text)
 
-                        col_hsl = box_layer.column(align=True)
-                        row_hue = col_hsl.row(align=True)
-                        row_hue.prop(sx2, 'huevalue', slider=True, text=hue_text)
-                        row_sat = col_hsl.row(align=True)
-                        row_sat.prop(sx2, 'saturationvalue', slider=True, text=saturation_text)
-                        row_lightness = col_hsl.row(align=True)
-                        row_lightness.prop(sx2, 'lightnessvalue', slider=True, text=lightness_text)
+                    if (layer == utils.find_color_layers(obj, 0)) and (layer.opacity < 1.0):
+                        col_culling = box_layer.column(align=True)
+                        col_culling.prop(sx2, 'backfaceculling', toggle=True)
 
-                        if (layer == utils.find_color_layers(obj, 0)) and (layer.opacity < 1.0):
-                            col_culling = box_layer.column(align=True)
-                            col_culling.prop(sx2, 'backfaceculling', toggle=True)
-
-                        if layer.layer_type in gray_channels:
-                            row_hue.enabled = False
-                            row_sat.enabled = False
+                    if layer.layer_type in gray_channels:
+                        row_hue.enabled = False
+                        row_sat.enabled = False
 
                 row_palette = layout.row(align=True)
                 for i in range(8):
                     row_palette.prop(scene, 'layerpalette' + str(i+1), text='')
 
+            if (layer is None) or valid_stacks:
                 split_list = layout.split(factor=0.9, align=True)
                 split_list.template_list('SXTOOLS2_UL_layerlist', 'sx2.layerlist', obj, 'sx2layers', sx2, 'selectedlayer', type='DEFAULT', sort_reverse=True)
                 col_list = split_list.column(align=True)
@@ -7101,7 +7097,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 col_list.separator()
                 col_list.operator('sx2.layer_props', text='', icon='OPTIONS')
 
-                # Layer Copy Paste Merge ---------------------------------------
+            # Layer Copy Paste Merge ---------------------------------------
+            if valid_stacks:
                 copy_text = 'Copy'
                 clr_text = 'Clear'
                 paste_text = 'Paste'
@@ -7343,103 +7340,104 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     split3_fill.prop(scene, 'toolblend', text='')
                     split3_fill.prop(scene, 'toolopacity', slider=True)
 
-                # Modifiers Module ----------------------------------------------
-                if prefs.enable_modifiers:
-                    box_crease = layout.box()
-                    row_crease = box_crease.row()
-                    row_crease.prop(
-                        scene, 'expandcrease',
-                        icon='TRIA_DOWN' if scene.expandcrease else 'TRIA_RIGHT',
-                        icon_only=True, emboss=False)
-                    row_crease.prop(scene, 'creasemode', expand=True)
-                    if scene.creasemode != 'SDS':
-                        if scene.expandcrease:
-                            row_sets = box_crease.row(align=True)
-                            for i in range(4):
-                                setbutton = row_sets.operator('sx2.setgroup', text=str(25*(i+1))+'%')
-                                setbutton.setmode = scene.creasemode
-                                setbutton.setvalue = 0.25 * (i+1)
-                            col_sel = box_crease.column(align=True)
-                            col_sel.prop(scene, 'curvaturelimit', slider=True, text='Curvature Selector')
-                            col_sel.prop(scene, 'curvaturetolerance', slider=True, text='Curvature Tolerance')
-                            col_sets = box_crease.column(align=True)
-                            if (bpy.context.tool_settings.mesh_select_mode[0]) and (scene.creasemode == 'CRS'):
-                                clear_text = 'Clear Vertex Weights'
-                            else:
-                                clear_text = 'Clear Edge Weights'
-                            setbutton = col_sets.operator('sx2.setgroup', text=clear_text)
+
+            # Modifiers Module ----------------------------------------------
+            if prefs.enable_modifiers:
+                box_crease = layout.box()
+                row_crease = box_crease.row()
+                row_crease.prop(
+                    scene, 'expandcrease',
+                    icon='TRIA_DOWN' if scene.expandcrease else 'TRIA_RIGHT',
+                    icon_only=True, emboss=False)
+                row_crease.prop(scene, 'creasemode', expand=True)
+                if scene.creasemode != 'SDS':
+                    if scene.expandcrease:
+                        row_sets = box_crease.row(align=True)
+                        for i in range(4):
+                            setbutton = row_sets.operator('sx2.setgroup', text=str(25*(i+1))+'%')
                             setbutton.setmode = scene.creasemode
-                            setbutton.setvalue = -1.0
-                    elif scene.creasemode == 'SDS':
-                        if scene.expandcrease:
-                            row_mod1 = box_crease.row()
-                            row_mod1.prop(
-                                scene, 'expandmirror',
-                                icon='TRIA_DOWN' if scene.expandmirror else 'TRIA_RIGHT',
-                                icon_only=True, emboss=False)
-                            row_mod1.label(text='Mirror Modifier Settings')
-                            if scene.expandmirror:
-                                row_mirror = box_crease.row(align=True)
-                                row_mirror.label(text='Axis:')
-                                row_mirror.prop(sx2, 'xmirror', text='X', toggle=True)
-                                row_mirror.prop(sx2, 'ymirror', text='Y', toggle=True)
-                                row_mirror.prop(sx2, 'zmirror', text='Z', toggle=True)
-                                row_mirrorobj = box_crease.row()
-                                row_mirrorobj.prop_search(sx2, 'mirrorobject', context.scene, 'objects')
+                            setbutton.setvalue = 0.25 * (i+1)
+                        col_sel = box_crease.column(align=True)
+                        col_sel.prop(scene, 'curvaturelimit', slider=True, text='Curvature Selector')
+                        col_sel.prop(scene, 'curvaturetolerance', slider=True, text='Curvature Tolerance')
+                        col_sets = box_crease.column(align=True)
+                        if (bpy.context.tool_settings.mesh_select_mode[0]) and (scene.creasemode == 'CRS'):
+                            clear_text = 'Clear Vertex Weights'
+                        else:
+                            clear_text = 'Clear Edge Weights'
+                        setbutton = col_sets.operator('sx2.setgroup', text=clear_text)
+                        setbutton.setmode = scene.creasemode
+                        setbutton.setvalue = -1.0
+                elif scene.creasemode == 'SDS':
+                    if scene.expandcrease:
+                        row_mod1 = box_crease.row()
+                        row_mod1.prop(
+                            scene, 'expandmirror',
+                            icon='TRIA_DOWN' if scene.expandmirror else 'TRIA_RIGHT',
+                            icon_only=True, emboss=False)
+                        row_mod1.label(text='Mirror Modifier Settings')
+                        if scene.expandmirror:
+                            row_mirror = box_crease.row(align=True)
+                            row_mirror.label(text='Axis:')
+                            row_mirror.prop(sx2, 'xmirror', text='X', toggle=True)
+                            row_mirror.prop(sx2, 'ymirror', text='Y', toggle=True)
+                            row_mirror.prop(sx2, 'zmirror', text='Z', toggle=True)
+                            row_mirrorobj = box_crease.row()
+                            row_mirrorobj.prop_search(sx2, 'mirrorobject', context.scene, 'objects')
 
-                            row_mod2 = box_crease.row()
-                            row_mod2.prop(
-                                scene, 'expandbevel',
-                                icon='TRIA_DOWN' if scene.expandbevel else 'TRIA_RIGHT',
-                                icon_only=True, emboss=False)
-                            row_mod2.label(text='Bevel Modifier Settings')
-                            if scene.expandbevel:
-                                col2_sds = box_crease.column(align=True)
-                                col2_sds.prop(scene, 'autocrease', text='Auto Hard-Crease Bevels')
-                                split_sds = col2_sds.split()
-                                split_sds.label(text='Max Crease Mode:')
-                                split_sds.prop(sx2, 'hardmode', text='')
-                                split2_sds = col2_sds.split()
-                                split2_sds.label(text='Bevel Type:')
-                                split2_sds.prop(sx2, 'beveltype', text='')
-                                col2_sds.prop(sx2, 'bevelsegments', text='Bevel Segments')
-                                col2_sds.prop(sx2, 'bevelwidth', text='Bevel Width')
+                        row_mod2 = box_crease.row()
+                        row_mod2.prop(
+                            scene, 'expandbevel',
+                            icon='TRIA_DOWN' if scene.expandbevel else 'TRIA_RIGHT',
+                            icon_only=True, emboss=False)
+                        row_mod2.label(text='Bevel Modifier Settings')
+                        if scene.expandbevel:
+                            col2_sds = box_crease.column(align=True)
+                            col2_sds.prop(scene, 'autocrease', text='Auto Hard-Crease Bevels')
+                            split_sds = col2_sds.split()
+                            split_sds.label(text='Max Crease Mode:')
+                            split_sds.prop(sx2, 'hardmode', text='')
+                            split2_sds = col2_sds.split()
+                            split2_sds.label(text='Bevel Type:')
+                            split2_sds.prop(sx2, 'beveltype', text='')
+                            col2_sds.prop(sx2, 'bevelsegments', text='Bevel Segments')
+                            col2_sds.prop(sx2, 'bevelwidth', text='Bevel Width')
 
-                            col3_sds = box_crease.column(align=True)
-                            col3_sds.prop(sx2, 'subdivisionlevel', text='Subdivision Level')
-                            col3_sds.prop(sx2, 'smoothangle', text='Normal Smoothing Angle')
-                            col3_sds.prop(sx2, 'weldthreshold', text='Weld Threshold')
-                            if obj.sx2.subdivisionlevel > 0:
-                                col3_sds.prop(sx2, 'decimation', text='Decimation Limit Angle')
-                                if obj.sx2.decimation > 0.0:
-                                    row_tris = col3_sds.row()
-                                    row_tris.label(text='Selection Tris:')
-                                    row_tris.label(text=modifiers.calculate_triangles(objs))
-                            col3_sds.separator()
-                            col3_sds.prop(sx2, 'weightednormals', text='Weighted Normals', toggle=True)
-                            col4_sds = box_crease.column(align=True)
-                            sxmodifiers = '\t'.join(obj.modifiers.keys())
-                            if 'sx' in sxmodifiers:
-                                if scene.shift:
-                                    col4_sds.operator('sx2.removemodifiers', text='Clear Modifiers')
-                                else:
-                                    if obj.sx2.modifiervisibility:
-                                        hide_text = 'Hide Modifiers'
-                                    else:
-                                        hide_text = 'Show Modifiers'
-                                    col4_sds.operator('sx2.hidemodifiers', text=hide_text)
+                        col3_sds = box_crease.column(align=True)
+                        col3_sds.prop(sx2, 'subdivisionlevel', text='Subdivision Level')
+                        col3_sds.prop(sx2, 'smoothangle', text='Normal Smoothing Angle')
+                        col3_sds.prop(sx2, 'weldthreshold', text='Weld Threshold')
+                        if obj.sx2.subdivisionlevel > 0:
+                            col3_sds.prop(sx2, 'decimation', text='Decimation Limit Angle')
+                            if obj.sx2.decimation > 0.0:
+                                row_tris = col3_sds.row()
+                                row_tris.label(text='Selection Tris:')
+                                row_tris.label(text=modifiers.calculate_triangles(objs))
+                        col3_sds.separator()
+                        col3_sds.prop(sx2, 'weightednormals', text='Weighted Normals', toggle=True)
+                        col4_sds = box_crease.column(align=True)
+                        sxmodifiers = '\t'.join(obj.modifiers.keys())
+                        if 'sx' in sxmodifiers:
+                            if scene.shift:
+                                col4_sds.operator('sx2.removemodifiers', text='Clear Modifiers')
                             else:
-                                if scene.expandmirror:
-                                    row_mirror.enabled = False
-                                if scene.expandbevel:
-                                    col2_sds.enabled = False
-                                    split_sds.enabled = False
-                                col3_sds.enabled = False
-                                col4_sds.operator('sx2.addmodifiers', text='Add Modifiers')
+                                if obj.sx2.modifiervisibility:
+                                    hide_text = 'Hide Modifiers'
+                                else:
+                                    hide_text = 'Show Modifiers'
+                                col4_sds.operator('sx2.hidemodifiers', text=hide_text)
+                        else:
+                            if scene.expandmirror:
+                                row_mirror.enabled = False
+                            if scene.expandbevel:
+                                col2_sds.enabled = False
+                                split_sds.enabled = False
+                            col3_sds.enabled = False
+                            col4_sds.operator('sx2.addmodifiers', text='Add Modifiers')
 
 
-                # Export Module -------------------------------------------------
-                if prefs.enable_export:
+            # Export Module -------------------------------------------------
+            if prefs.enable_export:
                     box_export = layout.box()          
                     row_export = box_export.row()
                     row_export.prop(
@@ -10193,5 +10191,4 @@ if __name__ == '__main__':
 # FEAT: validate modifier settings, control cage, all meshes have single user?
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
-# FEAT: Improve handling of multi-category selections
 # - Check needs for combine_layers
