@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 4, 6),
+    'version': (1, 4, 7),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2075,9 +2075,8 @@ class SXTOOLS2_tools(object):
                     else:
                         base = base if selectionmask[i] == 0.0 else top
 
-                # TODO: Check if writing black to transparents is still needed for masks
-                if (base[3] == 0.0) and (blendmode != 'REP'):
-                    base = [0.0, 0.0, 0.0, 0.0]
+                # if (base[3] == 0.0) and (blendmode != 'REP'):
+                #     base = [0.0, 0.0, 0.0, 0.0]
 
                 colors[(0+i*4):(4+i*4)] = base
             return colors
@@ -10146,4 +10145,3 @@ if __name__ == '__main__':
 # BUG: Grouping of objs with armatures
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
-# Enable layer locked while material tool is active
