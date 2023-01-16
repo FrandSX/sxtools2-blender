@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 4, 5),
+    'version': (1, 4, 6),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2226,12 +2226,12 @@ class SXTOOLS2_tools(object):
         if not sxglobals.refresh_in_progress:
             sxglobals.refresh_in_progress = True
 
-        material = bpy.context.scene.sx2materials[material]
-        scene = bpy.context.scene.sx2
+            material = bpy.context.scene.sx2materials[material]
+            scene = bpy.context.scene.sx2
 
-        setattr(scene, 'newmaterial0', material.color0)
-        setattr(scene, 'newmaterial1', material.color1)
-        setattr(scene, 'newmaterial2', material.color2)
+            setattr(scene, 'newmaterial0', material.color0)
+            setattr(scene, 'newmaterial1', material.color1)
+            setattr(scene, 'newmaterial2', material.color2)
 
         sxglobals.refresh_in_progress = False
         utils.mode_manager(objs, revert=True, mode_id='apply_material')
@@ -5147,7 +5147,6 @@ def update_material_layer(self, context, index):
         objs = mesh_selection_validator(self, context)
         utils.mode_manager(objs, set_mode=True, mode_id='update_material_layer')
         layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-        selected_layer = objs[0].sx2.selectedlayer
         layer_ids = [layer.name, 'Metallic', 'Roughness']
         pbr_values = [scene.newmaterial0, scene.newmaterial1, scene.newmaterial2]
         scene.toolopacity = 1.0
@@ -5170,26 +5169,26 @@ def update_material_layer(self, context, index):
                     rgb = convert.hsl_to_rgb((hsl[0], hsl[2], minl))
                     pbr_values[index] = (rgb[0], rgb[1], rgb[2], 1.0)
 
+        added_layers = False
+        selected_layer = objs[0].sx2.selectedlayer
         for obj in objs:
             if 'Metallic' not in obj.sx2layers.keys():
                 layers.add_layer([obj, ], name='Metallic', layer_type='MET')
+                added_layers = True
             if 'Roughness' not in obj.sx2layers.keys():
                 layers.add_layer([obj, ], name='Roughness', layer_type='RGH')
-
+                added_layers = True
+        if added_layers:
             objs[0].sx2.selectedlayer = selected_layer
 
-        mask = objs[0].sx2layers[layer_ids[0]] if objs[0].sx2layers[layer_ids[0]].locked else None
+        mask = objs[0].sx2layers[layer_ids[0]]  # if objs[0].sx2layers[layer_ids[0]].locked else None
         if sxglobals.mode == 'EDIT':
             modecolor = utils.find_colors_by_frequency(objs, layer_ids[index], numcolors=1, masklayer=mask)[0]
         else:
-            modecolor = utils.find_colors_by_frequency(objs, layer_ids[index], numcolors=1, masklayer=layer)[0]
+            modecolor = utils.find_colors_by_frequency(objs, layer_ids[index], numcolors=1, masklayer=mask)[0]
 
         if not utils.color_compare(modecolor, pbr_values[index]):
-            if sxglobals.mode == 'EDIT':
-                tools.apply_tool(objs, objs[0].sx2layers[layer_ids[index]], masklayer=mask, color=pbr_values[index])
-            else:
-                tools.apply_tool(objs, objs[0].sx2layers[layer_ids[index]], masklayer=objs[0].sx2layers[layer_ids[0]], color=pbr_values[index])
-
+            tools.apply_tool(objs, objs[0].sx2layers[layer_ids[index]], masklayer=mask, color=pbr_values[index])
             setattr(scene, 'newmaterial' + str(index), pbr_values[index])
 
         utils.mode_manager(objs, revert=True, mode_id='update_material_layer')
@@ -10145,6 +10144,6 @@ if __name__ == '__main__':
 
 # TODO:
 # BUG: Grouping of objs with armatures
-# FEAT: validate modifier settings, control cage, all meshes have single user?
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
+# Enable layer locked while material tool is active
