@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 4, 7),
+    'version': (1, 4, 8),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1025,6 +1025,7 @@ class SXTOOLS2_generate(object):
         bm.from_mesh(mesh)
         bm.normal_update()
 
+        # pass 1: calculate curvatures
         for vert in bm.verts:
             numConnected = len(vert.link_edges)
             if numConnected > 0:
@@ -1047,6 +1048,36 @@ class SXTOOLS2_generate(object):
                 vert_curv_dict[vert.index] = vtxCurvature
             else:
                 vert_curv_dict[vert.index] = 0.0
+
+        # pass 2: if tiling, copy the curvature value from the connected vert of the edge that's pointing away from the mirror axis
+        if obj.sx2.tiling:
+            xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], local=True)
+            tiling_props = [('tile_neg_x', 'tile_pos_x'), ('tile_neg_y', 'tile_pos_y'), ('tile_neg_z', 'tile_pos_z')]
+            axis_vectors = [(Vector((-1.0, 0.0, 0.0)), Vector((1.0, 0.0, 0.0))), (Vector((0.0, -1.0, 0.0)), Vector((0.0, 1.0, 0.0))), (Vector((0.0, 0.0, -1.0)), Vector((0.0, 0.0, 1.0)))]
+            bounds = [(xmin, xmax), (ymin, ymax), (zmin, zmax)]
+
+            for vert in bm.verts:
+                bound_ids = None
+                for i, coord in enumerate(vert.co):
+                    for j, prop in enumerate(tiling_props[i]):
+                        if getattr(obj.sx2, prop) and (round(coord, 2) == round(bounds[i][j], 2)):
+                            bound_ids = (i, j)
+
+                if bound_ids is not None:
+                    numConnected = len(vert.link_edges)
+                    if numConnected > 0:
+                        angles = []
+                        other_verts = []
+                        for i, edge in enumerate(vert.link_edges):
+                            pos1 = vert.co
+                            pos2 = edge.other_vert(vert).co
+                            edgeVec = Vector((float(pos2[0] - pos1[0]), float(pos2[1] - pos1[1]), float(pos2[2] - pos1[2])))
+                            angles.append(axis_vectors[bound_ids[0]][bound_ids[1]].dot(edgeVec))
+                            other_verts.append(edge.other_vert(vert))
+                        value_vert_id = other_verts[angles.index(min(angles))].index
+                        vert_curv_dict[vert.index] = vert_curv_dict[value_vert_id]
+                    else:
+                        vert_curv_dict[vert.index] = 0.0
 
         bm.free()
 
@@ -1076,23 +1107,6 @@ class SXTOOLS2_generate(object):
             return vert_curv_dict
 
         else:
-            # Clear the border edges if the object is tiling
-            if obj.sx2.tiling:
-                bpy.context.view_layer.objects.active = obj
-
-                bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                bpy.context.tool_settings.mesh_select_mode = (False, False, True)
-                bpy.ops.mesh.select_all(action='SELECT')
-                bpy.ops.mesh.region_to_loop()
-                bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-
-                sel_verts = [None] * len(obj.data.vertices)
-                obj.data.vertices.foreach_get('select', sel_verts)
-
-                for i, sel in enumerate(sel_verts):
-                    if sel:
-                        vert_curv_dict[i] = 0.5
-
             vert_curv_list = self.vert_dict_to_loop_list(obj, vert_curv_dict, 1, 4)
             curv_list = self.mask_list(obj, vert_curv_list, masklayer)
 
@@ -1324,37 +1338,17 @@ class SXTOOLS2_generate(object):
                 # use modified tile-border normals to reduce seam artifacts
                 # if vertex pos x y z is at bbx limit, and mirror axis is set, modify respective normal vector component to zero
                 if obj.sx2.tiling:
-                    mod_normal = [0.0, 0.0, 0.0]
+                    mod_normal = list(vertNormal)
                     match = False
 
+                    tiling_props = [('tile_neg_x', 'tile_pos_x'), ('tile_neg_y', 'tile_pos_y'), ('tile_neg_z', 'tile_pos_z')]
+                    bounds = [(xmin, xmax), (ymin, ymax), (zmin, zmax)]
+
                     for i, coord in enumerate(vertLoc):
-                        if i == 0:
-                            if obj.sx2.tile_neg_x and (round(coord, 2) == round(xmin, 2)):
+                        for j, prop in enumerate(tiling_props[i]):
+                            if getattr(obj.sx2, prop) and (round(coord, 2) == round(bounds[i][j], 2)):
                                 match = True
                                 mod_normal[i] = 0.0
-                            elif obj.sx2.tile_pos_x and (round(coord, 2) == round(xmax, 2)):
-                                match = True
-                                mod_normal[i] = 0.0
-                            else:
-                                mod_normal[i] = vertNormal[i]
-                        elif i == 1:
-                            if obj.sx2.tile_neg_y and (round(coord, 2) == round(ymin, 2)):
-                                match = True
-                                mod_normal[i] = 0.0
-                            elif obj.sx2.tile_pos_y and (round(coord, 2) == round(ymax, 2)):
-                                match = True
-                                mod_normal[i] = 0.0
-                            else:
-                                mod_normal[i] = vertNormal[i]
-                        else:
-                            if obj.sx2.tile_neg_z and (round(coord, 2) == round(zmin, 2)):
-                                match = True
-                                mod_normal[i] = 0.0
-                            elif obj.sx2.tile_pos_z and (round(coord, 2) == round(zmax, 2)):
-                                match = True
-                                mod_normal[i] = 0.0
-                            else:
-                                mod_normal[i] = vertNormal[i]
 
                     if match:
                         vertNormal = Vector(mod_normal[:]).normalized()
@@ -3949,9 +3943,9 @@ class SXTOOLS2_magic(object):
                 tools.apply_tool(objs, obj.sx2layers['Metallic'], masklayer=obj.sx2layers['Gradient1'], color=(1.0, 1.0, 1.0, 1.0))
                 tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Gradient1'], color=(0.0, 0.0, 0.0, 1.0))
 
-        # Flat overlay
-        colors = generate.color_list(obj, color=(0.5, 0.5, 0.5, 1.0))
-        layers.set_layer(obj, colors, obj.sx2layers['Overlay'])
+            # Flat overlay
+            colors = generate.color_list(obj, color=(0.5, 0.5, 0.5, 1.0))
+            layers.set_layer(obj, colors, obj.sx2layers['Overlay'])
 
         # Emissives are smooth
         tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Emission'], color=(0.0, 0.0, 0.0, 1.0))
@@ -7159,7 +7153,19 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         col_fill = box_fill.column(align=True)
                         col_fill.prop(scene, 'curvaturenormalize', text='Normalize')
                         col_fill.prop(scene, 'toolinvert', text='Invert')
-                        col_fill.prop(sx2, 'tiling', text='Tiling Object')
+                        row_tiling = col_fill.row(align=False)
+                        row_tiling.prop(sx2, 'tiling', text='Seamless Tiling')
+                        if 'sxTiler' in obj.modifiers:
+                            preview_icon_dict = {True: 'RESTRICT_VIEW_OFF', False: 'RESTRICT_VIEW_ON'}
+                            row_tiling.prop(sx2, 'tile_preview', text='Preview', toggle=True, icon=preview_icon_dict[obj.sx2.tile_preview])
+                        row_tiling2 = col_fill.row(align=True)
+                        row_tiling2.prop(sx2, 'tile_pos_x', text='+X', toggle=True)
+                        row_tiling2.prop(sx2, 'tile_pos_y', text='+Y', toggle=True)
+                        row_tiling2.prop(sx2, 'tile_pos_z', text='+Z', toggle=True)
+                        row_tiling3 = col_fill.row(align=True)
+                        row_tiling3.prop(sx2, 'tile_neg_x', text='-X', toggle=True)
+                        row_tiling3.prop(sx2, 'tile_neg_y', text='-Y', toggle=True)
+                        row_tiling3.prop(sx2, 'tile_neg_z', text='-Z', toggle=True)
 
                 # Noise Tool -------------------------------------------------------
                 elif scene.toolmode == 'NSE':
