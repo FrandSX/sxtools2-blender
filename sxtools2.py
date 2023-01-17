@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 4, 8),
+    'version': (1, 4, 9),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -725,6 +725,7 @@ class SXTOOLS2_utils(object):
 
     def round_stepped(self, x, step=0.005):
         return round(round(x / step) * step, 3)
+
 
     # if vertex pos x y z is at bbx limit, and mirror axis is set, round vertex position
     def round_tiling_verts(self, objs):
@@ -1979,7 +1980,7 @@ class SXTOOLS2_layers(object):
         utils.mode_manager(objs, revert=True, mode_id='paste_layer')
 
 
-    def color_layers_to_values(self, objs):
+    def color_layers_to_swatches(self, objs):
         scene = bpy.context.scene.sx2
 
         for obj in objs:
@@ -1993,7 +1994,7 @@ class SXTOOLS2_layers(object):
                             setattr(scene, 'newpalette' + str(i), palettecolor)
 
 
-    def material_layers_to_values(self, objs):
+    def material_layers_to_swatches(self, objs):
         scene = bpy.context.scene.sx2
         layers = [objs[0].sx2.selectedlayer, 12, 13]
 
@@ -2776,13 +2777,13 @@ class SXTOOLS2_export(object):
     #       Odd-numbered bevels often generate incorrect vertex colors
     def generate_lods(self, objs):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
-        orgObjArray = objs[:]
+        org_obj_array = objs[:]
         name_array = []
         new_obj_array = []
-        activeObj = bpy.context.view_layer.objects.active
+        active_obj = bpy.context.view_layer.objects.active
         scene = bpy.context.scene.sx2
 
-        xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box(orgObjArray)
+        xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box(org_obj_array)
         bbxheight = zmax - zmin
 
         # Make sure source and export Collections exist
@@ -2797,7 +2798,7 @@ class SXTOOLS2_export(object):
             source_objects = bpy.data.collections['SourceObjects']
 
         lodCount = 1
-        for obj in orgObjArray:
+        for obj in org_obj_array:
             name_array.append((obj.name[:], obj.data.name[:]))
             if obj.sx2.subdivisionlevel >= 1:
                 lodCount = min(3, obj.sx2.subdivisionlevel + 1)
@@ -2808,14 +2809,14 @@ class SXTOOLS2_export(object):
             for i in range(lodCount):
                 print(f'SX Tools: Generating LOD {i}')
                 if i == 0:
-                    for obj in orgObjArray:
+                    for obj in org_obj_array:
                         obj.data.name = obj.data.name + '_LOD' + str(i)
                         obj.name = obj.name + '_LOD' + str(i)
                         new_obj_array.append(obj)
                         if scene.exportquality == 'LO':
                             source_objects.objects.link(obj)
                 else:
-                    for j, obj in enumerate(orgObjArray):
+                    for j, obj in enumerate(org_obj_array):
                         new_obj = obj.copy()
                         new_obj.data = obj.data.copy()
 
@@ -2851,8 +2852,8 @@ class SXTOOLS2_export(object):
 
                         new_obj_array.append(new_obj)
 
-        # activeObj.select_set(True)
-        bpy.context.view_layer.objects.active = activeObj
+        # active_obj.select_set(True)
+        bpy.context.view_layer.objects.active = active_obj
 
         return new_obj_array
 
@@ -3887,12 +3888,12 @@ class SXTOOLS2_magic(object):
             layers.set_layer(obj, colors, layer)
 
 
-    def apply_curvature_overlay(self, objs, opacity=1.0):
+    def apply_curvature_overlay(self, objs, opacity=1.0, normalize=True):
         scene = bpy.context.scene.sx2
         layer = objs[0].sx2layers['Overlay']
         scene.toolmode = 'CRV'
         scene.toolopacity = 1.0
-        scene.curvaturenormalize = True
+        scene.curvaturenormalize = normalize
 
         tools.apply_tool(objs, layer)
 
@@ -3931,6 +3932,7 @@ class SXTOOLS2_magic(object):
         scene = bpy.context.scene.sx2
         self.apply_palette_overrides(objs, clear=False)
         self.apply_occlusion(objs, blend=0.0, groundplane=False, distance=50.0)
+        self.apply_curvature_overlay(objs, normalize=False)
 
         # Apply Gradient1 to roughness and metallic
         for obj in objs:
@@ -3942,10 +3944,6 @@ class SXTOOLS2_magic(object):
                 scene.toolblend = 'ALPHA'
                 tools.apply_tool(objs, obj.sx2layers['Metallic'], masklayer=obj.sx2layers['Gradient1'], color=(1.0, 1.0, 1.0, 1.0))
                 tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Gradient1'], color=(0.0, 0.0, 0.0, 1.0))
-
-            # Flat overlay
-            colors = generate.color_list(obj, color=(0.5, 0.5, 0.5, 1.0))
-            layers.set_layer(obj, colors, obj.sx2layers['Overlay'])
 
         # Emissives are smooth
         tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Emission'], color=(0.0, 0.0, 0.0, 1.0))
@@ -4071,7 +4069,6 @@ class SXTOOLS2_magic(object):
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             # Write roughness
             layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
-            # layer.locked = True
 
             # Apply PBR metal based on layer7
             # noise = 0.01
@@ -4159,7 +4156,6 @@ class SXTOOLS2_magic(object):
             # Write roughness
             layer = obj.sx2layers['Roughness']
             layers.set_layer(obj, colors, layer)
-            # layer.locked = True
 
             # Apply PBR metal based on layer7
             colors = generate.color_list(obj, color=palette[0], masklayer=utils.find_color_layers(obj, 6))
@@ -5101,7 +5097,7 @@ def refresh_swatches(self, context):
                 if scene.toolmode == 'COL':
                     update_fillcolor(self, context)
                 # elif (scene.toolmode == 'MAT'):
-                #     layers.material_layers_to_values(objs)
+                #     layers.material_layers_to_swatches(objs)
 
         utils.mode_manager(objs, revert=True, mode_id='refresh_swatches')
         # sxglobals.refresh_in_progress = False
@@ -8146,7 +8142,7 @@ class SXTOOLS2_OT_layers_to_palette(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         if len(objs) > 0:
-            layers.color_layers_to_values(objs)
+            layers.color_layers_to_swatches(objs)
         return {'FINISHED'}
 
 
