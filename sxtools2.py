@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 4, 9),
+    'version': (1, 4, 10),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1046,7 +1046,7 @@ class SXTOOLS2_generate(object):
 
                 vtxCurvature = min(vtxCurvature / float(numConnected), 1.0)
 
-                vert_curv_dict[vert.index] = vtxCurvature
+                vert_curv_dict[vert.index] = round(vtxCurvature, 5)
             else:
                 vert_curv_dict[vert.index] = 0.0
 
