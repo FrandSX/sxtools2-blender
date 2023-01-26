@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 5, 0),
+    'version': (1, 5, 1),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1017,6 +1017,14 @@ class SXTOOLS2_generate(object):
 
 
     def blur_list(self, obj, layer, masklayer=None, returndict=False):
+
+        def average_color(colors):
+            sum_color = Vector((0.0, 0.0, 0.0, 0.0))
+            for color in colors:
+                sum_color += color
+            return (sum_color / len(colors))
+
+
         color_dict = {}
         vert_blur_dict = {}
         mesh = obj.data
@@ -1026,11 +1034,12 @@ class SXTOOLS2_generate(object):
 
         colors = layers.get_layer(obj, layer)
         for vert in bm.verts:
-            color_dict[vert.index] = (colors[(vert.index*4):(vert.index*4+4)])
-
-
-        # for poly in mesh.polygons:
-        #     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
+            loop_colors = []
+            for loop in vert.link_loops:
+                loop_color = Vector(colors[(loop.index*4):(loop.index*4+4)])
+                loop_colors.append(loop_color)
+            
+            color_dict[vert.index] = average_color(loop_colors)
 
         for vert in bm.verts:
             num_connected = len(vert.link_edges)
@@ -1052,12 +1061,7 @@ class SXTOOLS2_generate(object):
                     for j in range(edge_weights[i]):
                         neighbor_colors.append(Vector(color_dict[edge.other_vert(vert).index]))
 
-                sum_color = Vector((0.0, 0.0, 0.0, 0.0))
-                for color in neighbor_colors:
-                    sum_color += color
-                avg_color = sum_color / len(neighbor_colors)
-
-                vert_blur_dict[vert.index] = avg_color
+                vert_blur_dict[vert.index] = average_color(neighbor_colors)
             else:
                 vert_blur_dict[vert.index] = color_dict[vert.index]
 
