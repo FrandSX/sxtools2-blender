@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 4, 9),
+    'version': (1, 5, 0),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1014,6 +1014,62 @@ class SXTOOLS2_convert(object):
 class SXTOOLS2_generate(object):
     def __init__(self):
         return None
+
+
+    def blur_list(self, obj, layer, masklayer=None, returndict=False):
+        color_dict = {}
+        vert_blur_dict = {}
+        mesh = obj.data
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        bmesh.types.BMVertSeq.ensure_lookup_table(bm.verts)
+
+        colors = layers.get_layer(obj, layer)
+        for vert in bm.verts:
+            color_dict[vert.index] = (colors[(vert.index*4):(vert.index*4+4)])
+
+
+        # for poly in mesh.polygons:
+        #     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
+
+        for vert in bm.verts:
+            num_connected = len(vert.link_edges)
+            if num_connected > 0:
+                neighbor_colors = [Vector(color_dict[vert.index])] * 20
+                edge_weights = []
+
+                for edge in vert.link_edges:
+                    pos1 = vert.co
+                    pos2 = edge.other_vert(vert).co
+                    edge_vec = Vector((float(pos2[0] - pos1[0]), float(pos2[1] - pos1[1]), float(pos2[2] - pos1[2])))
+                    edge_weights.append(len(edge_vec))
+
+                # weights are inverted so near colors are more important
+                max_weight = max(edge_weights)
+                edge_weights = [int((1.1 - (weight / max_weight)) * 10) for weight in edge_weights]
+
+                for i, edge in enumerate(vert.link_edges):
+                    for j in range(edge_weights[i]):
+                        neighbor_colors.append(Vector(color_dict[edge.other_vert(vert).index]))
+
+                sum_color = Vector((0.0, 0.0, 0.0, 0.0))
+                for color in neighbor_colors:
+                    sum_color += color
+                avg_color = sum_color / len(neighbor_colors)
+
+                vert_blur_dict[vert.index] = avg_color
+            else:
+                vert_blur_dict[vert.index] = color_dict[vert.index]
+
+        bm.free()
+
+        if returndict:
+            return vert_blur_dict
+        else:
+            vert_blur_list = self.vert_dict_to_loop_list(obj, vert_blur_dict, 4, 4)
+            blur_list = self.mask_list(obj, vert_blur_list, masklayer)
+
+            return blur_list
 
 
     def curvature_list(self, obj, masklayer=None, returndict=False):
@@ -2116,6 +2172,8 @@ class SXTOOLS2_tools(object):
                 colors = generate.direction_list(obj, masklayer)
             elif scene.toolmode == 'LUM':
                 colors = generate.luminance_remap_list(obj, targetlayer, masklayer)
+            elif scene.toolmode == 'BLR':
+                colors = generate.blur_list(obj, targetlayer, masklayer)
 
             if colors is not None:
                 mask = None
@@ -5742,6 +5800,18 @@ def save_post_handler(dummy):
 # ------------------------------------------------------------------------
 class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
 
+    layer_set: bpy.props.EnumProperty(
+        name='Layer Set Index',
+        description='Select active layer set',
+        items=[
+            ('0', '0', ''),
+            ('1', '1', ''),
+            ('2', '2', ''),
+            ('3', '3', ''),
+            ('4', '4', '')],
+        default='0',
+        update=lambda self, context: update_obj_props(self, context, 'layer_set'))
+
     selectedlayer: bpy.props.IntProperty(
         name='Selected Layer',
         min=0,
@@ -6284,7 +6354,8 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
             ('OCC', 'Ambient Occlusion', ''),
             ('THK', 'Mesh Thickness', ''),
             ('DIR', 'Directional', ''),
-            ('LUM', 'Luminance Remap', '')],
+            ('LUM', 'Luminance Remap', ''),
+            ('BLR', 'Blur', '')],
         default='COL')
         # update=lambda self, context: expand_element(self, context, 'expandfill'))
 
@@ -6761,6 +6832,11 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
 
 class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
     # name: from PropertyGroup
+
+    layer_set: bpy.props.IntProperty(
+        name='Layer Set Index',
+        min = 0,
+        default=0)
 
     index: bpy.props.IntProperty(
         name='Layer Index',
@@ -10145,5 +10221,6 @@ if __name__ == '__main__':
 
 # TODO:
 # BUG: Grouping of objs with armatures
+# BUG: Context incorrect when starting with an empty scene?
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
