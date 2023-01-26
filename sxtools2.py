@@ -1102,7 +1102,7 @@ class SXTOOLS2_generate(object):
 
                 vtxCurvature = min(vtxCurvature / float(numConnected), 1.0)
 
-                vert_curv_dict[vert.index] = vtxCurvature
+                vert_curv_dict[vert.index] = round(vtxCurvature, 5)
             else:
                 vert_curv_dict[vert.index] = 0.0
 
