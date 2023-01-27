@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 5, 3),
+    'version': (1, 5, 4),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1394,8 +1394,9 @@ class SXTOOLS2_generate(object):
 
             if groundplane:
                 pivot = utils.find_root_pivot([obj, ])
-                pivot = (pivot[0], pivot[1], -0.5)  # pivot[2] - 0.5)
-                ground, groundmesh = self.ground_plane(20, pivot)
+                pivot = (pivot[0], pivot[1], pivot[2] - 0.5)  # , -0.5)
+                size = max(obj.dimensions) * 10
+                ground, groundmesh = self.ground_plane(size, pivot)
 
             for vert_id in vert_dict:
                 bias = 0.001
