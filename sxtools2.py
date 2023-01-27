@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 5, 1),
+    'version': (1, 5, 2),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3654,7 +3654,7 @@ class SXTOOLS2_magic(object):
                 obj.data.name = obj.name + '_mesh'
 
         # Make sure all objects have UVSet0
-        # tools.create_uvset0(objs)
+        # export.create_uvset0(objs)
 
         # Remove empties from selected objects
         for sel in viewlayer.objects.selected:
@@ -5501,6 +5501,8 @@ def load_category(self, context):
 
         for obj in objs:
             obj.select_set(True)
+
+        export.create_uvset0(objs)
 
         sxglobals.magic_in_progress = False
         context.view_layer.objects.active = active
