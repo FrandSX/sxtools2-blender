@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 5, 2),
+    'version': (1, 5, 3),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1112,6 +1112,11 @@ class SXTOOLS2_generate(object):
 
         # pass 2: if tiling, copy the curvature value from the connected vert of the edge that's pointing away from the mirror axis
         if obj.sx2.tiling:
+            if 'sxTiler' in obj.modifiers:
+                obj.modifiers['sxTiler'].show_viewport = False
+                obj.modifiers.update()
+                bpy.context.view_layer.update()
+
             xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], local=True)
             tiling_props = [('tile_neg_x', 'tile_pos_x'), ('tile_neg_y', 'tile_pos_y'), ('tile_neg_z', 'tile_pos_z')]
             axis_vectors = [(Vector((-1.0, 0.0, 0.0)), Vector((1.0, 0.0, 0.0))), (Vector((0.0, -1.0, 0.0)), Vector((0.0, 1.0, 0.0))), (Vector((0.0, 0.0, -1.0)), Vector((0.0, 0.0, 1.0)))]
@@ -1139,6 +1144,11 @@ class SXTOOLS2_generate(object):
                         vert_curv_dict[vert.index] = vert_curv_dict[value_vert_id]
                     else:
                         vert_curv_dict[vert.index] = 0.0
+
+            if 'sxTiler' in obj.modifiers:
+                obj.modifiers['sxTiler'].show_viewport = obj.sx2.tile_preview
+                obj.modifiers.update()
+                bpy.context.view_layer.update()
 
         bm.free()
 
@@ -10230,3 +10240,4 @@ if __name__ == '__main__':
 # BUG: Context incorrect when starting with an empty scene?
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
+# BUG: Disable sxtiler when calculating curvature
