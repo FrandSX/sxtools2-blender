@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 5, 4),
+    'version': (1, 5, 5),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -268,6 +268,7 @@ class SXTOOLS2_files(object):
                 export.generate_palette_masks(obj_array)
                 export.generate_uv_channels(obj_array)
                 export.composite_color_layers(obj_array)
+                export.composite_to_first(obj_array)
 
                 for obj in obj_array:
                     bpy.context.view_layer.objects.active = obj
@@ -3412,6 +3413,21 @@ class SXTOOLS2_export(object):
                 else:
                     print(f'SX Tools Error: {obj.name} has an unknown UV Set configuration')
 
+        bpy.context.view_layer.objects.active = active
+
+
+    def composite_to_first(self, objs):
+        active = bpy.context.view_layer.objects.active
+        for obj in objs:
+            bpy.context.view_layer.objects.active = obj
+            while obj.data.color_attributes[0].name != 'Composite':
+                obj.data.color_attributes.active_color_index = 0
+                attribute_name = obj.data.color_attributes[0].name[:]
+                bpy.ops.geometry.color_attribute_duplicate()
+                obj.data.color_attributes.remove(obj.data.color_attributes[attribute_name])
+                obj.data.color_attributes[-1].name = attribute_name
+
+            utils.sort_stack_indices(obj)            
         bpy.context.view_layer.objects.active = active
 
 
