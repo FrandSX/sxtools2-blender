@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 5, 5),
+    'version': (1, 6, 1),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2722,7 +2722,8 @@ class SXTOOLS2_export(object):
             if 'Composite' not in obj.sx2layers.keys():
                 cmp_add_objs.append(obj)
 
-        layers.add_layer(cmp_add_objs, name='Composite', layer_type='CMP')
+        if len(cmp_add_objs) > 0:
+            layers.add_layer(cmp_add_objs, name='Composite', layer_type='CMP')
 
         for obj in objs:
             comp_layers = utils.find_color_layers(obj, staticvertexcolors=int(obj.sx2.staticvertexcolors))
@@ -3416,16 +3417,43 @@ class SXTOOLS2_export(object):
         bpy.context.view_layer.objects.active = active
 
 
-    def composite_to_first(self, objs):
+    def bytes_to_floats(self, objs):
         active = bpy.context.view_layer.objects.active
         for obj in objs:
+            if len(obj.sx2layers) > 0:
+                bpy.context.view_layer.objects.active = obj
+                byte_colors = []
+                for color_attribute in obj.data.color_attributes:
+                    if color_attribute.data_type == 'BYTE_COLOR':
+                        byte_colors.append(color_attribute.name)
+
+                if len(byte_colors) > 0:
+                    for byte_color in byte_colors:
+                        # VertexColor0 was only used by SX Tools 1 for compositing, and is redundant
+                        if byte_color == 'VertexColor0':
+                            obj.data.color_attributes.remove(obj.data.color_attributes[byte_color])
+                        else:
+                            obj.data.color_attributes.active_color = obj.data.color_attributes[byte_color]
+                            bpy.ops.geometry.attribute_convert(domain='CORNER', data_type='FLOAT_COLOR')
+
+        bpy.context.view_layer.objects.active = active
+
+
+    def composite_to_first(self, objs):
+        active = bpy.context.view_layer.objects.active
+
+        for obj in objs:
             bpy.context.view_layer.objects.active = obj
-            while obj.data.color_attributes[0].name != 'Composite':
-                obj.data.color_attributes.active_color_index = 0
-                attribute_name = obj.data.color_attributes[0].name[:]
+
+            color_attributes = obj.data.color_attributes.keys()[:]
+            composite_index = color_attributes.index('Composite')
+
+            for i in range(composite_index):
+                attribute_name = color_attributes[i][:]
+                obj.data.color_attributes.active_color = obj.data.color_attributes[attribute_name]
                 bpy.ops.geometry.color_attribute_duplicate()
                 obj.data.color_attributes.remove(obj.data.color_attributes[attribute_name])
-                obj.data.color_attributes[-1].name = attribute_name
+                obj.data.color_attributes[attribute_name + '.001'].name = attribute_name
 
             utils.sort_stack_indices(obj)            
         bpy.context.view_layer.objects.active = active
@@ -5097,7 +5125,7 @@ class SXTOOLS2_setup(object):
 #    Update Functions
 # ------------------------------------------------------------------------
 def start_modal():
-    if not sxglobals.selection_modal_status:
+    if (not sxglobals.selection_modal_status) and (len(bpy.data.objects) > 0):
         bpy.ops.sx2.selectionmonitor('EXEC_DEFAULT')
         sxglobals.selection_modal_status = True
 
@@ -5750,12 +5778,14 @@ def load_post_handler(dummy):
         bpy.data.scenes['Scene'].sx2.rampmode = 'X'
 
     setup.update_sx2material(bpy.context)
+    # Convert legacy byte color attributes to floats
+    export.bytes_to_floats(bpy.data.objects)
 
     for obj in bpy.data.objects:
         if (obj is not None) and (obj.type == 'MESH') and (('sxtools' in obj.keys()) or ('sx2' in obj.keys())):
             obj.data.use_auto_smooth = True
 
-        if (len(obj.sx2.keys()) > 0):
+        if len(obj.sx2.keys()) > 0:
             if obj.sx2.hardmode == '':
                 obj.sx2.hardmode = 'SHARP'
 
@@ -7638,6 +7668,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 col_debug.operator('sx2.applymodifiers', text='Debug: Apply Modifiers')
                                 col_debug.operator('sx2.generatemasks', text='Debug: Generate Masks')
                                 col_debug.operator('sx2.createuv0', text='Debug: Create UVSet0')
+                                col_debug.operator('sx2.bytestofloats', text='Debug: Convert to Float Colors')
                                 col_debug.operator('sx2.generatelods', text='Debug: Create LOD Meshes')
                                 col_debug.operator('sx2.resetscene', text='Debug: Reset scene (warning!)')
 
@@ -7919,6 +7950,8 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
         if not bpy.app.background:
             if (context.area is not None) and (context.area.type == 'VIEW_3D'):
                 return context.active_object is not None
+            else:
+                return False
         else:
             return context.active_object is not None
 
@@ -9436,6 +9469,21 @@ class SXTOOLS2_OT_zeroverts(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class SXTOOLS2_OT_bytestofloats(bpy.types.Operator):
+    bl_idname = 'sx2.bytestofloats'
+    bl_label = 'Color Attributes to Float Type'
+    bl_description = 'Sets color attributes to Float if they have legacy Byte Color data'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if len(objs) > 0:
+            export.bytes_to_floats(objs)
+
+        return {'FINISHED'}
+
+
 class SXTOOLS2_OT_macro(bpy.types.Operator):
     bl_idname = 'sx2.macro'
     bl_label = 'Process Exports'
@@ -10166,6 +10214,7 @@ export_classes = (
     SXTOOLS2_OT_generatelods,
     SXTOOLS2_OT_revertobjects,
     SXTOOLS2_OT_zeroverts,
+    SXTOOLS2_OT_bytestofloats,
     SXTOOLS2_OT_macro,
     SXTOOLS2_OT_checklist,
     SXTOOLS2_OT_catalogue_add,
@@ -10254,7 +10303,5 @@ if __name__ == '__main__':
 
 # TODO:
 # BUG: Grouping of objs with armatures
-# BUG: Context incorrect when starting with an empty scene?
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
-# BUG: Disable sxtiler when calculating curvature
