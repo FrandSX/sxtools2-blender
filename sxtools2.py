@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 6, 1),
+    'version': (1, 6, 2),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5592,12 +5592,7 @@ def load_libraries(self, context):
     status3 = files.load_file('gradients')
     status4 = files.load_file('categories')
 
-    if not (status1 and status2 and status3 and status4):
-        message_box('SX Tools libraries not loaded.', 'SX Tools Error', 'ERROR')
-
-        sxglobals.libraries_status = False
-    else:
-        sxglobals.libraries_status = True
+    sxglobals.libraries_status = (status1 and status2 and status3 and status4)
 
 
 # Fillcolor is automatically converted to grayscale on specific material layers
