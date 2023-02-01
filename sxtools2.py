@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 6, 3),
+    'version': (1, 6, 4),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -9124,7 +9124,7 @@ class SXTOOLS2_OT_applypalette(bpy.types.Operator):
 class SXTOOLS2_OT_applymaterial(bpy.types.Operator):
     bl_idname = 'sx2.applymaterial'
     bl_label = 'Apply PBR Material'
-    bl_description = 'Applies the selected material to selected objects\nAlbedo color goes to the layer7\nmetallic and roughness values are automatically applied\nto the selected material channels\nNOTE: Never overwrites alpha! Always respects the existing color layer mask'
+    bl_description = 'Applies the selected material to selected objects\nAlbedo color to selected layer\nMetallic and Roughness to the respective channels\n\nNOTE: Never overwrites alpha!\nAlways respects the existing color layer mask'
     bl_options = {'UNDO'}
 
     label: bpy.props.StringProperty()
