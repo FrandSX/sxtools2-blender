@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 6, 2),
+    'version': (1, 6, 3),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -8445,6 +8445,38 @@ class SXTOOLS2_OT_applytool(bpy.types.Operator):
     bl_label = 'Apply Tool'
     bl_description = 'Applies the selected mode fill\nto the selected components or objects'
     bl_options = {'UNDO'}
+
+
+    @classmethod
+    def description(cls, context, properties):
+        mode = context.scene.sx2.toolmode
+
+        if mode == 'COL':
+            modeString = 'Color tool:\nApplies the selected color to an RGBA layer\nor the selected value to a material layer\nor direct alpha values in Alpha shading mode'
+        elif mode == 'GRD':
+            modeString = 'Gradient tool:\nApplies the selected gradient\nNOTE: Overwrites existing overlay and occlusion'
+        elif mode == 'PAL':
+            modeString = 'Palette tool:\nPreviews and applies palette colors\nto layers with paletting enabled\n\nThe previewed palette can be blended with the layer colors when applied\nNOTE: Palette tool retains existing alpha values of all layers'
+        elif mode == 'MAT':
+            modeString = 'Material tool:\nApplies albedo, metallic, and roughness\nfrom the selected material\nto the selected layer and material channels\nNOTE: Never overwrites alpha! Always respects the existing color layer mask'
+        elif mode == 'NSE':
+            modeString = 'Noise tool:\nSimple vertex noise'
+        elif mode == 'CRV':
+            modeString = 'Curvature tool:\nApplies the curvature of each vertex as grayscale\nwith convex areas being light tones\nand concave areas as dark'
+        elif mode == 'OCC':
+            modeString = 'Ambient Occlusion tool:\nApplies grayscale occlusion values to vertices\nThe optional ground plane is spawned\n0.5 units below the bounding box of the object'
+        elif mode == 'THK':
+            modeString = 'Mesh Thickness tool:\nApplies grayscale values\naccording to the thickness of the object\nNOTE: Thinner areas are brighter!'
+        elif mode == 'DIR':
+            modeString = 'Directional tool:\nBrightens the object like a directional light\nwith optional spread for softer effect'
+        elif mode == 'LUM':
+            modeString = 'Luminance Remap tool:\nMaps any existing grayscale values on the mesh\nto a selected gradient'
+        elif mode == 'BLR':
+            modeString = 'Blur tool:\nSmoothens color transitions\nby blending vertex colors with their neighbors\nNOTE: Adjust fill tool opacity for greater control!'
+        else:
+            modeString = 'Applies the selected tool\nto the selected objects or components'
+
+        return modeString
 
 
     def invoke(self, context, event):
