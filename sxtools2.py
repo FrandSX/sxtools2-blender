@@ -8454,15 +8454,15 @@ class SXTOOLS2_OT_applytool(bpy.types.Operator):
         if mode == 'COL':
             modeString = 'Color tool:\nApplies the selected color to an RGBA layer\nor the selected value to a material layer\nor direct alpha values in Alpha shading mode'
         elif mode == 'GRD':
-            modeString = 'Gradient tool:\nApplies the selected gradient\nNOTE: Overwrites existing overlay and occlusion'
+            modeString = 'Gradient tool:\nApplies the selected gradient'
         elif mode == 'PAL':
             modeString = 'Palette tool:\nPreviews and applies palette colors\nto layers with paletting enabled\n\nThe previewed palette can be blended with the layer colors when applied\nNOTE: Palette tool retains existing alpha values of all layers'
         elif mode == 'MAT':
             modeString = 'Material tool:\nApplies albedo, metallic, and roughness\nfrom the selected material\nto the selected layer and material channels\nNOTE: Never overwrites alpha! Always respects the existing color layer mask'
         elif mode == 'NSE':
-            modeString = 'Noise tool:\nSimple vertex noise'
+            modeString = 'Noise tool:\nApplies simple vertex color or value noise'
         elif mode == 'CRV':
-            modeString = 'Curvature tool:\nApplies the curvature of each vertex as grayscale\nwith convex areas being light tones\nand concave areas as dark'
+            modeString = 'Curvature tool:\nApplies the curvature of each vertex\nas a grayscale value,\nwith convex areas being light tones\nand concave areas as dark'
         elif mode == 'OCC':
             modeString = 'Ambient Occlusion tool:\nApplies grayscale occlusion values to vertices\nThe optional ground plane is spawned\n0.5 units below the bounding box of the object'
         elif mode == 'THK':
