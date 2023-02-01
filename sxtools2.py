@@ -9124,7 +9124,7 @@ class SXTOOLS2_OT_applypalette(bpy.types.Operator):
 class SXTOOLS2_OT_applymaterial(bpy.types.Operator):
     bl_idname = 'sx2.applymaterial'
     bl_label = 'Apply PBR Material'
-    bl_description = 'Applies the selected material to selected objects\nAlbedo color goes to the layer7\nmetallic and roughness values are automatically applied\nto the selected material channels'
+    bl_description = 'Applies the selected material to selected objects\nAlbedo color goes to the layer7\nmetallic and roughness values are automatically applied\nto the selected material channels\nNOTE: Never overwrites alpha! Always respects the existing color layer mask'
     bl_options = {'UNDO'}
 
     label: bpy.props.StringProperty()
