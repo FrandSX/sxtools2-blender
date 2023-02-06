@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 6, 4),
+    'version': (1, 6, 5),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5069,6 +5069,7 @@ class SXTOOLS2_setup(object):
             # Reset object properties
             obj.sx2.selectedlayer = 0
             obj.sx2.layercount = 0
+            obj.sx2.palettedshading = 0.0
             obj.sx2.shadingmode = 'FULL'
             obj.sx2.category = 'DEFAULT'
 
