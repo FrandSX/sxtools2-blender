@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 6, 4),
+    'version': (1, 6, 5),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4780,12 +4780,19 @@ class SXTOOLS2_setup(object):
                                 source_color.layer_name = material_layers[i][1]
                                 source_color.location = (0, -i*400-800)
 
+                                source_mask = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
+                                source_mask.inputs[0].default_value = 0
+                                source_mask.inputs[1].default_value = [0.0, 0.0, 0.0, 0.0]
+                                source_mask.inputs[2].default_value = [0.0, 0.0, 0.0, 0.0]
+                                source_mask.use_clamp = True
+                                source_mask.location = (200, -i*400-800)
+
                                 source_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
                                 source_blend.inputs[0].default_value = 0
                                 source_blend.inputs[1].default_value = [0.0, 0.0, 0.0, 0.0]
                                 source_blend.inputs[2].default_value = [0.0, 0.0, 0.0, 0.0]
                                 source_blend.use_clamp = True
-                                source_blend.location = (200, -i*400-800)
+                                source_blend.location = (200, -i*400-950)
 
                                 material_palette = sxmaterial.node_tree.nodes.new(type="ShaderNodeRGB")
                                 material_palette.name = 'PaletteColor' + name
@@ -4796,7 +4803,15 @@ class SXTOOLS2_setup(object):
                                 palette_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
                                 palette_blend.inputs[0].default_value = 0
                                 palette_blend.use_clamp = True
-                                palette_blend.location = (200, -i*400-950)
+                                palette_blend.location = (400, -i*400-800)
+
+                                output = source_color.outputs['Alpha']
+                                input = source_mask.inputs[0]
+                                sxmaterial.node_tree.links.new(input, output)
+
+                                output = source_color.outputs['Color']
+                                input = source_mask.inputs['Color2']
+                                sxmaterial.node_tree.links.new(input, output)
 
                                 output = source_color.outputs['Alpha']
                                 input = source_blend.inputs[0]
@@ -4806,7 +4821,7 @@ class SXTOOLS2_setup(object):
                                 input = source_blend.inputs['Color2']
                                 sxmaterial.node_tree.links.new(input, output)
 
-                                output = source_color.outputs['Color']
+                                output = source_mask.outputs['Color']
                                 input = palette_blend.inputs['Color1']
                                 sxmaterial.node_tree.links.new(input, output)
 
