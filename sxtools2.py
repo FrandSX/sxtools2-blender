@@ -5084,6 +5084,7 @@ class SXTOOLS2_setup(object):
             # Reset object properties
             obj.sx2.selectedlayer = 0
             obj.sx2.layercount = 0
+            obj.sx2.palettedshading = 0.0
             obj.sx2.shadingmode = 'FULL'
             obj.sx2.category = 'DEFAULT'
 
