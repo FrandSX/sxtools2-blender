@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 6, 6),
+    'version': (1, 6, 7),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5533,6 +5533,7 @@ def load_category(self, context):
         for obj in objs:
             obj.select_set(True)
             context.view_layer.objects.active = obj
+            utils.sort_stack_indices(obj)
 
             for i in range(len(category_data['layers'])):
                 layer = utils.find_layer_by_stack_index(obj, i)
