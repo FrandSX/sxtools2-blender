@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 6, 7),
+    'version': (1, 6, 8),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -7969,6 +7969,9 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
 
 
     def modal(self, context, event):
+        if event.type == 'TIMER_REPORT':
+            return {'PASS_THROUGH'}
+
         if not context.area:
             print('Selection Monitor: Context Lost')
             sxglobals.selection_modal_status = False
