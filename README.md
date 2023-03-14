@@ -65,15 +65,16 @@ Currently the export channels are set in the following way:
 Channel | Function
 ---------|-------------
 UV0 | Reserved for a regular texturing
-U1 | Layer coverage masks for dynamic palettes
-V1 | Ambient Occlusion
-U2 | Transmission
-V2 | Emission
-U3 | Metallic
-V3 | Smoothness
-U4 | Alpha Overlay 1, an alpha mask channel
-V4 | Alpha Overlay 2, an alpha mask channel
-UV5/UV6 | RGBA Overlay, an optional additional color layer 
+UV§ | Reserved for lightmaps
+U2 | Layer coverage masks for dynamic palettes
+V2 | Ambient Occlusion
+U3 | Transmission or SSS
+V3 | Emission
+U4 | Metallic
+V4 | Smoothness
+U5 | Alpha Overlay 1, an alpha mask channel
+V5 | Alpha Overlay 2, an alpha mask channel
+UV6/UV7 | RGBA Overlay, an optional additional color layer 
 UV7 | Currently not in use
 
 Vertex colors are exported from the Composite/VertexColor0 layer. Material properties are assigned according to the list above.
