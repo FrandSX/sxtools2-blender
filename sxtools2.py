@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 6, 8),
+    'version': (1, 8, 0),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2040,6 +2040,14 @@ class SXTOOLS2_layers(object):
                 for i in range(count):
                     colors[(3+i*4):(4+i*4)] = alphas[(3+i*4):(4+i*4)]
                 layers.set_layer(obj, colors, targetlayer)
+        elif fillmode == 'lumtomask':
+            for obj in objs:
+                colors = layers.get_layer(obj, targetlayer)
+                alphas = convert.colors_to_values(sxglobals.copy_buffer[obj.name])
+                count = len(colors)//4
+                for i in range(count):
+                    colors[3+i*4] = alphas[i]
+                layers.set_layer(obj, colors, targetlayer)
         else:
             for obj in objs:
                 colors = sxglobals.copy_buffer[obj.name]
@@ -3172,18 +3180,19 @@ class SXTOOLS2_export(object):
                 source_objects.unlink(obj)
 
 
+    # Remove and recreate all export uvlayers
     def reset_uv_layers(self, objs):
-        # Remove and recreate all export uvlayers, UVSet0 reserved for texture UVs.
         for obj in objs:
+            reserved = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]['reserved']
             to_delete = []
             for uvlayer in obj.data.uv_layers:
-                if uvlayer.name != 'UVSet0':
+                if uvlayer.name not in reserved:
                     to_delete.append(uvlayer.name[:])
             if len(to_delete) > 0:
                 for uvlayer_name in to_delete:
                     obj.data.uv_layers.remove(obj.data.uv_layers[uvlayer_name])
 
-            for i in range(7):
+            for i in range(8):
                 uvmap = 'UVSet' + str(i)
                 if uvmap not in obj.data.uv_layers.keys():
                     obj.data.uv_layers.new(name=uvmap)
@@ -3387,13 +3396,15 @@ class SXTOOLS2_export(object):
         viewlayer.objects.active = active
 
 
-    def create_uvset0(self, objs):
+    def create_reserved_uvsets(self, objs):
         active = bpy.context.view_layer.objects.active
         for obj in objs:
             bpy.context.view_layer.objects.active = obj
             setCount = len(obj.data.uv_layers)
             if setCount == 0:
-                obj.data.uv_layers.new(name='UVSet0')
+                reserved = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]['reserved']
+                for uvset in reserved:
+                    obj.data.uv_layers.new(name=uvset)
             elif setCount > 6:
                 base = obj.data.uv_layers[0]
                 if base.name != 'UVSet0':
@@ -3402,6 +3413,8 @@ class SXTOOLS2_export(object):
                 base = obj.data.uv_layers[0]
                 if 'UVSet' not in base.name:
                     base.name = 'UVSet0'
+                    if (setCount > 1) and (obj.data.uv_layers[1].name != 'UVSet1'):
+                        obj.data.uv_layers[1].name = 'UVSet1'
                 elif base.name == 'UVSet1':
                     obj.data.uv_layers.new(name='UVSet0')
                     for i in range(setCount):
@@ -3707,9 +3720,6 @@ class SXTOOLS2_magic(object):
             obj.data.auto_smooth_angle = math.radians(obj.sx2.smoothangle)
             if '_mesh' not in obj.data.name:
                 obj.data.name = obj.name + '_mesh'
-
-        # Make sure all objects have UVSet0
-        # export.create_uvset0(objs)
 
         # Remove empties from selected objects
         for sel in viewlayer.objects.selected:
@@ -5574,7 +5584,7 @@ def load_category(self, context):
         for obj in objs:
             obj.select_set(True)
 
-        export.create_uvset0(objs)
+        # export.create_reserved_uvsets(objs)
 
         sxglobals.magic_in_progress = False
         context.view_layer.objects.active = active
@@ -7198,7 +7208,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
                 if scene.shift:
                     clr_text = 'Reset All'
-                    paste_text = 'Paste'
+                    paste_text = 'Paste Alpha'
                     sel_text = 'Select Inverse'
                 elif scene.alt:
                     paste_text = 'Paste'
@@ -7208,7 +7218,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         sel_text = 'Select Value'
                     else:
                         sel_text = 'Select Color'
-                    paste_text = 'Paste Alpha'
+                    paste_text = 'Paste Into Alpha'
 
                 col_misc = layout.column(align=True)
                 row_misc1 = col_misc.row(align=True)
@@ -7679,7 +7689,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 col_debug.operator('sx2.create_sxcollection', text='Debug: Update SXCollection')
                                 col_debug.operator('sx2.applymodifiers', text='Debug: Apply Modifiers')
                                 col_debug.operator('sx2.generatemasks', text='Debug: Generate Masks')
-                                col_debug.operator('sx2.createuv0', text='Debug: Create UVSet0')
+                                col_debug.operator('sx2.createuv0', text='Debug: Create Reserved UV Sets')
                                 col_debug.operator('sx2.bytestofloats', text='Debug: Convert to Float Colors')
                                 col_debug.operator('sx2.generatelods', text='Debug: Create LOD Meshes')
                                 col_debug.operator('sx2.resetscene', text='Debug: Reset scene (warning!)')
@@ -8555,9 +8565,9 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         utils.mode_manager(objs, set_mode=True, mode_id='add_layer')
-        for obj in objs:
-            if len(obj.sx2layers) == 0:
-                export.create_uvset0([obj, ])
+        # for obj in objs:
+        #     if len(obj.sx2layers) == 0:
+        #         export.create_reserved_uvsets([obj, ])
         layers.add_layer(objs)
         setup.update_sx2material(context)
         utils.mode_manager(objs, revert=True, mode_id='add_layer')
@@ -8979,8 +8989,10 @@ class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
             for obj in objs:
                 target_layer = obj.sx2layers[objs[0].sx2.selectedlayer]
 
-                if event.ctrl:
+                if event.shift:
                     mode = 'mask'
+                elif event.ctrl:
+                    mode = 'lumtomask'
                 else:
                     mode = False
 
@@ -9428,15 +9440,15 @@ class SXTOOLS2_OT_removeexports(bpy.types.Operator):
 
 class SXTOOLS2_OT_createuv0(bpy.types.Operator):
     bl_idname = 'sx2.createuv0'
-    bl_label = 'Create UVSet0'
-    bl_description = 'Checks if UVSet0 is missing\nand adds it at the top of the UV sets'
+    bl_label = 'Create Reserved UV Sets'
+    bl_description = 'Checks if any engine-reserved UV Set is missing\nand adds it at the top of the UV sets'
     bl_options = {'UNDO'}
 
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         if len(objs) > 0:
-            export.create_uvset0(objs)
+            export.create_reserved_uvsets(objs)
         return {'FINISHED'}
 
 
@@ -10134,8 +10146,8 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
                 v = j*offset*2 + offset
                 color_uv_coords[color] = [u, v]
 
-            # make sure UVSet0 exists
-            export.create_uvset0(objs)
+            # make sure reserved UV sets exist
+            export.create_reserved_uvsets(objs)
 
             # match vertex color with palette color, assign UV accordingly
             face_colors = True
