@@ -65,7 +65,7 @@ Currently the export channels are set in the following way:
 Channel | Function
 ---------|-------------
 UV0 | Reserved for a regular texturing
-UV§ | Reserved for lightmaps
+UV1 | Reserved for lightmaps
 U2 | Layer coverage masks for dynamic palettes
 V2 | Ambient Occlusion
 U3 | Transmission or SSS
