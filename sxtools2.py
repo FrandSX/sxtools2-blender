@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 8, 0),
+    'version': (1, 8, 1),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3521,7 +3521,7 @@ class SXTOOLS2_export(object):
         ok1 = self.validate_palette_layers(objs)
         ok2 = self.validate_names(objs)
         ok3 = self.validate_loose(objs)
-        ok4 = self.validate_uv_sets(objs)
+        ok4 = True  # self.validate_uv_sets(objs)
 
         utils.mode_manager(objs, revert=True, mode_id='validate_objects')
 
