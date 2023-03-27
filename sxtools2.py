@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 8, 1),
+    'version': (1, 9, 0),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -283,10 +283,19 @@ class SXTOOLS2_files(object):
 
                 bpy.context.view_layer.objects.active = group
 
+                category_data = sxglobals.category_dict[sxglobals.preset_lookup[group.sx2.category]]
+                export_subfolder = category_data["export_subfolder"]
+                subfolder = None
+                if export_subfolder != "":
+                    subfolder = os.path.split(export_subfolder)[0].replace('//', os.path.sep)
+
                 category = obj_array[0].sx2.category.lower()
                 print(f'Determining path: {group.name} {category}')
-                path = scene.exportfolder + category + os.path.sep
-                pathlib.Path(path).mkdir(exist_ok=True)
+                if subfolder is None:
+                    path = scene.exportfolder + category + os.path.sep
+                else:
+                    path = scene.exportfolder + subfolder + os.path.sep + category + os.path.sep
+                pathlib.Path(path).mkdir(exist_ok=True, parents=True)
 
                 if len(collider_array) > 0:
                     for collider in collider_array:
