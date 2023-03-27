@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 0),
+    'version': (1, 9, 1),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -287,7 +287,7 @@ class SXTOOLS2_files(object):
                 export_subfolder = category_data["export_subfolder"]
                 subfolder = None
                 if export_subfolder != "":
-                    subfolder = os.path.split(export_subfolder)[0].replace('//', os.path.sep)
+                    subfolder = export_subfolder.replace('//', os.path.sep)
 
                 category = obj_array[0].sx2.category.lower()
                 print(f'Determining path: {group.name} {category}')
