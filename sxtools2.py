@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 2),
+    'version': (1, 9, 3),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -283,7 +283,7 @@ class SXTOOLS2_files(object):
 
                 bpy.context.view_layer.objects.active = group
 
-                category_data = sxglobals.category_dict[sxglobals.preset_lookup[group.sx2.category]]
+                category_data = sxglobals.category_dict[sxglobals.preset_lookup[obj_array[0].sx2.category]]
                 export_subfolder = category_data["export_subfolder"]
                 subfolder = None
                 if export_subfolder != "":
