@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 1),
+    'version': (1, 9, 2),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1379,6 +1379,8 @@ class SXTOOLS2_generate(object):
 
 
     def occlusion_list(self, obj, raycount=500, blend=0.5, dist=10.0, groundplane=False, masklayer=None):
+        # start_time = time.time()
+
         scene = bpy.context.scene
         contribution = 1.0/float(raycount)
         hemiSphere = self.ray_randomizer(raycount)
@@ -1450,14 +1452,8 @@ class SXTOOLS2_generate(object):
                     # offset ray origin with normal bias
                     vertPos = (vertLoc[0] + biasVec[0], vertLoc[1] + biasVec[1], vertLoc[2] + biasVec[2])
 
-                    for sample in hemiSphere:
-                        sample = Vector(sample)
-                        sample.rotate(rotQuat)
-
-                        hit, loc, normal, index = obj_eval.ray_cast(vertPos, sample, distance=dist)
-
-                        if hit:
-                            occValue -= contribution
+                    # for every object ray hit, subtract a fraction from the vertex brightness
+                    occValue -= sum(contribution for sample in hemiSphere if obj_eval.ray_cast(vertPos, rotQuat @ Vector(sample), distance=dist)[0])
 
                 # Pass 2: Worldspace occlusion for scene
                 if 0.0 < mix <= 1.0:
@@ -1467,15 +1463,8 @@ class SXTOOLS2_generate(object):
                     # offset ray origin with normal bias
                     scnVertPos = (vertWorldLoc[0] + biasVec[0], vertWorldLoc[1] + biasVec[1], vertWorldLoc[2] + biasVec[2])
 
-                    for sample in hemiSphere:
-                        sample = Vector(sample)
-                        sample.rotate(rotQuat)
-
-                        scnHit, scnLoc, scnNormal, scnIndex, scnObj, ma = scene.ray_cast(edg, scnVertPos, sample, distance=dist)
-                        # scene.ray_cast(scene.view_layers[0].depsgraph, scnVertPos, sample, distance=dist)
-
-                        if scnHit:
-                            scnOccValue -= contribution
+                    # for every scene ray hit, subtract a fraction from the vertex brightness
+                    scnOccValue -= sum(contribution for sample in hemiSphere if scene.ray_cast(edg, scnVertPos, rotQuat @ Vector(sample), distance=dist)[0])
 
                 vert_occ_dict[vert_id] = float((occValue * (1.0 - mix)) + (scnOccValue * mix))
 
@@ -1487,7 +1476,12 @@ class SXTOOLS2_generate(object):
                 obj.modifiers['sxTiler'].show_viewport = False
 
             vert_occ_list = generate.vert_dict_to_loop_list(obj, vert_occ_dict, 1, 4)
-            return self.mask_list(obj, vert_occ_list, masklayer)
+            result = self.mask_list(obj, vert_occ_list, masklayer)
+
+            # end_time = time.time()  # Stop the timer
+            # print("Execution time: {:.4f} seconds".format(end_time - start_time)) 
+
+            return result
 
         else:
             return None
