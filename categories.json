@@ -1,6 +1,6 @@
 {
     "Default": {
-        "export_subfolder": "TurboDismont2//Content//3D_imports",
+        "export_subfolder": "TurboDismount2//Content//3D_imports",
         "layers": [
             ["Layer 0", "COLOR", "ALPHA", 1.0, "None"]
         ],
@@ -22,7 +22,7 @@
         "uv_overlay":["UVSet6", "UVSet7"]
     },
     "Static": {
-        "export_subfolder": "TurboDismont2//Content//3D_imports",
+        "export_subfolder": "TurboDismount2//Content//3D_imports",
         "layers": [
             ["Layer 0", "COLOR", "ALPHA", 1.0, 0],
             ["Layer 1", "COLOR", "ALPHA", 1.0, 1],
@@ -58,7 +58,7 @@
         "uv_overlay":["UVSet6", "UVSet7"]
     },
     "Paletted": {
-        "export_subfolder": "TurboDismont2LevelEditor//Content//3D_imports",
+        "export_subfolder": "TurboDismount2LevelEditor//Content//3D_imports",
         "layers": [
             ["Layer 0", "COLOR", "ALPHA", 1.0, 0],
             ["Layer 1", "COLOR", "ALPHA", 1.0, 1],
@@ -94,7 +94,7 @@
         "uv_overlay":["UVSet6", "UVSet7"]
     },
     "Vehicles": {
-        "export_subfolder": "TurboDismont2//Content//3D_imports",
+        "export_subfolder": "TurboDismount2//Content//3D_imports",
         "layers": [
             ["Layer 0 - Primary Paint", "COLOR", "ALPHA", 1.0, 0],
             ["Layer 1 - Secondary Paint", "COLOR", "ALPHA", 1.0, 1],
@@ -130,7 +130,7 @@
         "uv_overlay":["UVSet6", "UVSet7"]
     },
     "Buildings": {
-        "export_subfolder": "TurboDismont2LevelEditor//Content//3D_imports",
+        "export_subfolder": "TurboDismount2LevelEditor//Content//3D_imports",
         "layers": [
             ["Layer 0 - Walls (Primary)", "COLOR", "ALPHA", 1.0, 0],
             ["Layer 1 - Walls (Secondary)", "COLOR", "ALPHA", 1.0, 1],
@@ -166,7 +166,7 @@
         "uv_overlay":["UVSet6", "UVSet7"]
     },
     "Trees": {
-        "export_subfolder": "TurboDismont2LevelEditor//Content//3D_imports",
+        "export_subfolder": "TurboDismount2LevelEditor//Content//3D_imports",
         "layers": [
             ["Layer 0 - Foliage (Primary)", "COLOR", "ALPHA", 1.0, 0],
             ["Layer 1 - Foliage (Secondary)", "COLOR", "ALPHA", 1.0, 1],
@@ -202,7 +202,7 @@
         "uv_overlay":["UVSet6", "UVSet7"]
     },
     "Characters": {
-        "export_subfolder": "TurboDismont2//Content//3D_imports",
+        "export_subfolder": "TurboDismount2//Content//3D_imports",
         "layers": [
             ["Layer 0", "COLOR", "ALPHA", 1.0, 0],
             ["Layer 1", "COLOR", "ALPHA", 1.0, 1],
@@ -238,7 +238,7 @@
         "uv_overlay":["UVSet6", "UVSet7"]
     },
     "Roadtiles": {
-        "export_subfolder": "TurboDismont2LevelEditor//Content//3D_imports",
+        "export_subfolder": "TurboDismount2LevelEditor//Content//3D_imports",
         "layers": [
             ["Layer 0 - Asphalt", "COLOR", "ALPHA", 1.0, 0],
             ["Layer 1 - Curb", "COLOR", "ALPHA", 1.0, 1],
@@ -274,7 +274,7 @@
         "uv_overlay":["UVSet6", "UVSet7"]
     },
     "Particles": {
-        "export_subfolder": "TurboDismont2//Content//3D_imports",
+        "export_subfolder": "TurboDismount2//Content//3D_imports",
         "layers": [
             ["Layer 0", "COLOR", "ALPHA", 1.0, 0],
             ["Layer 1", "COLOR", "ALPHA", 1.0, 1],
@@ -310,7 +310,7 @@
         "uv_overlay":["UVSet6", "UVSet7"]
     },
     "NPCVehicles": {
-        "export_subfolder": "TurboDismont2LevelEditor//Content//3D_imports",
+        "export_subfolder": "TurboDismount2LevelEditor//Content//3D_imports",
         "layers": [
             ["Layer 0 - Primary Paint", "COLOR", "ALPHA", 1.0, 0],
             ["Layer 1 - Secondary Paint", "COLOR", "ALPHA", 1.0, 1],
