@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 4),
+    'version': (1, 9, 6),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -133,12 +133,9 @@ class SXTOOLS2_files(object):
 
         if mode == 'palettes':
             self.load_swatches(sxglobals.master_palette_list)
-            return True
         elif mode == 'materials':
             self.load_swatches(sxglobals.material_list)
-            return True
-        else:
-            return True
+        return True
 
 
     def save_file(self, mode):
@@ -192,10 +189,7 @@ class SXTOOLS2_files(object):
                         item.name = entry
                         item.category = category
                         for i in range(swatchcount):
-                            incolor = [0.0, 0.0, 0.0, 1.0]
-                            incolor[0] = category_dict[category][entry][i][0]
-                            incolor[1] = category_dict[category][entry][i][1]
-                            incolor[2] = category_dict[category][entry][i][2]
+                            incolor = category_dict[category][entry][i][:3] + [1.0]
                             if (swatchcount == 5):
                                 setattr(item, 'color'+str(i), convert.srgb_to_linear(incolor))
                             else:
@@ -445,7 +439,7 @@ class SXTOOLS2_utils(object):
         return None
 
 
-    def mode_manager(self, objs, set_mode=False, revert=False, mode_id=None):
+    def mode_manager(self, objs, set_mode=False, mode_id=None):
         if set_mode:
             if sxglobals.mode_id is None:
                 sxglobals.mode_id = mode_id
@@ -459,8 +453,7 @@ class SXTOOLS2_utils(object):
                     if bpy.context.view_layer.objects.active is None:
                         bpy.context.view_layer.objects.active = objs[0]
                     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-
-        elif revert:
+        else:
             if sxglobals.mode_id == mode_id:
                 if bpy.context.view_layer.objects.active is None:
                     bpy.context.view_layer.objects.active = objs[0]
@@ -528,26 +521,16 @@ class SXTOOLS2_utils(object):
                 color_array.extend(values)
 
         if alphavalues:
-            color_array = [convert.luminance_to_color(color[3]) for color in color_array]
-            colors = list(filter(lambda a: a != (0.0, 0.0, 0.0, 1.0), color_array))
+            color_array = [convert.luminance_to_color(color[3]) for color in color_array if color[3] != 0.0]
         else:
-            colors = list(filter(lambda a: a[3] != 0.0, color_array))
+            colors = [color for color in color_array if color[3] != 0.0]
 
-        quantized_colors = []
-        for color in colors:
-            qc = (self.round_stepped(color[0]), self.round_stepped(color[1]), self.round_stepped(color[2]), 1.0)
-            quantized_colors.append(qc)
-
+        quantized_colors = [(self.round_stepped(color[0]), self.round_stepped(color[1]), self.round_stepped(color[2]), 1.0) for color in colors]
         sort_list = [color for color, count in Counter(quantized_colors).most_common(numcolors)]
 
         if numcolors is not None:
-            while len(sort_list) < numcolors:
-                sort_list.append([0.0, 0.0, 0.0, 1.0])
-
-            sort_colors = []
-            for i in range(numcolors):
-                sort_colors.append(sort_list[i])
-
+            sort_colors = sort_list[:numcolors]
+            sort_colors += [[0.0, 0.0, 0.0, 1.0]] * (numcolors - len(sort_colors))
             return sort_colors
         else:
             return sort_list
@@ -809,23 +792,23 @@ class SXTOOLS2_utils(object):
         bm = bmesh.new()
         bm.from_mesh(mesh)
 
-        max_distances = []
+        safe_distance = None
 
         for vert in bm.verts:
             vert_loc = vert.co
-            inv_normal = -1.0 * vert.normal.normalized()
+            inv_normal = -vert.normal.normalized()
             bias_vec = inv_normal * bias
-            ray_origin = (vert_loc[0] + bias_vec[0], vert_loc[1] + bias_vec[1], vert_loc[2] + bias_vec[2])
+            ray_origin = vert_loc + bias_vec
 
             hit, loc, normal, index = obj.ray_cast(ray_origin, inv_normal)
 
             if hit:
-                dist = Vector((loc[0] - vert_loc[0], loc[1] - vert_loc[1], loc[2] - vert_loc[2])).length
-                if dist > 0.0:
-                    max_distances.append(dist)
+                dist = (loc - vert_loc).length
+                if (safe_distance is None) or (dist < safe_distance):
+                    safe_distance = dist
 
-        bm.free
-        return min(max_distances)
+        bm.free()
+        return safe_distance
 
 
     def __del__(self):
@@ -2040,7 +2023,7 @@ class SXTOOLS2_layers(object):
                 colors = tools.blend_values(colors, targetvalues, 'ALPHA', 1.0)
                 layers.set_layer(obj, colors, targetlayer)
 
-        utils.mode_manager(objs, revert=True, mode_id='paste_layer')
+        utils.mode_manager(objs, set_mode=False, mode_id='paste_layer')
 
 
     def color_layers_to_swatches(self, objs):
@@ -2202,7 +2185,7 @@ class SXTOOLS2_tools(object):
 
                     layers.set_layer(obj, colors, targetlayer)
 
-        utils.mode_manager(objs, revert=True, mode_id='apply_tool')
+        utils.mode_manager(objs, set_mode=False, mode_id='apply_tool')
         # now = time.perf_counter()
         # print('Apply tool ', scene.toolmode, ' duration: ', now-then, ' seconds')
 
@@ -2236,7 +2219,7 @@ class SXTOOLS2_tools(object):
                 colors = self.blend_values(colors, target_colors, 'ALPHA', 1.0)
                 layers.set_layer(obj, colors, layer)
 
-        utils.mode_manager(objs, revert=True, mode_id='apply_hsl')
+        utils.mode_manager(objs, set_mode=False, mode_id='apply_hsl')
 
 
     def preview_palette(self, objs, palette):
@@ -2250,7 +2233,7 @@ class SXTOOLS2_tools(object):
         for obj in objs:
             obj.sx2.palettedshading = 1.0
 
-        utils.mode_manager(objs, revert=True, mode_id='apply_palette')
+        utils.mode_manager(objs, set_mode=False, mode_id='apply_palette')
 
 
     def apply_palette(self, objs, palette):
@@ -2277,7 +2260,7 @@ class SXTOOLS2_tools(object):
                             layers.set_layer(obj, values, layer)
 
         sxglobals.refresh_in_progress = False
-        utils.mode_manager(objs, revert=True, mode_id='apply_palette')
+        utils.mode_manager(objs, set_mode=False, mode_id='apply_palette')
 
 
     def apply_material(self, objs, targetlayer, material):
@@ -2293,7 +2276,7 @@ class SXTOOLS2_tools(object):
             setattr(scene, 'newmaterial2', material.color2)
 
         sxglobals.refresh_in_progress = False
-        utils.mode_manager(objs, revert=True, mode_id='apply_material')
+        utils.mode_manager(objs, set_mode=False, mode_id='apply_material')
 
 
     def select_color_mask(self, objs, color, invertmask=False):
@@ -2476,7 +2459,7 @@ class SXTOOLS2_modifiers(object):
                     mesh.edges.foreach_set(mode_dict[setmode], weight_values)
 
             mesh.update()
-        utils.mode_manager(objs, revert=True, mode_id='assign_set')
+        utils.mode_manager(objs, set_mode=False, mode_id='assign_set')
         bpy.context.view_layer.objects.active = active
 
 
@@ -2506,7 +2489,7 @@ class SXTOOLS2_modifiers(object):
                     creaseweight = mesh.vertex_creases[0].data[vert.index].value
                     if math.isclose(creaseweight, weight, abs_tol=0.1):
                         vert.select = True
-                utils.mode_manager(objs, revert=True, mode_id='select_set')
+                utils.mode_manager(objs, set_mode=False, mode_id='select_set')
             else:
                 bm = bmesh.from_edit_mesh(mesh)
 
@@ -2720,7 +2703,7 @@ class SXTOOLS2_export(object):
             comp_layers = utils.find_color_layers(obj, staticvertexcolors=int(obj.sx2.staticvertexcolors))
             layers.blend_layers([obj, ], comp_layers, comp_layers[0], obj.sx2layers['Composite'])
 
-        utils.mode_manager(objs, revert=True, mode_id='composite_color_layers')
+        utils.mode_manager(objs, set_mode=False, mode_id='composite_color_layers')
 
 
     def smart_separate(self, objs):
@@ -3293,7 +3276,7 @@ class SXTOOLS2_export(object):
                 obj.location.y -= group.location.y
                 obj.location.z -= group.location.z
 
-        utils.mode_manager(objs, revert=True, mode_id='group_objects')
+        utils.mode_manager(objs, set_mode=False, mode_id='group_objects')
 
 
     # pivotmodes: 0 == no change, 1 == center of mass, 2 == center of bbox,
@@ -3506,7 +3489,7 @@ class SXTOOLS2_export(object):
         ok3 = self.validate_loose(objs)
         ok4 = True  # self.validate_uv_sets(objs)
 
-        utils.mode_manager(objs, revert=True, mode_id='validate_objects')
+        utils.mode_manager(objs, set_mode=False, mode_id='validate_objects')
 
         if ok0 and ok1 and ok2 and ok3 and ok4:
             print('SX Tools: Selected objects passed validation tests')
@@ -3942,7 +3925,7 @@ class SXTOOLS2_magic(object):
         now = time.perf_counter()
         print(f'SX Tools: Modifier stack duration: {now-then} seconds')
 
-        utils.mode_manager(objs, revert=True, mode_id='process_objects')
+        utils.mode_manager(objs, set_mode=False, mode_id='process_objects')
         sxglobals.refresh_in_progress = False
 
 
@@ -5225,7 +5208,7 @@ def refresh_swatches(self, context):
                 # elif (scene.toolmode == 'MAT'):
                 #     layers.material_layers_to_swatches(objs)
 
-        utils.mode_manager(objs, revert=True, mode_id='refresh_swatches')
+        utils.mode_manager(objs, set_mode=False, mode_id='refresh_swatches')
         # sxglobals.refresh_in_progress = False
 
 
@@ -5306,7 +5289,7 @@ def update_material_layer(self, context, index):
             tools.apply_tool(objs, objs[0].sx2layers[layer_ids[index]], masklayer=mask, color=pbr_values[index])
             setattr(scene, 'newmaterial' + str(index), pbr_values[index])
 
-        utils.mode_manager(objs, revert=True, mode_id='update_material_layer')
+        utils.mode_manager(objs, set_mode=False, mode_id='update_material_layer')
         sxglobals.mat_update = False
         refresh_swatches(self, context)
 
@@ -8553,7 +8536,7 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
         #         export.create_reserved_uvsets([obj, ])
         layers.add_layer(objs)
         setup.update_sx2material(context)
-        utils.mode_manager(objs, revert=True, mode_id='add_layer')
+        utils.mode_manager(objs, set_mode=False, mode_id='add_layer')
         refresh_swatches(self, context)
 
         return {'FINISHED'}
@@ -8588,7 +8571,7 @@ class SXTOOLS2_OT_del_layer(bpy.types.Operator):
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             layers.del_layer(objs, layer.name)
             setup.update_sx2material(context)
-            utils.mode_manager(objs, revert=True, mode_id='del_layer')
+            utils.mode_manager(objs, set_mode=False, mode_id='del_layer')
             if len(objs[0].sx2layers) > 0:
                 refresh_swatches(self, context)
 
@@ -8630,7 +8613,7 @@ class SXTOOLS2_OT_layer_up(bpy.types.Operator):
                     new_index = obj.sx2layers[idx].index + 1 if obj.sx2layers[idx].index + 1 < len(obj.sx2layers) else obj.sx2layers[idx].index
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
                     updated = True
-                    utils.mode_manager(objs, revert=True, mode_id='layer_up')
+                    utils.mode_manager(objs, set_mode=False, mode_id='layer_up')
 
             if updated:
                 setup.update_sx2material(context)
@@ -8673,7 +8656,7 @@ class SXTOOLS2_OT_layer_down(bpy.types.Operator):
                     new_index = obj.sx2layers[idx].index - 1 if obj.sx2layers[idx].index -1 >= 0 else 0
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
                     updated = True
-                    utils.mode_manager(objs, revert=True, mode_id='layer_down')
+                    utils.mode_manager(objs, set_mode=False, mode_id='layer_down')
 
             if updated:
                 setup.update_sx2material(context)
@@ -8940,7 +8923,7 @@ class SXTOOLS2_OT_copylayer(bpy.types.Operator):
             for obj in objs:
                 colors = layers.get_layer(obj, obj.sx2layers[objs[0].sx2.selectedlayer])
                 sxglobals.copy_buffer[obj.name] = generate.mask_list(obj, colors)
-        utils.mode_manager(objs, revert=True, mode_id='copy_layer')
+        utils.mode_manager(objs, set_mode=False, mode_id='copy_layer')
         return {'FINISHED'}
 
  
@@ -9041,7 +9024,7 @@ class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
 
                 layers.clear_layers(objs, layer)
 
-            utils.mode_manager(objs, revert=True, mode_id='clearlayers')
+            utils.mode_manager(objs, set_mode=False, mode_id='clearlayers')
             refresh_swatches(self, context)
         return {'FINISHED'}
 
@@ -9493,7 +9476,7 @@ class SXTOOLS2_OT_revertobjects(bpy.types.Operator):
             objs[0].sx2.shadingmode = 'FULL'
             refresh_swatches(self, context)
 
-            utils.mode_manager(objs, revert=True, mode_id='revertobjects')
+            utils.mode_manager(objs, set_mode=False, mode_id='revertobjects')
         return {'FINISHED'}
 
 
@@ -10061,7 +10044,7 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                 modifiers.add_modifiers(objs)
 
                 sxglobals.refresh_in_progress = False
-                utils.mode_manager(objs, revert=True, mode_id='sxtosx2')
+                utils.mode_manager(objs, set_mode=False, mode_id='sxtosx2')
 
                 # Delete redundant object properties and the legacy material
                 for obj in objs:
@@ -10157,8 +10140,7 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
                 layers.set_uvs(obj, 'UVSet0', uvs)
 
             # build material channel atlases by finding the most frequent channel value per palette entry
-            palette_dict = {}
-            palette_dict['Composite'] = palette
+            palette_dict = {'Composite': palette}
 
             for source in material_sources:
                 if source in objs[0].sx2layers.keys():
