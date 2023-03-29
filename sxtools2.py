@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 3),
+    'version': (1, 9, 4),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -893,9 +893,7 @@ class SXTOOLS2_convert(object):
 
 
     def rgb_to_hsl(self, in_rgba):
-        R = in_rgba[0]
-        G = in_rgba[1]
-        B = in_rgba[2]
+        R, G, B = in_rgba[:3]
         Cmax = max(R, G, B)
         Cmin = min(R, G, B)
 
@@ -982,8 +980,8 @@ class SXTOOLS2_convert(object):
 
     def values_to_colors(self, values, invert=False, as_alpha=False, with_mask=False, as_tuple=False):
         if invert:
-            for i, uv in enumerate(values):
-                values[i] = 1.0 - uv
+            values = self.invert_values(values)
+
         count = len(values) 
         colors = [None] * count * 4
         for i in range(count):
@@ -1005,10 +1003,7 @@ class SXTOOLS2_convert(object):
 
 
     def invert_values(self, values):
-        for i, value in enumerate(values):
-            values[i] = 1.0 - value
-
-        return values
+        return [1.0 - value for value in values]
 
 
     def __del__(self):
@@ -1054,19 +1049,13 @@ class SXTOOLS2_generate(object):
         for vert in bm.verts:
             num_connected = len(vert.link_edges)
             if num_connected > 0:
-                neighbor_colors = [Vector(color_dict[vert.index])] * 20
-                edge_weights = []
-
-                for edge in vert.link_edges:
-                    pos1 = vert.co
-                    pos2 = edge.other_vert(vert).co
-                    edge_vec = Vector((float(pos2[0] - pos1[0]), float(pos2[1] - pos1[1]), float(pos2[2] - pos1[2])))
-                    edge_weights.append(len(edge_vec))
+                edge_weights = [(edge.other_vert(vert).co - vert.co).length for edge in vert.link_edges]
+                max_weight = max(edge_weights)
 
                 # weights are inverted so near colors are more important
-                max_weight = max(edge_weights)
                 edge_weights = [int((1.1 - (weight / max_weight)) * 10) for weight in edge_weights]
 
+                neighbor_colors = [Vector(color_dict[vert.index])] * 20
                 for i, edge in enumerate(vert.link_edges):
                     for j in range(edge_weights[i]):
                         neighbor_colors.append(Vector(color_dict[edge.other_vert(vert).index]))
@@ -1104,10 +1093,7 @@ class SXTOOLS2_generate(object):
                 angles = []
                 for edge in vert.link_edges:
                     edgeWeights.append(edge.calc_length())
-                    pos1 = vert.co
-                    pos2 = edge.other_vert(vert).co
-                    edgeVec = Vector((float(pos2[0] - pos1[0]), float(pos2[1] - pos1[1]), float(pos2[2] - pos1[2])))
-                    angles.append(math.acos(vert.normal.normalized() @ edgeVec.normalized()))
+                    angles.append(math.acos(vert.normal.normalized() @ (edge.other_vert(vert).co - vert.co).normalized()))
 
                 vtxCurvature = 0.0
                 for i in range(numConnected):
@@ -1205,12 +1191,10 @@ class SXTOOLS2_generate(object):
         else:
             samples = coneangle * 5
 
-        vert_dir_dict = {}
         vert_dict = self.vertex_data_dict(obj, masklayer)
 
         if len(vert_dict.keys()) > 0:
-            for vert_id in vert_dict:
-                vert_dir_dict[vert_id] = 0.0
+            vert_dir_dict = {vert_id: 0.0 for vert_id in vert_dict}
 
             for i in range(samples):
                 inclination = math.radians(scene.dirInclination + random.uniform(-cone, cone) - 90.0)
@@ -1250,11 +1234,7 @@ class SXTOOLS2_generate(object):
 
         random.seed(sxglobals.randomseed)
         vert_ids = self.vertex_id_list(obj)
-
-        noise_dict = {}
-        for vtx_id in vert_ids:
-            noise_dict[vtx_id] = make_noise(amplitude, offset, mono)
-
+        noise_dict = {vtx_id: make_noise(amplitude, offset, mono) for vtx_id in vert_ids}
         noise_list = self.vert_dict_to_loop_list(obj, noise_dict, 4, 4)
         return self.mask_list(obj, noise_list, masklayer)
 
@@ -1308,7 +1288,7 @@ class SXTOOLS2_generate(object):
     def thickness_list(self, obj, raycount, masklayer=None):
 
         def dist_hit(vert_id, loc, vertPos, dist_list):
-            distanceVec = Vector((loc[0] - vertPos[0], loc[1] - vertPos[1], loc[2] - vertPos[2]))
+            distanceVec = (loc - vertPos)
             dist_list.append(distanceVec.length)
 
         def thick_hit(vert_id, loc, vertPos, dist_list):
@@ -1324,20 +1304,20 @@ class SXTOOLS2_generate(object):
                 bias = 0.001
 
                 # Invert normal to cast inside object
-                invNormal = tuple([-1*x for x in vertNormal])
+                invNormal = -vertNormal
 
                 # Raycast for bias
                 hit, loc, normal, index = obj.ray_cast(vertLoc, invNormal, distance=raydistance)
                 if hit and (normal.dot(invNormal) < 0):
-                    hit_dist = Vector((loc[0] - vertLoc[0], loc[1] - vertLoc[1], loc[2] - vertLoc[2])).length
+                    hit_dist = (loc - vertLoc).length
                     if hit_dist < 0.5:
                         bias += hit_dist
 
-                biasVec = tuple([bias*x for x in invNormal])
+                biasVec = bias * invNormal
                 rotQuat = forward.rotation_difference(invNormal)
 
                 # offset ray origin with normal bias
-                vertPos = (vertLoc[0] + biasVec[0], vertLoc[1] + biasVec[1], vertLoc[2] + biasVec[2])
+                vertPos = vertLoc + biasVec
 
                 for sample in hemiSphere:
                     sample = Vector(sample)
@@ -1348,7 +1328,7 @@ class SXTOOLS2_generate(object):
                     if hit:
                         hitfunction(vert_id, loc, vertPos, dist_list)
 
-        contribution = 1.0/float(raycount)
+        contribution = 1.0 / float(raycount)
         forward = Vector((0.0, 0.0, 1.0))
 
         dist_list = []
