@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 9),
+    'version': (1, 9, 10),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -484,15 +484,14 @@ class SXTOOLS2_utils(object):
         if len(obj.sx2layers) > 0:
             stack_dict = sxglobals.layer_stack_dict.get(obj.name, {})
             if len(stack_dict) == 0:
-                layers = []
-                for layer in obj.sx2layers:
-                    layers.append((layer.index, layer.color_attribute))
-
+                layers = [(layer.index, layer.color_attribute) for layer in obj.sx2layers]
                 layers.sort(key=lambda y: y[0])
+
                 for i, layer_tuple in enumerate(layers):
                     for layer in obj.sx2layers:
                         if layer.color_attribute == layer_tuple[1]:
                             stack_dict[i] = (layer.name, layer.color_attribute, layer.layer_type)
+
                 sxglobals.layer_stack_dict[obj.name] = stack_dict
 
             layer_data = stack_dict.get(index, None)
@@ -566,6 +565,7 @@ class SXTOOLS2_utils(object):
 
     # ARMATUREs check for grandparent
     def find_children(self, group, objs=None, recursive=False):
+
         def get_children(parent):
             children = []
             for child in objs:
@@ -574,6 +574,7 @@ class SXTOOLS2_utils(object):
                 elif (child.parent is not None) and (child.parent.type == 'ARMATURE') and (child.parent.parent == parent):
                     children.append(child)
             return children
+
 
         def child_recurse(children):
             for child in children:
@@ -1253,8 +1254,10 @@ class SXTOOLS2_generate(object):
             distanceVec = (loc - vertPos)
             dist_list.append(distanceVec.length)
 
+
         def thick_hit(vert_id, loc, vertPos, dist_list):
             vert_occ_dict[vert_id] += contribution
+
 
         def ray_caster(obj, raycount, vert_dict, hitfunction, raydistance=1.70141e+38):
             hemiSphere = self.ray_randomizer(raycount)
@@ -1289,6 +1292,7 @@ class SXTOOLS2_generate(object):
 
                     if hit:
                         hitfunction(vert_id, loc, vertPos, dist_list)
+
 
         contribution = 1.0 / float(raycount)
         forward = Vector((0.0, 0.0, 1.0))
@@ -1593,6 +1597,7 @@ class SXTOOLS2_generate(object):
 
 
     def vertex_data_dict(self, obj, masklayer=None):
+
         def add_to_dict(vert_id):
             vertex_dict[vert_id] = (
                 mesh.vertices[vert_id].co,
@@ -1600,6 +1605,7 @@ class SXTOOLS2_generate(object):
                 mat @ mesh.vertices[vert_id].co,
                 (mat @ mesh.vertices[vert_id].normal - mat @ Vector()).normalized()
             )
+
 
         mesh = obj.data
         mat = obj.matrix_world
@@ -1731,10 +1737,7 @@ class SXTOOLS2_layers(object):
         for obj in objs:
             bottom_layer_index = obj.sx2layers[layer_name].index - 1 if obj.sx2layers[layer_name].index - 1 > 0 else 0
             if obj.sx2layers[layer_name].color_attribute == 'Alpha Materials':
-                alpha_mat_count = 0
-                for layer in obj.sx2layers:
-                    if layer.color_attribute == 'Alpha Materials':
-                        alpha_mat_count += 1
+                alpha_mat_count = sum(1 for layer in obj.sx2layers if layer.color_attribute == 'Alpha Materials')
                 if alpha_mat_count == 1:
                     obj.data.attributes.remove(obj.data.attributes[obj.sx2layers[layer_name].color_attribute])
             else:
