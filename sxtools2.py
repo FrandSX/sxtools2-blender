@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 8),
+    'version': (1, 9, 9),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3799,7 +3799,7 @@ class SXTOOLS2_magic(object):
                         if scene.exportquality == 'HI':
                             tools.apply_modifiers(group_objs)
                         self.process_paletted(group_objs)
-                    elif category == 'VEHICLES':
+                    elif (category == 'VEHICLES') or (category == 'NPCVEHICLES'):
                         for obj in group_objs:
                             if ('wheel' in obj.name) or ('tire' in obj.name):
                                 scene.occlusionblend = 0.0
