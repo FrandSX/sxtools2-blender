@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 6),
+    'version': (1, 9, 8),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -518,12 +518,12 @@ class SXTOOLS2_utils(object):
                 values = generate.mask_list(obj, layers.get_layer(obj, obj.sx2layers[layer_name]), masklayer=masklayer, maskcolor=maskcolor, as_tuple=True)
 
             if values is not None:
-                color_array.extend(values)
+                color_array += values
 
         if alphavalues:
-            color_array = [convert.luminance_to_color(color[3]) for color in color_array if color[3] != 0.0]
+            color_array = [convert.luminance_to_color(color[3]) for color in color_array if color[3] > 0.0]
         else:
-            colors = [color for color in color_array if color[3] != 0.0]
+            colors = [color for color in color_array if color[3] > 0.0]
 
         quantized_colors = [(self.round_stepped(color[0]), self.round_stepped(color[1]), self.round_stepped(color[2]), 1.0) for color in colors]
         sort_list = [color for color, count in Counter(quantized_colors).most_common(numcolors)]
@@ -538,23 +538,12 @@ class SXTOOLS2_utils(object):
 
     # The index parameter returns the nth color layer in the stack
     def find_color_layers(self, obj, index=None, staticvertexcolors=True):
-        color_layers = []
         if len(obj.sx2layers) > 0:
-            for layer in obj.sx2layers:
-                if layer.layer_type == 'COLOR':
-                    color_layers.append(layer)
+            color_layers = [layer for layer in obj.sx2layers if layer.layer_type == 'COLOR']
 
             if not staticvertexcolors:
-                filtered = []
-                for layer in color_layers:
-                    if 'Gradient' in layer.name:
-                        filtered.append(layer)
-                    elif 'Overlay' in layer.name:
-                        filtered.append(layer)
-
-                if len(filtered) > 0:
-                    for layer in filtered:
-                        color_layers.remove(layer)
+                filtered = [layer for layer in color_layers if ('Gradient' not in layer.name and 'Overlay' not in layer.name)]
+                color_layers = filtered
 
             color_layers.sort(key=lambda x: x.index)
 
@@ -947,7 +936,7 @@ class SXTOOLS2_convert(object):
 
 
     def colors_to_values(self, colors, as_rgba=False):
-        count = len(colors)//4
+        count = len(colors) // 4
         if as_rgba:
             for i in range(count):
                 color = colors[(0+i*4):(4+i*4)]
@@ -1114,9 +1103,7 @@ class SXTOOLS2_generate(object):
                         angles = []
                         other_verts = []
                         for i, edge in enumerate(vert.link_edges):
-                            pos1 = vert.co
-                            pos2 = edge.other_vert(vert).co
-                            edgeVec = Vector((float(pos2[0] - pos1[0]), float(pos2[1] - pos1[1]), float(pos2[2] - pos1[2])))
+                            edgeVec = edge.other_vert(vert).co - vert.co
                             angles.append(axis_vectors[bound_ids[0]][bound_ids[1]].dot(edgeVec))
                             other_verts.append(edge.other_vert(vert))
                         value_vert_id = other_verts[angles.index(min(angles))].index
@@ -1241,27 +1228,19 @@ class SXTOOLS2_generate(object):
 
 
     def ground_plane(self, size, pos):
-        vertArray = []
-        faceArray = []
         size *= 0.5
-
-        vert = [(pos[0]-size, pos[1]-size, pos[2])]
-        vertArray.extend(vert)
-        vert = [(pos[0]+size, pos[1]-size, pos[2])]
-        vertArray.extend(vert)
-        vert = [(pos[0]-size, pos[1]+size, pos[2])]
-        vertArray.extend(vert)
-        vert = [(pos[0]+size, pos[1]+size, pos[2])]
-        vertArray.extend(vert)
-
-        face = [(0, 1, 3, 2)]
-        faceArray.extend(face)
+        vert_array = [
+            (pos[0]-size,pos[1]-size, pos[2]),
+            (pos[0]+size, pos[1]-size, pos[2]),
+            (pos[0]-size, pos[1]+size, pos[2]),
+            (pos[0]+size, pos[1]+size, pos[2])]
+        face_array = [(0, 1, 3, 2)]
 
         mesh = bpy.data.meshes.new('groundPlane_mesh')
         groundPlane = bpy.data.objects.new('groundPlane', mesh)
         bpy.context.scene.collection.objects.link(groundPlane)
 
-        mesh.from_pydata(vertArray, [], faceArray)
+        mesh.from_pydata(vert_array, [], face_array)
         mesh.update(calc_edges=True)
 
         # groundPlane.location = pos
@@ -1403,28 +1382,28 @@ class SXTOOLS2_generate(object):
                 # Pass 0: Raycast for bias
                 hit, loc, normal, index = obj.ray_cast(vertLoc, vertNormal, distance=dist)
                 if hit and (normal.dot(vertNormal) > 0):
-                    hit_dist = Vector((loc[0] - vertLoc[0], loc[1] - vertLoc[1], loc[2] - vertLoc[2])).length
+                    hit_dist = (loc - vertLoc).length
                     if hit_dist < 0.5:
                         bias += hit_dist
 
                 # Pass 1: Local space occlusion for individual object
                 if 0.0 <= mix < 1.0:
-                    biasVec = tuple([bias*x for x in vertNormal])
+                    biasVec = bias * vertNormal
                     rotQuat = forward.rotation_difference(vertNormal)
 
                     # offset ray origin with normal bias
-                    vertPos = (vertLoc[0] + biasVec[0], vertLoc[1] + biasVec[1], vertLoc[2] + biasVec[2])
+                    vertPos = vertLoc + biasVec
 
                     # for every object ray hit, subtract a fraction from the vertex brightness
                     occValue -= sum(contribution for sample in hemiSphere if obj_eval.ray_cast(vertPos, rotQuat @ Vector(sample), distance=dist)[0])
 
                 # Pass 2: Worldspace occlusion for scene
                 if 0.0 < mix <= 1.0:
-                    biasVec = tuple([bias*x for x in vertWorldNormal])
+                    biasVec = bias * vertWorldNormal
                     rotQuat = forward.rotation_difference(vertWorldNormal)
 
                     # offset ray origin with normal bias
-                    scnVertPos = (vertWorldLoc[0] + biasVec[0], vertWorldLoc[1] + biasVec[1], vertWorldLoc[2] + biasVec[2])
+                    scnVertPos = vertWorldLoc + biasVec
 
                     # for every scene ray hit, subtract a fraction from the vertex brightness
                     scnOccValue -= sum(contribution for sample in hemiSphere if scene.ray_cast(edg, scnVertPos, rotQuat @ Vector(sample), distance=dist)[0])
@@ -1529,6 +1508,10 @@ class SXTOOLS2_generate(object):
         else:
             xmin, xmax, ymin, ymax, zmin, zmax = utils.get_selection_bounding_box(objs)
 
+        xdiv = float(xmax - xmin) or 1.0
+        ydiv = float(ymax - ymin) or 1.0
+        zdiv = float(zmax - zmin) or 1.0
+
         vertPosDict = self.vertex_data_dict(obj, masklayer)
         ramp_dict = {}
 
@@ -1538,19 +1521,10 @@ class SXTOOLS2_generate(object):
             fvPos = vertPosDict[vert_id][2]
 
             if rampmode == 'X':
-                xdiv = float(xmax - xmin)
-                if xdiv == 0.0:
-                    xdiv = 1.0
                 ratioRaw = ((fvPos[0] - xmin) / xdiv)
             elif rampmode == 'Y':
-                ydiv = float(ymax - ymin)
-                if ydiv == 0.0:
-                    ydiv = 1.0
                 ratioRaw = ((fvPos[1] - ymin) / ydiv)
             elif rampmode == 'Z':
-                zdiv = float(zmax - zmin)
-                if zdiv == 0.0:
-                    zdiv = 1.0
                 ratioRaw = ((fvPos[2] - zmin) / zdiv)
 
             ratio = max(min(ratioRaw, 1.0), 0.0)
@@ -1619,6 +1593,14 @@ class SXTOOLS2_generate(object):
 
 
     def vertex_data_dict(self, obj, masklayer=None):
+        def add_to_dict(vert_id):
+            vertex_dict[vert_id] = (
+                mesh.vertices[vert_id].co,
+                mesh.vertices[vert_id].normal,
+                mat @ mesh.vertices[vert_id].co,
+                (mat @ mesh.vertices[vert_id].normal - mat @ Vector()).normalized()
+            )
+
         mesh = obj.data
         mat = obj.matrix_world
         ids = self.vertex_id_list(obj)
@@ -1630,17 +1612,19 @@ class SXTOOLS2_generate(object):
                 for poly in mesh.polygons:
                     for vert_id, loop_idx in zip(poly.vertices, poly.loop_indices):
                         if mask[loop_idx] > 0.0:
-                            vertex_dict[vert_id] = (mesh.vertices[vert_id].co, mesh.vertices[vert_id].normal, mat @ mesh.vertices[vert_id].co, (mat @ mesh.vertices[vert_id].normal - mat @ Vector()).normalized())
+                            add_to_dict(vert_id)
+
         elif sxglobals.mode == 'EDIT':
             vert_sel = [None] * len(mesh.vertices)
             mesh.vertices.foreach_get('select', vert_sel)
             if True in vert_sel:
                 for vert_id, sel in enumerate(vert_sel):
                     if sel:
-                        vertex_dict[vert_id] = (mesh.vertices[vert_id].co, mesh.vertices[vert_id].normal, mat @ mesh.vertices[vert_id].co, (mat @ mesh.vertices[vert_id].normal - mat @ Vector()).normalized())
+                        add_to_dict(vert_id)
+
         else:
             for vert_id in ids:
-                vertex_dict[vert_id] = (mesh.vertices[vert_id].co, mesh.vertices[vert_id].normal, mat @ mesh.vertices[vert_id].co, (mat @ mesh.vertices[vert_id].normal - mat @ Vector()).normalized())
+                add_to_dict(vert_id)
 
         return vertex_dict
 
@@ -2111,10 +2095,8 @@ class SXTOOLS2_tools(object):
                     base[3] = min(base[3]+a, 1.0)
 
                 elif blendmode == 'REP':
-                    if selectionmask is None:
+                    if (selectionmask is None) or (selectionmask[i] != 0.0):
                         base = top
-                    else:
-                        base = base if selectionmask[i] == 0.0 else top
 
                 # if (base[3] == 0.0) and (blendmode != 'REP'):
                 #     base = [0.0, 0.0, 0.0, 0.0]
@@ -5632,10 +5614,8 @@ def update_curvature_selection(self, context):
             mesh = obj.data
 
             for vert in mesh.vertices:
-                if math.isclose(limitvalue, vert_curv_dict[vert.index], abs_tol=tolerance):
-                    vert.select = True
-                else:
-                    vert.select = False
+                vert.select = abs(vert_curv_dict[vert.index] - limitvalue) < tolerance
+                # vert.select = math.isclose(limitvalue, vert_curv_dict[vert.index], abs_tol=tolerance)
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
         context.tool_settings.mesh_select_mode = sel_mode
