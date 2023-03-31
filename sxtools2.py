@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 10),
+    'version': (1, 9, 11),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3956,7 +3956,7 @@ class SXTOOLS2_magic(object):
                     layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
 
 
-    def apply_occlusion(self, objs, masklayername=None, blend=0.5, rays=1000, groundplane=True, distance=10.0):
+    def apply_occlusion(self, objs, masklayername=None, blend=0.5, rays=250, groundplane=True, distance=10.0):
         for obj in objs:
             layer = obj.sx2layers['Occlusion']
             colors = generate.occlusion_list(obj, rays, blend, distance, groundplane)
