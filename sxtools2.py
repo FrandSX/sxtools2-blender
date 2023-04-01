@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 12),
+    'version': (1, 9, 13),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3750,6 +3750,12 @@ class SXTOOLS2_magic(object):
 
             objs = new_objs
 
+        # Set subdivision to 1 for the duration of the processing
+        subdivision_list = [obj.sx2.subdivisionlevel for obj in objs]
+        for obj in objs:
+            if ('sxSubdivision' in obj.modifiers) and (obj.sx2.subdivisionlevel > 1):
+                    obj.modifiers['sxSubdivision'].levels = 1
+
         # Place pivots
         export.set_pivots(objs, force=True)
 
@@ -3873,6 +3879,12 @@ class SXTOOLS2_magic(object):
             elif obj.type == 'MESH':
                 obj.hide_viewport = False
 
+        # Restore subdivision level
+        for i, obj in enumerate(objs):
+            if 'sxSubdivision' in obj.modifiers:
+                obj.modifiers['sxSubdivision'].levels = subdivision_list[i]
+        viewlayer.update()
+
         # LOD mesh generation for low-detail
         if scene.exportquality == 'LO':
             non_lod_objs = []
@@ -3976,7 +3988,7 @@ class SXTOOLS2_magic(object):
                 mask = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), obj.sx2layers[masklayername])
                 colors = tools.blend_values(mask, colors, 'ALPHA', 1.0)
             layers.set_layer(obj, colors, layer)
-
+    
 
     def apply_curvature_overlay(self, objs, opacity=1.0, normalize=True):
         scene = bpy.context.scene.sx2
