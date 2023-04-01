@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 11),
+    'version': (1, 9, 12),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1324,7 +1324,7 @@ class SXTOOLS2_generate(object):
             return None
 
 
-    def occlusion_list(self, obj, raycount=500, blend=0.5, dist=10.0, groundplane=False, masklayer=None):
+    def occlusion_list(self, obj, raycount=250, blend=0.5, dist=10.0, groundplane=False, masklayer=None):
         # start_time = time.time()
 
         scene = bpy.context.scene
@@ -1352,7 +1352,7 @@ class SXTOOLS2_generate(object):
 
             if groundplane:
                 pivot = utils.find_root_pivot([obj, ])
-                pivot = (pivot[0], pivot[1], pivot[2] - 0.5)  # , -0.5)
+                pivot = (pivot[0], pivot[1], pivot[2] - 0.5)
                 size = max(obj.dimensions) * 10
                 ground, groundmesh = self.ground_plane(size, pivot)
 
@@ -1390,6 +1390,9 @@ class SXTOOLS2_generate(object):
                     if hit_dist < 0.5:
                         bias += hit_dist
 
+                # Store Pass 1 hits
+                pass1_hits = [False] * raycount
+
                 # Pass 1: Local space occlusion for individual object
                 if 0.0 <= mix < 1.0:
                     biasVec = bias * vertNormal
@@ -1399,7 +1402,10 @@ class SXTOOLS2_generate(object):
                     vertPos = vertLoc + biasVec
 
                     # for every object ray hit, subtract a fraction from the vertex brightness
-                    occValue -= sum(contribution for sample in hemiSphere if obj_eval.ray_cast(vertPos, rotQuat @ Vector(sample), distance=dist)[0])
+                    for i, sample in enumerate(hemiSphere):
+                        hit = obj_eval.ray_cast(vertPos, rotQuat @ Vector(sample), distance=dist)[0]
+                        occValue -= contribution * hit
+                        pass1_hits[i] = hit
 
                 # Pass 2: Worldspace occlusion for scene
                 if 0.0 < mix <= 1.0:
@@ -1409,8 +1415,14 @@ class SXTOOLS2_generate(object):
                     # offset ray origin with normal bias
                     scnVertPos = vertWorldLoc + biasVec
 
-                    # for every scene ray hit, subtract a fraction from the vertex brightness
-                    scnOccValue -= sum(contribution for sample in hemiSphere if scene.ray_cast(edg, scnVertPos, rotQuat @ Vector(sample), distance=dist)[0])
+                    # Include Pass 1 result
+                    scnOccValue = occValue
+
+                    # Fire rays only for samples that had not hit in Pass 1
+                    for i, sample in enumerate(hemiSphere):
+                        if not pass1_hits[i]:
+                            hit = scene.ray_cast(edg, scnVertPos, rotQuat @ Vector(sample), distance=dist)[0]
+                            scnOccValue -= contribution * hit
 
                 vert_occ_dict[vert_id] = float((occValue * (1.0 - mix)) + (scnOccValue * mix))
 
@@ -1425,7 +1437,7 @@ class SXTOOLS2_generate(object):
             result = self.mask_list(obj, vert_occ_list, masklayer)
 
             # end_time = time.time()  # Stop the timer
-            # print("Execution time: {:.4f} seconds".format(end_time - start_time)) 
+            # print("SX Tools: AO rendered in {:.4f} seconds".format(end_time - start_time)) 
 
             return result
 
@@ -6572,9 +6584,9 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         name='Ray Count',
         description='Increase ray count to reduce noise',
         min=1,
-        max=5000,
+        max=1000,
         step=50,
-        default=500)
+        default=250)
 
     occlusiondistance: bpy.props.FloatProperty(
         name='Ray Distance',
