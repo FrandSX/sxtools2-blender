@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 13),
+    'version': (1, 9, 14),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -699,11 +699,7 @@ class SXTOOLS2_utils(object):
 
 
     def color_compare(self, color1, color2, tolerance=0.001):
-        vec1 = Vector(color1)
-        vec2 = Vector(color2)
-        difference = vec1 - vec2
-
-        return difference.length <= tolerance
+        return (Vector(color1) - Vector(color2)).length <= tolerance
 
 
     def round_stepped(self, x, step=0.005):
@@ -758,19 +754,12 @@ class SXTOOLS2_utils(object):
 
     def get_ramp(self):
         ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'].color_ramp
-        ramp_dict = {}
-        ramp_dict['mode'] = ramp.color_mode
-        ramp_dict['interpolation'] = ramp.interpolation
-        ramp_dict['hue_interpolation'] = ramp.hue_interpolation
-
-        tempColorArray = []
-        for element in ramp.elements:
-            tempElement = [None, [None, None, None, None], None]
-            tempElement[0] = element.position
-            tempElement[1] = [element.color[0], element.color[1], element.color[2], element.color[3]]
-            tempColorArray.append(tempElement)
-
-        ramp_dict['elements'] = tempColorArray
+        ramp_dict = {
+            'mode': ramp.color_mode,
+            'interpolation': ramp.interpolation,
+            'hue_interpolation': ramp.hue_interpolation,
+            'elements': [[element.position, [element.color[0], element.color[1], element.color[2], element.color[3]], None] for element in ramp.elements]
+        }
         return ramp_dict
 
 
