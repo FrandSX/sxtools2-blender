@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 9, 14),
+    'version': (1, 10, 0),
     'blender': (3, 4, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1693,6 +1693,8 @@ class SXTOOLS2_layers(object):
 
 
     def add_layer(self, objs, name=None, layer_type=None, color_attribute=None, clear=True):
+        prefs = bpy.context.preferences.addons['sxtools2'].preferences
+        data_types = {'FLOAT': 'FLOAT_COLOR', 'BYTE': 'BYTE_COLOR'}
         alpha_mats = {'OCC': 'Occlusion', 'MET': 'Metallic', 'RGH': 'Roughness', 'TRN': 'Transmission'}
         layer_dict = {}
         if len(objs) > 0:
@@ -1713,9 +1715,9 @@ class SXTOOLS2_layers(object):
 
                 if layer_type not in alpha_mats:
                     if color_attribute not in obj.data.color_attributes.keys():
-                        obj.data.color_attributes.new(name=layer.name, type='FLOAT_COLOR', domain='CORNER')
+                        obj.data.color_attributes.new(name=layer.name, type=data_types[prefs.layerdatatype], domain='CORNER')
                 elif ('Alpha Materials' not in obj.data.color_attributes.keys()) and (layer_type in alpha_mats):
-                    obj.data.color_attributes.new(name='Alpha Materials', type='FLOAT_COLOR', domain='CORNER')
+                    obj.data.color_attributes.new(name='Alpha Materials', type=data_types[prefs.layerdatatype], domain='CORNER')
 
                 if layer_type == 'CMP':
                     layer.index = utils.insert_layer_at_index(obj, layer, 0)
@@ -5750,6 +5752,8 @@ def export_validator(self, context):
 
 @persistent
 def load_post_handler(dummy):
+    prefs = bpy.context.preferences.addons['sxtools2'].preferences
+
     sxglobals.layer_stack_dict.clear()
     sxglobals.sx2material_dict.clear()
     sxglobals.libraries_status = False
@@ -5763,7 +5767,8 @@ def load_post_handler(dummy):
 
     setup.update_sx2material(bpy.context)
     # Convert legacy byte color attributes to floats
-    export.bytes_to_floats(bpy.data.objects)
+    if prefs.layerdatatype == 'FLOAT':
+        export.bytes_to_floats(bpy.data.objects)
 
     for obj in bpy.data.objects:
         if (obj is not None) and (obj.type == 'MESH') and (('sxtools' in obj.keys()) or ('sx2' in obj.keys())):
@@ -7801,6 +7806,14 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
             ('LIN', 'Linear', '')],
         default='LIN')
 
+    layerdatatype: bpy.props.EnumProperty(
+        name='Layer Color Data Type',
+        description='Select byte or float color',
+        items=[
+            ('BYTE', 'Byte Color', ''),
+            ('FLOAT', 'Float Color', '')],
+        default='FLOAT')
+
     exportroughness: bpy.props.EnumProperty(
         name='Roughness Mode',
         description='Game engines may expect roughness or smoothness',
@@ -7850,6 +7863,9 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
         layout_split_modules_2 = layout_split_modules_1.split()
         layout_split_modules_2.prop(self, 'enable_modifiers', toggle=True)
         layout_split_modules_2.prop(self, 'enable_export', toggle=True)
+        layout_split_datatype = layout.split()
+        layout_split_datatype.label(text='Layer Color Data Type:')
+        layout_split_datatype.prop(self, 'layerdatatype', text='')
         layout_split_colorspace = layout.split()
         layout_split_colorspace.label(text='FBX Export Color Space:')
         layout_split_colorspace.prop(self, 'exportspace', text='')
@@ -8722,6 +8738,8 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
 
 
     def execute(self, context):
+        prefs = bpy.context.preferences.addons['sxtools2'].preferences
+        data_types = {'FLOAT': 'FLOAT_COLOR', 'BYTE': 'BYTE_COLOR'}
         alpha_mats = ['OCC', 'MET', 'RGH', 'TRN']
         objs = mesh_selection_validator(self, context)
         for obj in objs:
@@ -8775,7 +8793,7 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
 
                 # Create a color attribute for alpha materials if not in data
                 if ('Alpha Materials' not in obj.data.color_attributes.keys()) and (layer.layer_type in alpha_mats):
-                    obj.data.color_attributes.new(name='Alpha Materials', type='FLOAT_COLOR', domain='CORNER')
+                    obj.data.color_attributes.new(name='Alpha Materials', type=data_types[prefs.layerdatatype], domain='CORNER')
                 if (layer.layer_type in alpha_mats) and (layer.color_attribute != 'Alpha Materials'):
                     obj.data.attributes.remove(obj.data.attributes[layer.color_attribute])
                     layer.color_attribute = 'Alpha Materials'
@@ -8789,7 +8807,7 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     if layer.layer_type in alpha_mats:
                         layers.set_layer(obj, source_colors, layer)
                     elif (source_type in alpha_mats) and (layer.layer_type not in alpha_mats):
-                        obj.data.color_attributes.new(name=layer.name, type='FLOAT_COLOR', domain='CORNER')
+                        obj.data.color_attributes.new(name=layer.name, type=data_types[prefs.layerdatatype], domain='CORNER')
                         layer.color_attribute = layer.name
                         layers.set_layer(obj, source_colors, layer)
 
