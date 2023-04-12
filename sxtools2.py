@@ -1,8 +1,8 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 10, 0),
-    'blender': (3, 4, 0),
+    'version': (1, 10, 1),
+    'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
     'doc_url': 'https://secretexit.notion.site/SX-Tools-2-for-Blender-Documentation-1681c68851fb4d018d1f9ec762e5aec9',
@@ -262,7 +262,7 @@ class SXTOOLS2_files(object):
                 export.generate_palette_masks(obj_array)
                 export.generate_uv_channels(obj_array)
                 export.composite_color_layers(obj_array)
-                export.composite_to_first(obj_array)
+                # export.composite_to_first(obj_array)
 
                 for obj in obj_array:
                     bpy.context.view_layer.objects.active = obj
@@ -306,6 +306,7 @@ class SXTOOLS2_files(object):
                     use_space_transform=export_settings[2],
                     bake_space_transform=export_settings[3],
                     use_mesh_modifiers=True,
+                    prioritize_active_color=True,
                     axis_up=export_settings[4],
                     axis_forward=export_settings[5],
                     use_active_collection=False,
