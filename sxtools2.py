@@ -262,7 +262,6 @@ class SXTOOLS2_files(object):
                 export.generate_palette_masks(obj_array)
                 export.generate_uv_channels(obj_array)
                 export.composite_color_layers(obj_array)
-                # export.composite_to_first(obj_array)
 
                 for obj in obj_array:
                     bpy.context.view_layer.objects.active = obj
@@ -3404,26 +3403,6 @@ class SXTOOLS2_export(object):
                             obj.data.color_attributes.active_color = obj.data.color_attributes[byte_color]
                             bpy.ops.geometry.attribute_convert(domain='CORNER', data_type='FLOAT_COLOR')
 
-        bpy.context.view_layer.objects.active = active
-
-
-    def composite_to_first(self, objs):
-        active = bpy.context.view_layer.objects.active
-
-        for obj in objs:
-            bpy.context.view_layer.objects.active = obj
-
-            color_attributes = obj.data.color_attributes.keys()[:]
-            composite_index = color_attributes.index('Composite')
-
-            for i in range(composite_index):
-                attribute_name = color_attributes[i][:]
-                obj.data.color_attributes.active_color = obj.data.color_attributes[attribute_name]
-                bpy.ops.geometry.color_attribute_duplicate()
-                obj.data.color_attributes.remove(obj.data.color_attributes[attribute_name])
-                obj.data.color_attributes[attribute_name + '.001'].name = attribute_name
-
-            utils.sort_stack_indices(obj)            
         bpy.context.view_layer.objects.active = active
 
 
