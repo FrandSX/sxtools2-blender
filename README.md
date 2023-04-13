@@ -75,7 +75,6 @@ V4 | Smoothness
 U5 | Alpha Overlay 1, an alpha mask channel
 V5 | Alpha Overlay 2, an alpha mask channel
 UV6/UV7 | RGBA Overlay, an optional additional color layer 
-UV7 | Currently not in use
 
 Vertex colors are exported from the Composite/VertexColor0 layer. Material properties are assigned according to the list above.
 Note that emission is exported only as an 8-bit mask for base vertex color, not a full RGBA-channel.
