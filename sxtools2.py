@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 10, 1),
+    'version': (1, 10, 2),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1142,34 +1142,23 @@ class SXTOOLS2_generate(object):
 
     def direction_list(self, obj, masklayer=None):
         scene = bpy.context.scene.sx2
-        coneangle = scene.dirCone
-        cone = coneangle*0.5
-        random.seed(sxglobals.randomseed)
-
-        if coneangle == 0:
-            samples = 1
-        else:
-            samples = coneangle * 5
+        cone_angle = scene.dirCone
+        half_cone_angle = cone_angle * 0.5
 
         vert_dict = self.vertex_data_dict(obj, masklayer)
 
         if len(vert_dict.keys()) > 0:
             vert_dir_dict = {vert_id: 0.0 for vert_id in vert_dict}
+            inclination = math.radians(scene.dirInclination - 90.0)
+            angle = math.radians(scene.dirAngle + 90)
+            direction = Vector((math.sin(inclination) * math.cos(angle), math.sin(inclination) * math.sin(angle), math.cos(inclination)))
 
-            for i in range(samples):
-                inclination = math.radians(scene.dirInclination + random.uniform(-cone, cone) - 90.0)
-                angle = math.radians(scene.dirAngle + random.uniform(-cone, cone) + 90)
-
-                direction = Vector((math.sin(inclination) * math.cos(angle), math.sin(inclination) * math.sin(angle), math.cos(inclination)))
-
-                for vert_id in vert_dict:
-                    vertWorldNormal = Vector(vert_dict[vert_id][3])
-                    vert_dir_dict[vert_id] += max(min(vertWorldNormal @ direction, 1.0), 0.0)
+            for vert_id in vert_dict:
+                vert_world_normal = Vector(vert_dict[vert_id][3])
+                angle_diff = math.degrees(math.acos(min(1.0, max(-1.0, vert_world_normal @ direction))))
+                vert_dir_dict[vert_id] = max(0.0, (90.0 + half_cone_angle - angle_diff) / (90.0 + half_cone_angle))
 
             values = self.vert_dict_to_loop_list(obj, vert_dir_dict, 1, 1)
-            fraction = 1.0 / max(values)
-            values = [value * fraction for value in values]
-
             vert_dir_list = [None] * len(values) * 4
             for i in range(len(values)):
                 vert_dir_list[(0+i*4):(4+i*4)] = [values[i], values[i], values[i], 1.0]
