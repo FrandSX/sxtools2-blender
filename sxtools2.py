@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 10, 2),
+    'version': (1, 10, 3),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1324,7 +1324,7 @@ class SXTOOLS2_generate(object):
         obj_eval = obj.evaluated_get(edg)
 
         vert_occ_dict = {}
-        vert_dict = self.vertex_data_dict(obj, masklayer)
+        vert_dict = self.vertex_data_dict(obj, masklayer, max_angles=True)
 
         if len(vert_dict.keys()) > 0:
 
@@ -1342,6 +1342,7 @@ class SXTOOLS2_generate(object):
                 vertNormal = Vector(vert_dict[vert_id][1])
                 vertWorldLoc = Vector(vert_dict[vert_id][2])
                 vertWorldNormal = Vector(vert_dict[vert_id][3])
+                max_angle = vert_dict[vert_id][4]
 
                 # use modified tile-border normals to reduce seam artifacts
                 # if vertex pos x y z is at bbx limit, and mirror axis is set, modify respective normal vector component to zero
@@ -1371,7 +1372,14 @@ class SXTOOLS2_generate(object):
                 # Store Pass 1 hits
                 pass1_hits = [False] * raycount
 
-                # Pass 1: Local space occlusion for individual object
+                # Pass 1: Mark hits for rays that would fire beyond max angle of normal and neighboring edges
+                rotQuat = forward.rotation_difference(vertNormal)
+                for i, sample in enumerate(hemiSphere):
+                    hit = math.acos(vertNormal.normalized() @ (rotQuat @ Vector(sample)).normalized()) > max_angle
+                    occValue -= contribution * hit
+                    pass1_hits[i] = hit
+
+                # Pass 2: Local space occlusion for individual object
                 if 0.0 <= mix < 1.0:
                     biasVec = bias * vertNormal
                     rotQuat = forward.rotation_difference(vertNormal)
@@ -1381,11 +1389,12 @@ class SXTOOLS2_generate(object):
 
                     # for every object ray hit, subtract a fraction from the vertex brightness
                     for i, sample in enumerate(hemiSphere):
-                        hit = obj_eval.ray_cast(vertPos, rotQuat @ Vector(sample), distance=dist)[0]
-                        occValue -= contribution * hit
-                        pass1_hits[i] = hit
+                        if not pass1_hits[i]:
+                            hit = obj_eval.ray_cast(vertPos, rotQuat @ Vector(sample), distance=dist)[0]
+                            occValue -= contribution * hit
+                            pass1_hits[i] = hit
 
-                # Pass 2: Worldspace occlusion for scene
+                # Pass 3: Worldspace occlusion for scene
                 if 0.0 < mix <= 1.0:
                     biasVec = bias * vertWorldNormal
                     rotQuat = forward.rotation_difference(vertWorldNormal)
@@ -1586,20 +1595,37 @@ class SXTOOLS2_generate(object):
         return loop_list
 
 
-    def vertex_data_dict(self, obj, masklayer=None):
+    def vertex_data_dict(self, obj, masklayer=None, max_angles=False):
 
         def add_to_dict(vert_id):
+            max_angle = None
+            if max_angles:
+                angles = []
+                vert = bm.verts[vert_id]
+                num_connected = len(vert.link_edges)
+                if num_connected > 0:
+                    for edge in vert.link_edges:
+                        angles.append(math.acos(vert.normal.normalized() @ (edge.other_vert(vert).co - vert.co).normalized()))
+                max_angle = max(angles)
+
             vertex_dict[vert_id] = (
                 mesh.vertices[vert_id].co,
                 mesh.vertices[vert_id].normal,
                 mat @ mesh.vertices[vert_id].co,
-                (mat @ mesh.vertices[vert_id].normal - mat @ Vector()).normalized()
+                (mat @ mesh.vertices[vert_id].normal - mat @ Vector()).normalized(),
+                max_angle
             )
 
 
         mesh = obj.data
         mat = obj.matrix_world
         ids = self.vertex_id_list(obj)
+
+        if max_angles:
+            bm = bmesh.new()
+            bm.from_mesh(mesh)
+            bm.normal_update()
+            bmesh.types.BMVertSeq.ensure_lookup_table(bm.verts)
 
         vertex_dict = {}
         if masklayer is not None:
@@ -1621,6 +1647,9 @@ class SXTOOLS2_generate(object):
         else:
             for vert_id in ids:
                 add_to_dict(vert_id)
+
+        if max_angles:
+            bm.free()
 
         return vertex_dict
 
