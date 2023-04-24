@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 10, 4),
+    'version': (1, 10, 5),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1368,53 +1368,50 @@ class SXTOOLS2_generate(object):
                         vertNormal = Vector(mod_normal[:]).normalized()
 
                 # Pass 0: Raycast for bias
-                hit, loc, normal, index = obj.ray_cast(vertLoc, vertNormal, distance=dist)
+                hit, loc, normal, _ = obj.ray_cast(vertLoc, vertNormal, distance=dist)
                 if hit and (normal.dot(vertNormal) > 0):
                     hit_dist = (loc - vertLoc).length
                     if hit_dist < 0.5:
                         bias += hit_dist
 
-                # Store Pass 1 hits
-                pass1_hits = [False] * raycount
-
                 # Pass 1: Mark hits for rays that would fire beyond max angle of normal and neighboring edges
                 rotQuat = forward.rotation_difference(vertNormal)
+                first_hit_index = raycount
                 for i, (_, dot) in enumerate(hemiSphere):
-                    hit = dot < min_dot
-                    occValue -= contribution * hit
-                    pass1_hits[i] = hit
+                    if dot < min_dot:
+                        first_hit_index = i
+                        break
 
-                valid_rays = [ray for (ray, _), hit in zip(hemiSphere, pass1_hits) if not hit]
+                valid_rays = [ray for ray, _ in hemiSphere[:first_hit_index]]
+                occValue -= contribution * (raycount - first_hit_index)
+
+                # Store Pass 2 valid ray hits
+                pass2_hits = [False] * len(valid_rays)
 
                 # Pass 2: Local space occlusion for individual object
                 if 0.0 <= mix < 1.0:
-                    biasVec = bias * vertNormal
-                    rotQuat = forward.rotation_difference(vertNormal)
-
                     # offset ray origin with normal bias
-                    vertPos = vertLoc + biasVec
+                    vertPos = vertLoc + (bias * vertNormal)
 
                     # for every object ray hit, subtract a fraction from the vertex brightness
                     for i, ray in enumerate(valid_rays):
-                        if not pass1_hits[i]:
-                            hit = obj_eval.ray_cast(vertPos, rotQuat @ Vector(ray), distance=dist)[0]
-                            occValue -= contribution * hit
-                            pass1_hits[i] = hit
+                        hit = obj_eval.ray_cast(vertPos, rotQuat @ Vector(ray), distance=dist)[0]
+                        occValue -= contribution * hit
+                        pass2_hits[i] = hit
 
                 # Pass 3: Worldspace occlusion for scene
                 if 0.0 < mix <= 1.0:
-                    biasVec = bias * vertWorldNormal
                     rotQuat = forward.rotation_difference(vertWorldNormal)
 
                     # offset ray origin with normal bias
-                    scnVertPos = vertWorldLoc + biasVec
+                    scnVertPos = vertWorldLoc + (bias * vertWorldNormal)
 
-                    # Include Pass 1 result
+                    # Include previous pass results
                     scnOccValue = occValue
 
-                    # Fire rays only for samples that had not hit in Pass 1
+                    # Fire rays only for samples that had not hit in Pass 2
                     for i, ray in enumerate(valid_rays):
-                        if not pass1_hits[i]:
+                        if not pass2_hits[i]:
                             hit = scene.ray_cast(edg, scnVertPos, rotQuat @ Vector(ray), distance=dist)[0]
                             scnOccValue -= contribution * hit
 
