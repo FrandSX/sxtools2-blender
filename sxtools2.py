@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 10, 3),
+    'version': (1, 10, 4),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1200,10 +1200,16 @@ class SXTOOLS2_generate(object):
 
             x = r * math.cos(theta)
             y = r * math.sin(theta)
+            z = math.sqrt(max(0, 1 - u1))
 
-            hemiSphere[i] = (x, y, math.sqrt(max(0, 1 - u1)))
+            ray = Vector((x, y, z))
+            up_vector = Vector((0, 0, 1))
+            
+            dot_product = ray.dot(up_vector)
+            hemiSphere[i] = (ray, dot_product)
 
-        return hemiSphere
+        sorted_hemiSphere = sorted(hemiSphere, key=lambda x: x[1], reverse=True)
+        return sorted_hemiSphere
 
 
     def ground_plane(self, size, pos):
@@ -1262,11 +1268,10 @@ class SXTOOLS2_generate(object):
                 # offset ray origin with normal bias
                 vertPos = vertLoc + biasVec
 
-                for sample in hemiSphere:
-                    sample = Vector(sample)
-                    sample.rotate(rotQuat)
+                for (ray, _) in hemiSphere:
+                    ray.rotate(rotQuat)
 
-                    hit, loc, normal, index = obj.ray_cast(vertPos, sample, distance=raydistance)
+                    hit, loc, normal, index = obj.ray_cast(vertPos, ray, distance=raydistance)
 
                     if hit:
                         hitfunction(vert_id, loc, vertPos, dist_list)
@@ -1324,7 +1329,7 @@ class SXTOOLS2_generate(object):
         obj_eval = obj.evaluated_get(edg)
 
         vert_occ_dict = {}
-        vert_dict = self.vertex_data_dict(obj, masklayer, max_angles=True)
+        vert_dict = self.vertex_data_dict(obj, masklayer, dots=True)
 
         if len(vert_dict.keys()) > 0:
 
@@ -1342,7 +1347,7 @@ class SXTOOLS2_generate(object):
                 vertNormal = Vector(vert_dict[vert_id][1])
                 vertWorldLoc = Vector(vert_dict[vert_id][2])
                 vertWorldNormal = Vector(vert_dict[vert_id][3])
-                max_angle = vert_dict[vert_id][4]
+                min_dot = vert_dict[vert_id][4]
 
                 # use modified tile-border normals to reduce seam artifacts
                 # if vertex pos x y z is at bbx limit, and mirror axis is set, modify respective normal vector component to zero
@@ -1374,10 +1379,12 @@ class SXTOOLS2_generate(object):
 
                 # Pass 1: Mark hits for rays that would fire beyond max angle of normal and neighboring edges
                 rotQuat = forward.rotation_difference(vertNormal)
-                for i, sample in enumerate(hemiSphere):
-                    hit = math.acos(vertNormal.normalized() @ (rotQuat @ Vector(sample)).normalized()) > max_angle
+                for i, (_, dot) in enumerate(hemiSphere):
+                    hit = dot < min_dot
                     occValue -= contribution * hit
                     pass1_hits[i] = hit
+
+                valid_rays = [ray for (ray, _), hit in zip(hemiSphere, pass1_hits) if not hit]
 
                 # Pass 2: Local space occlusion for individual object
                 if 0.0 <= mix < 1.0:
@@ -1388,9 +1395,9 @@ class SXTOOLS2_generate(object):
                     vertPos = vertLoc + biasVec
 
                     # for every object ray hit, subtract a fraction from the vertex brightness
-                    for i, sample in enumerate(hemiSphere):
+                    for i, ray in enumerate(valid_rays):
                         if not pass1_hits[i]:
-                            hit = obj_eval.ray_cast(vertPos, rotQuat @ Vector(sample), distance=dist)[0]
+                            hit = obj_eval.ray_cast(vertPos, rotQuat @ Vector(ray), distance=dist)[0]
                             occValue -= contribution * hit
                             pass1_hits[i] = hit
 
@@ -1406,9 +1413,9 @@ class SXTOOLS2_generate(object):
                     scnOccValue = occValue
 
                     # Fire rays only for samples that had not hit in Pass 1
-                    for i, sample in enumerate(hemiSphere):
+                    for i, ray in enumerate(valid_rays):
                         if not pass1_hits[i]:
-                            hit = scene.ray_cast(edg, scnVertPos, rotQuat @ Vector(sample), distance=dist)[0]
+                            hit = scene.ray_cast(edg, scnVertPos, rotQuat @ Vector(ray), distance=dist)[0]
                             scnOccValue -= contribution * hit
 
                 vert_occ_dict[vert_id] = float((occValue * (1.0 - mix)) + (scnOccValue * mix))
@@ -1595,25 +1602,25 @@ class SXTOOLS2_generate(object):
         return loop_list
 
 
-    def vertex_data_dict(self, obj, masklayer=None, max_angles=False):
+    def vertex_data_dict(self, obj, masklayer=None, dots=False):
 
         def add_to_dict(vert_id):
-            max_angle = None
-            if max_angles:
-                angles = []
+            min_dot = None
+            if dots:
+                dot_list = []
                 vert = bm.verts[vert_id]
                 num_connected = len(vert.link_edges)
                 if num_connected > 0:
                     for edge in vert.link_edges:
-                        angles.append(math.acos(vert.normal.normalized() @ (edge.other_vert(vert).co - vert.co).normalized()))
-                max_angle = max(angles)
+                        dot_list.append((vert.normal.normalized()).dot((edge.other_vert(vert).co - vert.co).normalized()))
+                min_dot = min(dot_list)
 
             vertex_dict[vert_id] = (
                 mesh.vertices[vert_id].co,
                 mesh.vertices[vert_id].normal,
                 mat @ mesh.vertices[vert_id].co,
                 (mat @ mesh.vertices[vert_id].normal - mat @ Vector()).normalized(),
-                max_angle
+                min_dot
             )
 
 
@@ -1621,7 +1628,7 @@ class SXTOOLS2_generate(object):
         mat = obj.matrix_world
         ids = self.vertex_id_list(obj)
 
-        if max_angles:
+        if dots:
             bm = bmesh.new()
             bm.from_mesh(mesh)
             bm.normal_update()
@@ -1648,7 +1655,7 @@ class SXTOOLS2_generate(object):
             for vert_id in ids:
                 add_to_dict(vert_id)
 
-        if max_angles:
+        if dots:
             bm.free()
 
         return vertex_dict
