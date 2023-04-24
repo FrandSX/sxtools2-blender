@@ -1375,7 +1375,6 @@ class SXTOOLS2_generate(object):
                         bias += hit_dist
 
                 # Pass 1: Mark hits for rays that would fire beyond max angle of normal and neighboring edges
-                rotQuat = forward.rotation_difference(vertNormal)
                 first_hit_index = raycount
                 for i, (_, dot) in enumerate(hemiSphere):
                     if dot < min_dot:
@@ -1390,6 +1389,8 @@ class SXTOOLS2_generate(object):
 
                 # Pass 2: Local space occlusion for individual object
                 if 0.0 <= mix < 1.0:
+                    rotQuat = forward.rotation_difference(vertNormal)
+
                     # offset ray origin with normal bias
                     vertPos = vertLoc + (bias * vertNormal)
 
