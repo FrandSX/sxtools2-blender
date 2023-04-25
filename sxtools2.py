@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 10, 5),
+    'version': (1, 10, 6),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1234,72 +1234,62 @@ class SXTOOLS2_generate(object):
 
     def thickness_list(self, obj, raycount, masklayer=None):
 
-        def dist_hit(vert_id, loc, vertPos, dist_list):
-            distanceVec = (loc - vertPos)
-            dist_list.append(distanceVec.length)
-
-
-        def thick_hit(vert_id, loc, vertPos, dist_list):
-            vert_occ_dict[vert_id] += contribution
-
-
-        def ray_caster(obj, raycount, vert_dict, hitfunction, raydistance=1.70141e+38):
-            hemiSphere = self.ray_randomizer(raycount)
-
-            for vert_id in vert_dict:
-                vert_occ_dict[vert_id] = 0.0
-                vertLoc = Vector(vert_dict[vert_id][0])
-                vertNormal = Vector(vert_dict[vert_id][1])
+        def dist_caster(obj, vert_dict):
+            hemisphere = self.ray_randomizer(20)
+            for vert_id, vert_data in vert_dict.items():
+                vertLoc = vert_data[0]
+                vertNormal = vert_data[1]
+                invNormal = -vertNormal
+                rotQuat = forward.rotation_difference(invNormal)
                 bias = 0.001
 
-                # Invert normal to cast inside object
-                invNormal = -vertNormal
-
                 # Raycast for bias
-                hit, loc, normal, index = obj.ray_cast(vertLoc, invNormal, distance=raydistance)
+                hit, loc, normal, _ = obj.ray_cast(vertLoc, invNormal)
                 if hit and (normal.dot(invNormal) < 0):
                     hit_dist = (loc - vertLoc).length
                     if hit_dist < 0.5:
                         bias += hit_dist
 
-                biasVec = bias * invNormal
+                # offset ray origin with normal bias
+                vertPos = vertLoc + (bias * invNormal)
+
+                # Raycast for distance
+                for ray, _ in hemisphere:
+                    hit, loc, normal, _ = obj.ray_cast(vertPos, rotQuat @ Vector(ray))
+                    if hit:
+                        dist_list.append((loc - vertPos).length)
+
+                bias_vert_dict[vert_id] = (vertPos, invNormal)
+
+
+        def sample_caster(obj, raycount, vert_dict, raydistance=1.70141e+38):
+            hemisphere = self.ray_randomizer(raycount)
+            for vert_id, vert_data in vert_dict.items():
+                vertPos = vert_data[0]
+                invNormal = vert_data[1]
                 rotQuat = forward.rotation_difference(invNormal)
 
-                # offset ray origin with normal bias
-                vertPos = vertLoc + biasVec
-
-                for (ray, _) in hemiSphere:
-                    ray.rotate(rotQuat)
-
-                    hit, loc, normal, index = obj.ray_cast(vertPos, ray, distance=raydistance)
-
-                    if hit:
-                        hitfunction(vert_id, loc, vertPos, dist_list)
+                for ray, _ in hemisphere:
+                    hit = obj.ray_cast(vertPos, rotQuat @ Vector(ray), distance=raydistance)[0]
+                    vert_occ_dict[vert_id] += contribution * hit
 
 
-        contribution = 1.0 / float(raycount)
-        forward = Vector((0.0, 0.0, 1.0))
-
-        dist_list = []
-        vert_occ_dict = {}
         vert_dict = self.vertex_data_dict(obj, masklayer)
-
         if len(vert_dict.keys()) > 0:
-            for modifier in obj.modifiers:
-                if modifier.type == 'SUBSURF':
-                    modifier.show_viewport = False
+            edg = bpy.context.evaluated_depsgraph_get()
+            obj_eval = obj.evaluated_get(edg)
+            contribution = 1.0 / float(raycount)
+            forward = Vector((0.0, 0.0, 1.0))
+            dist_list = []
+            bias_vert_dict = {}
+            vert_occ_dict = {vert_id: 0.0 for vert_id in vert_dict}
 
-            # First pass to analyze ray hit distances,
-            # then set max ray distance to half of median distance
-            ray_caster(obj, 20, vert_dict, dist_hit)
+            # Pass 1: analyze ray hit distances, set max ray distance to half of median distance
+            dist_caster(obj_eval, vert_dict)
             distance = statistics.median(dist_list) * 0.5
 
-            # Second pass for final results
-            ray_caster(obj, raycount, vert_dict, thick_hit, raydistance=distance)
-
-            for modifier in obj.modifiers:
-                if modifier.type == 'SUBSURF':
-                    modifier.show_viewport = True  # obj.sx2.modifiervisibility
+            # Pass 2: final results
+            sample_caster(obj_eval, raycount, bias_vert_dict, raydistance=distance)
 
             vert_occ_list = generate.vert_dict_to_loop_list(obj, vert_occ_dict, 1, 4)
             return self.mask_list(obj, vert_occ_list, masklayer)
@@ -1343,11 +1333,7 @@ class SXTOOLS2_generate(object):
                 bias = 0.001
                 occValue = 1.0
                 scnOccValue = 1.0
-                vertLoc = Vector(vert_dict[vert_id][0])
-                vertNormal = Vector(vert_dict[vert_id][1])
-                vertWorldLoc = Vector(vert_dict[vert_id][2])
-                vertWorldNormal = Vector(vert_dict[vert_id][3])
-                min_dot = vert_dict[vert_id][4]
+                vertLoc, vertNormal, vertWorldLoc, vertWorldNormal, min_dot = vert_dict[vert_id]
 
                 # use modified tile-border normals to reduce seam artifacts
                 # if vertex pos x y z is at bbx limit, and mirror axis is set, modify respective normal vector component to zero
@@ -1374,7 +1360,7 @@ class SXTOOLS2_generate(object):
                     if hit_dist < 0.5:
                         bias += hit_dist
 
-                # Pass 1: Mark hits for rays that would fire beyond max angle of normal and neighboring edges
+                # Pass 1: Mark hits for rays that are inside the mesh
                 first_hit_index = raycount
                 for i, (_, dot) in enumerate(hemiSphere):
                     if dot < min_dot:
