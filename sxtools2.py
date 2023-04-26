@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 10, 6),
+    'version': (1, 10, 7),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -24,6 +24,7 @@ import os
 from bpy.app.handlers import persistent
 from collections import Counter
 from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 
 
 # ------------------------------------------------------------------------
@@ -1316,7 +1317,8 @@ class SXTOOLS2_generate(object):
             obj.modifiers['sxTiler'].show_viewport = True
 
         edg = bpy.context.evaluated_depsgraph_get()
-        obj_eval = obj.evaluated_get(edg)
+        # obj_eval = obj.evaluated_get(edg)
+        bvh = BVHTree.FromObject(obj, edg)
 
         vert_occ_dict = {}
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=True)
@@ -1354,9 +1356,12 @@ class SXTOOLS2_generate(object):
                         vertNormal = Vector(mod_normal[:]).normalized()
 
                 # Pass 0: Raycast for bias
-                hit, loc, normal, _ = obj.ray_cast(vertLoc, vertNormal, distance=dist)
+                # hit, loc, normal, _ = obj.ray_cast(vertLoc, vertNormal, distance=dist)
+                result = bvh.ray_cast(vertLoc, vertNormal, dist)
+                hit = not all(x is None for x in result)
+                _, normal, _, hit_dist = result
                 if hit and (normal.dot(vertNormal) > 0):
-                    hit_dist = (loc - vertLoc).length
+                    # hit_dist = (loc - vertLoc).length
                     if hit_dist < 0.5:
                         bias += hit_dist
 
@@ -1382,7 +1387,9 @@ class SXTOOLS2_generate(object):
 
                     # for every object ray hit, subtract a fraction from the vertex brightness
                     for i, ray in enumerate(valid_rays):
-                        hit = obj_eval.ray_cast(vertPos, rotQuat @ Vector(ray), distance=dist)[0]
+                        # hit = obj_eval.ray_cast(vertPos, rotQuat @ Vector(ray), distance=dist)[0]
+                        result = bvh.ray_cast(vertPos, rotQuat @ Vector(ray), dist)
+                        hit = not all(x is None for x in result)
                         occValue -= contribution * hit
                         pass2_hits[i] = hit
 
