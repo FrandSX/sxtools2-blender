@@ -4522,6 +4522,148 @@ class SXTOOLS2_setup(object):
         nodetree.nodes['transform5'].inputs[3].default_value[2] = -3.0
 
 
+    def create_occlusion_network(self, raycount):
+        def ray_randomizer(count):
+            hemiSphere = [None] * count
+            random.seed(sxglobals.randomseed)
+
+            for i in range(count):
+                r = math.sqrt(random.random())
+                theta = 2 * math.pi * random.random()
+                hemiSphere[i] = (theta, r, 0)
+
+            sorted_hemiSphere = sorted(hemiSphere, key=lambda x: x[1], reverse=True)
+            return sorted_hemiSphere
+
+
+        def connect_nodes(output, input):
+            nodetree.links.new(output, input)
+
+
+        nodetree = bpy.data.node_groups.new(type='GeometryNodeTree', name='sx_ao')
+        group_in = nodetree.nodes.new(type='NodeGroupInput')
+        group_in.name = 'group_input'
+        group_in.location = (-1000, 0)
+
+        # expose bias input
+        geometry = nodetree.inputs.new('NodeSocketGeometry', 'Geometry')
+        geometry.name = 'Geometry'
+
+        bias = nodetree.inputs.new('NodeSocketFloat', 'Bias')
+        bias.name = 'Bias'
+        bias.min_value = 0
+        bias.max_value = 1
+        bias.default_value = 0.001
+
+        group_out = nodetree.nodes.new(type='NodeGroupOutput')
+        group_out.name = 'group_output'
+        group_out.location = (1000, 0)
+
+        # expose group color output
+        geometry_out = nodetree.outputs.new('NodeSocketGeometry', 'Geometry')
+        color_out = nodetree.outputs.new('NodeSocketColor', 'Color Output')
+        color_out.attribute_domain = 'POINT'
+        color_out.default_attribute_name = 'Occlusion'
+        color_out.default_value = (1, 1, 1, 1)
+
+        # vertex inputs
+        index = nodetree.nodes.new(type='GeometryNodeInputIndex')
+        index.name = 'index'
+        index.location = (-1000, -200)
+
+        normal = nodetree.nodes.new(type='GeometryNodeInputNormal')
+        normal.name = 'normal'
+        normal.location = (-1000, -300)
+
+        position = nodetree.nodes.new(type='GeometryNodeInputPosition')
+        position.name = 'position'
+        position.location = (-1000, -400)
+
+
+        eval_normal = nodetree.nodes.new(type='GeometryNodeFieldAtIndex')
+        eval_normal.name = 'eval_normal'
+        eval_normal.location = (-800, -200)
+        eval_normal.data_type = 'FLOAT_VECTOR'
+        eval_normal.domain = 'POINT'
+
+        eval_position = nodetree.nodes.new(type='GeometryNodeFieldAtIndex')
+        eval_position.name = 'eval_position'
+        eval_position.location = (-800, -400)
+        eval_position.data_type = 'FLOAT_VECTOR'
+        eval_position.domain = 'POINT'
+
+        bias_normal = nodetree.nodes.new(type='ShaderNodeVectorMath')
+        bias_normal.name = 'bias_normal'
+        bias_normal.location = (-600, -200)
+        bias_normal.operation = 'MULTIPLY'
+
+        bias_pos = nodetree.nodes.new(type='ShaderNodeVectorMath')
+        bias_pos.name = 'bias_pos'
+        bias_pos.location = (-400, -200)
+        bias_pos.operation = 'ADD'
+
+        connect_nodes(group_in.outputs['Geometry'], group_out.inputs['Geometry'])
+
+        connect_nodes(index.outputs['Index'], eval_normal.inputs['Index'])
+        connect_nodes(index.outputs['Index'], eval_position.inputs['Index'])
+        connect_nodes(normal.outputs['Normal'], eval_normal.inputs[3])
+        connect_nodes(position.outputs['Position'], eval_position.inputs[3])
+
+        connect_nodes(eval_normal.outputs[2], bias_normal.inputs[0])
+        connect_nodes(group_in.outputs['Bias'], bias_normal.inputs[1])
+
+        connect_nodes(bias_normal.outputs[0], bias_pos.inputs[0])
+        connect_nodes(eval_position.outputs[2], bias_pos.inputs[1])
+
+        hemisphere = ray_randomizer(raycount)
+        previous = None
+        for i in range(raycount):
+            random_rot = nodetree.nodes.new(type='ShaderNodeVectorRotate')
+            random_rot.name = 'random_rot'
+            random_rot.location = (-200, i * 400 + 400)
+            random_rot.rotation_type = 'EULER_XYZ'
+            random_rot.inputs[4].default_value = hemisphere[i]
+
+            raycast = nodetree.nodes.new(type='GeometryNodeRaycast')
+            raycast.name = 'raycast'
+            raycast.location = (0, i * 400 + 400)
+
+            if previous is not None:
+                add_hits = nodetree.nodes.new(type='ShaderNodeMath')
+                add_hits.name = 'add_hits'
+                add_hits.location = (200, i * 400 + 400)
+                add_hits.operation = 'ADD'
+                connect_nodes(raycast.outputs[0], add_hits.inputs[0])
+                connect_nodes(previous.outputs[0], add_hits.inputs[1])
+                previous = add_hits
+            else:
+                previous = raycast
+
+            connect_nodes(eval_normal.outputs[2], random_rot.inputs['Vector'])
+            connect_nodes(bias_pos.outputs[0], random_rot.inputs['Center'])
+            connect_nodes(group_in.outputs['Geometry'], raycast.inputs['Target Geometry'])
+            connect_nodes(random_rot.outputs[0], raycast.inputs['Ray Direction'])
+            connect_nodes(bias_pos.outputs[0], raycast.inputs['Source Position'])
+
+
+        div_hits = nodetree.nodes.new(type='ShaderNodeMath')
+        div_hits.name = 'add_hits'
+        div_hits.location = (400, 300)
+        div_hits.operation = 'DIVIDE'
+        div_hits.inputs[1].default_value = raycount
+
+        color_mix = nodetree.nodes.new(type='ShaderNodeMix')
+        color_mix.name = 'color_mix'
+        color_mix.data_type = 'RGBA'
+        color_mix.location = (600, 300)
+        color_mix.inputs[6].default_value = (1, 1, 1, 1)
+        color_mix.inputs[7].default_value = (0, 0, 0, 1)
+
+        connect_nodes(add_hits.outputs[0], div_hits.inputs[0])
+        connect_nodes(div_hits.outputs[0], color_mix.inputs[0])
+        connect_nodes(color_mix.outputs[2], group_out.inputs['Color Output'])
+
+
     def create_sxtoolmaterial(self):
         sxmaterial = bpy.data.materials.new(name='SXToolMaterial')
         sxmaterial.use_nodes = True
