@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 11, 2),
+    'version': (1, 11, 3),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1316,10 +1316,6 @@ class SXTOOLS2_generate(object):
             dist = 2.0 * min(xmax-xmin, ymax-ymin, zmax-zmin)
             obj.modifiers['sxTiler'].show_viewport = True
 
-        edg = bpy.context.evaluated_depsgraph_get()
-        # obj_eval = obj.evaluated_get(edg)
-        bvh = BVHTree.FromObject(obj, edg)
-
         vert_occ_dict = {}
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=True)
 
@@ -1330,6 +1326,10 @@ class SXTOOLS2_generate(object):
                 pivot = (pivot[0], pivot[1], -0.5)  # pivot[2] - 0.5)
                 size = max(obj.dimensions) * 10
                 ground, groundmesh = self.ground_plane(size, pivot)
+
+                edg = bpy.context.evaluated_depsgraph_get()
+                # obj_eval = obj.evaluated_get(edg)
+                bvh = BVHTree.FromObject(obj, edg)
 
             for vert_id in vert_dict:
                 bias = 0.001
@@ -10592,4 +10592,3 @@ if __name__ == '__main__':
 # BUG: Grouping of objs with armatures
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
-# BUG: Figure out why groundplane does not work. Are rays marked as hits with BVH?
