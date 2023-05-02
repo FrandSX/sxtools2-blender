@@ -10592,3 +10592,4 @@ if __name__ == '__main__':
 # BUG: Grouping of objs with armatures
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
+# BUG: Figure out why groundplane does not work. Are rays marked as hits with BVH?
