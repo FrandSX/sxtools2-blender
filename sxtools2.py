@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 11, 1),
+    'version': (1, 11, 2),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1327,7 +1327,7 @@ class SXTOOLS2_generate(object):
 
             if groundplane:
                 pivot = utils.find_root_pivot([obj, ])
-                pivot = (pivot[0], pivot[1], pivot[2] - 0.5)
+                pivot = (pivot[0], pivot[1], -0.5)  # pivot[2] - 0.5)
                 size = max(obj.dimensions) * 10
                 ground, groundmesh = self.ground_plane(size, pivot)
 
@@ -2654,6 +2654,8 @@ class SXTOOLS2_modifiers(object):
         modifiers = ['sxMirror', 'sxTiler', 'sxAO', 'sxGeometryNodes', 'sxSubdivision', 'sxBevel', 'sxWeld', 'sxDecimate', 'sxDecimate2', 'sxEdgeSplit', 'sxWeightedNormal']
         if reset and ('sx_tiler' in bpy.data.node_groups):
             bpy.data.node_groups.remove(bpy.data.node_groups['sx_tiler'], do_unlink=True)
+        if reset and ('sx_ao' in bpy.data.node_groups):
+            bpy.data.node_groups.remove(bpy.data.node_groups['sx_ao'], do_unlink=True)
 
         for obj in objs:
             for modifier in modifiers:
@@ -4349,6 +4351,16 @@ class SXTOOLS2_setup(object):
         group_out.name = 'group_output'
         group_out.location = (1200, 0)
 
+        # create tiler inputs and outputs
+        axis_switches = ['-X', '+X', '-Y', '+Y', '-Z', '+Z']
+
+        nodetree.inputs.new('NodeSocketGeometry', 'Geometry')
+        nodetree.inputs.new('NodeSocketFloat', 'Offset')
+        nodetree.outputs.new('NodeSocketGeometry', 'Geometry')
+
+        for axis in axis_switches:
+            nodetree.inputs.new('NodeSocketBool', axis)
+
         bbx = nodetree.nodes.new(type='GeometryNodeBoundBox')
         bbx.name = 'bbx'
         bbx.location = (-600, 400)
@@ -4369,10 +4381,10 @@ class SXTOOLS2_setup(object):
         join.location = (1000, 0)
 
         # link base mesh to bbx and flip faces
-        output = group_in.outputs[0]
+        output = group_in.outputs['Geometry']
         input = nodetree.nodes['bbx'].inputs['Geometry']
         nodetree.links.new(input, output)
-        output = group_in.outputs[0]
+        output = group_in.outputs['Geometry']
         input = nodetree.nodes['flip'].inputs[0]
         nodetree.links.new(input, output)
 
@@ -4414,14 +4426,13 @@ class SXTOOLS2_setup(object):
         combine_offset.location = (-600, 100)
 
         # expose offset, connect to bbx offsets
-        nodetree.inputs.new('NodeSocketFloat', 'New')
-        output = group_in.outputs[1]
+        output = group_in.outputs['Offset']
         input = combine_offset.inputs[0]
         nodetree.links.new(output, input)
-        output = group_in.outputs[1]
+        output = group_in.outputs['Offset']
         input = combine_offset.inputs[1]
         nodetree.links.new(output, input)
-        output = group_in.outputs[1]
+        output = group_in.outputs['Offset']
         input = combine_offset.inputs[2]
         nodetree.links.new(output, input)
 
@@ -4469,8 +4480,7 @@ class SXTOOLS2_setup(object):
             nodetree.links.new(input, output)
 
             # expose axis enable switches
-            nodetree.inputs.new('NodeSocketBool', 'New')
-            output = group_in.outputs[2+i]
+            output = group_in.outputs[axis_switches[i]]
             input = switch.inputs[1]
             nodetree.links.new(output, input)
 
@@ -4490,13 +4500,13 @@ class SXTOOLS2_setup(object):
             nodetree.links.new(input, output)
 
         # link group in as first in join node for working auto-smooth
-        output = group_in.outputs[0]
+        output = group_in.outputs['Geometry']
         input = join.inputs[0]
         nodetree.links.new(input, output)
 
         # link combined geometry to group output
         output = nodetree.nodes['join'].outputs['Geometry']
-        input = group_out.inputs[0]
+        input = group_out.inputs['Geometry']
         nodetree.links.new(input, output)
 
         # min max pairs to combiners in -x, x, -y, y, -z, z order
@@ -4537,7 +4547,7 @@ class SXTOOLS2_setup(object):
             for i in range(count):
                 r = math.sqrt(random.random())
                 theta = 2 * math.pi * random.random()
-                hemiSphere[i] = (theta, r, 0)
+                hemiSphere[i] = (r, theta, 0)
 
             sorted_hemiSphere = sorted(hemiSphere, key=lambda x: x[1], reverse=True)
             return sorted_hemiSphere
@@ -4548,25 +4558,30 @@ class SXTOOLS2_setup(object):
 
 
         nodetree = bpy.data.node_groups.new(type='GeometryNodeTree', name='sx_ao')
+
+        # expose bias and ground plane inputs
         group_in = nodetree.nodes.new(type='NodeGroupInput')
         group_in.name = 'group_input'
         group_in.location = (-1000, 0)
 
-        # expose bias input
         geometry = nodetree.inputs.new('NodeSocketGeometry', 'Geometry')
-        geometry.name = 'Geometry'
 
-        bias = nodetree.inputs.new('NodeSocketFloat', 'Bias')
-        bias.name = 'Bias'
+        bias = nodetree.inputs.new('NodeSocketFloat', 'Ray Bias')
         bias.min_value = 0
         bias.max_value = 1
         bias.default_value = 0.001
 
-        group_out = nodetree.nodes.new(type='NodeGroupOutput')
-        group_out.name = 'group_output'
-        group_out.location = (1000, 0)
+        ground_plane = nodetree.inputs.new('NodeSocketBool', 'Ground Plane')
+        ground_plane.default_value = False
+
+        ground_offset = nodetree.inputs.new('NodeSocketFloat', 'Ground Plane Offset')
+        ground_offset.default_value = 0
 
         # expose group color output
+        group_out = nodetree.nodes.new(type='NodeGroupOutput')
+        group_out.name = 'group_output'
+        group_out.location = (2000, 0)
+
         geometry_out = nodetree.outputs.new('NodeSocketGeometry', 'Geometry')
         color_out = nodetree.outputs.new('NodeSocketColor', 'Color Output')
         color_out.attribute_domain = 'POINT'
@@ -4576,45 +4591,44 @@ class SXTOOLS2_setup(object):
         # vertex inputs
         index = nodetree.nodes.new(type='GeometryNodeInputIndex')
         index.name = 'index'
-        index.location = (-1000, -200)
+        index.location = (-1000, 200)
         index.hide = True
 
         normal = nodetree.nodes.new(type='GeometryNodeInputNormal')
         normal.name = 'normal'
-        normal.location = (-1000, -250)
+        normal.location = (-1000, 150)
         normal.hide = True
 
         position = nodetree.nodes.new(type='GeometryNodeInputPosition')
         position.name = 'position'
-        position.location = (-1000, -300)
+        position.location = (-1000, 100)
         position.hide = True
 
         eval_normal = nodetree.nodes.new(type='GeometryNodeFieldAtIndex')
         eval_normal.name = 'eval_normal'
-        eval_normal.location = (-800, -200)
+        eval_normal.location = (-800, 200)
         eval_normal.data_type = 'FLOAT_VECTOR'
         eval_normal.domain = 'POINT'
         eval_normal.hide = True
 
         eval_position = nodetree.nodes.new(type='GeometryNodeFieldAtIndex')
         eval_position.name = 'eval_position'
-        eval_position.location = (-800, -250)
+        eval_position.location = (-800, 150)
         eval_position.data_type = 'FLOAT_VECTOR'
         eval_position.domain = 'POINT'
         eval_position.hide = True
 
         bias_normal = nodetree.nodes.new(type='ShaderNodeVectorMath')
         bias_normal.name = 'bias_normal'
-        bias_normal.location = (-600, -200)
+        bias_normal.location = (-600, 200)
         bias_normal.operation = 'MULTIPLY'
         bias_normal.hide = True
 
         bias_pos = nodetree.nodes.new(type='ShaderNodeVectorMath')
         bias_pos.name = 'bias_pos'
-        bias_pos.location = (-400, -200)
+        bias_pos.location = (-400, 200)
         bias_pos.operation = 'ADD'
         bias_pos.hide = True
-
 
         connect_nodes(group_in.outputs['Geometry'], group_out.inputs['Geometry'])
 
@@ -4624,30 +4638,109 @@ class SXTOOLS2_setup(object):
         connect_nodes(position.outputs['Position'], eval_position.inputs[3])
 
         connect_nodes(eval_normal.outputs[2], bias_normal.inputs[0])
-        connect_nodes(group_in.outputs['Bias'], bias_normal.inputs[1])
+        connect_nodes(group_in.outputs['Ray Bias'], bias_normal.inputs[1])
 
         connect_nodes(bias_normal.outputs[0], bias_pos.inputs[0])
         connect_nodes(eval_position.outputs[2], bias_pos.inputs[1])
 
+
+        # optional ground plane
+        bbx = nodetree.nodes.new(type='GeometryNodeBoundBox')
+        bbx.name = 'bbx'
+        bbx.location = (-800, -200)
+        bbx.hide = True
+
+        bbx_min_separate = nodetree.nodes.new(type='ShaderNodeSeparateXYZ')
+        bbx_min_separate.name = 'bbx_min_separate'
+        bbx_min_separate.location = (-600, -200)
+        bbx_min_separate.hide = True
+
+        ground_bias = nodetree.nodes.new(type='ShaderNodeMath')
+        ground_bias.name = 'ground_bias'
+        ground_bias.location = (-400, -150)
+        ground_bias.operation = 'SUBTRACT'
+        ground_bias.inputs[1].default_value = 0.001
+        ground_bias.hide = True
+
+        ground_offset_add = nodetree.nodes.new(type='ShaderNodeMath')
+        ground_offset_add.name = 'add_hits'
+        ground_offset_add.location = (-400, -200)
+        ground_offset_add.operation = 'ADD'
+        ground_offset_add.inputs[1].default_value = 0
+        ground_offset_add.hide = True
+
+        bbx_min_combine = nodetree.nodes.new(type='ShaderNodeCombineXYZ')
+        bbx_min_combine.name = 'bbx_min_combine'
+        bbx_min_combine.location = (-200, -200)
+        bbx_min_combine.hide = True
+
+        bbx_multiply = nodetree.nodes.new(type='ShaderNodeVectorMath')
+        bbx_multiply.name = 'bbx_multiply'
+        bbx_multiply.location = (-600, -250)
+        bbx_multiply.operation = 'MULTIPLY'
+        bbx_multiply.inputs[1].default_value = (10, 10, 10)
+        bbx_multiply.hide = True
+
+        ground_grid = nodetree.nodes.new(type='GeometryNodeMeshGrid')
+        ground_grid.name = 'ground_grid'
+        ground_grid.location = (-200, -150)
+        ground_grid.inputs[2].default_value = 2
+        ground_grid.inputs[3].default_value = 2
+        ground_grid.hide = True
+
+        ground_transform = nodetree.nodes.new(type='GeometryNodeTransform')
+        ground_transform.name = 'ground_transform'
+        ground_transform.location = (0, -200)
+        ground_transform.hide = True     
+
+        join = nodetree.nodes.new(type='GeometryNodeJoinGeometry')
+        join.name = 'join'
+        join.location = (200, -150)
+        join.hide = True
+
+        ground_switch = nodetree.nodes.new(type='GeometryNodeSwitch')
+        ground_switch.name = 'ground_switch'
+        ground_switch.location = (400, -100)
+        ground_switch.input_type = 'GEOMETRY'
+        ground_switch.hide = True
+
+        connect_nodes(group_in.outputs['Geometry'], bbx.inputs['Geometry'])
+        connect_nodes(bbx.outputs['Min'], bbx_min_separate.inputs[0])
+        connect_nodes(group_in.outputs['Ground Plane Offset'], ground_bias.inputs[0])
+        connect_nodes(ground_bias.outputs[0], ground_offset_add.inputs[0])
+        connect_nodes(bbx_min_separate.outputs['Z'], ground_offset_add.inputs[1])
+        connect_nodes(ground_offset_add.outputs[0], bbx_min_combine.inputs['Z'])
+        connect_nodes(bbx.outputs['Max'], bbx_multiply.inputs[0])
+        connect_nodes(bbx_min_combine.outputs[0], ground_transform.inputs['Translation'])
+        connect_nodes(bbx_multiply.outputs[0], ground_transform.inputs['Scale'])
+        connect_nodes(ground_grid.outputs['Mesh'], ground_transform.inputs['Geometry'])
+        connect_nodes(group_in.outputs['Geometry'], join.inputs[0])
+        connect_nodes(ground_transform.outputs['Geometry'], join.inputs[0])
+        connect_nodes(group_in.outputs['Ground Plane'], ground_switch.inputs[1])
+        connect_nodes(group_in.outputs['Geometry'], ground_switch.inputs[14])
+        connect_nodes(join.outputs['Geometry'], ground_switch.inputs[15])
+
+        # create raycasts with a loop
         hemisphere = ray_randomizer(raycount)
         previous = None
         for i in range(raycount):
             random_rot = nodetree.nodes.new(type='ShaderNodeVectorRotate')
             random_rot.name = 'random_rot'
-            random_rot.location = (-200, i * 100 + 400)
+            random_rot.location = (600, i * 100 + 400)
             random_rot.rotation_type = 'EULER_XYZ'
             random_rot.inputs[4].default_value = hemisphere[i]
             random_rot.hide =True
 
             raycast = nodetree.nodes.new(type='GeometryNodeRaycast')
             raycast.name = 'raycast'
-            raycast.location = (0, i * 100 + 400)
+            raycast.location = (800, i * 100 + 400)
+            raycast.inputs[8].default_value = 10
             raycast.hide = True
 
             if previous is not None:
                 add_hits = nodetree.nodes.new(type='ShaderNodeMath')
                 add_hits.name = 'add_hits'
-                add_hits.location = (200, i * 100 + 400)
+                add_hits.location = (1000, i * 100 + 400)
                 add_hits.operation = 'ADD'
                 add_hits.hide = True
                 connect_nodes(raycast.outputs[0], add_hits.inputs[0])
@@ -4658,21 +4751,22 @@ class SXTOOLS2_setup(object):
 
             connect_nodes(eval_normal.outputs[2], random_rot.inputs['Vector'])
             connect_nodes(bias_pos.outputs[0], random_rot.inputs['Center'])
-            connect_nodes(group_in.outputs['Geometry'], raycast.inputs['Target Geometry'])
+            connect_nodes(ground_switch.outputs[6], raycast.inputs['Target Geometry'])
             connect_nodes(random_rot.outputs[0], raycast.inputs['Ray Direction'])
             connect_nodes(bias_pos.outputs[0], raycast.inputs['Source Position'])
 
 
+        # normalize hit results
         div_hits = nodetree.nodes.new(type='ShaderNodeMath')
         div_hits.name = 'add_hits'
-        div_hits.location = (400, 300)
+        div_hits.location = (1400, 300)
         div_hits.operation = 'DIVIDE'
         div_hits.inputs[1].default_value = raycount
 
         color_mix = nodetree.nodes.new(type='ShaderNodeMix')
         color_mix.name = 'color_mix'
         color_mix.data_type = 'RGBA'
-        color_mix.location = (600, 300)
+        color_mix.location = (1600, 300)
         color_mix.inputs[6].default_value = (1, 1, 1, 1)
         color_mix.inputs[7].default_value = (0, 0, 0, 1)
 
@@ -5545,12 +5639,12 @@ def update_modifiers(self, context, prop):
 
                     tiler = obj.modifiers['sxTiler']
                     tiler['Input_1'] = obj.sx2.tile_offset
-                    tiler['Input_2'] = obj.sx2.tile_neg_x
-                    tiler['Input_3'] = obj.sx2.tile_pos_x
-                    tiler['Input_4'] = obj.sx2.tile_neg_y
-                    tiler['Input_5'] = obj.sx2.tile_pos_y
-                    tiler['Input_6'] = obj.sx2.tile_neg_z
-                    tiler['Input_7'] = obj.sx2.tile_pos_z
+                    tiler['Input_3'] = obj.sx2.tile_neg_x
+                    tiler['Input_4'] = obj.sx2.tile_pos_x
+                    tiler['Input_5'] = obj.sx2.tile_neg_y
+                    tiler['Input_6'] = obj.sx2.tile_pos_y
+                    tiler['Input_7'] = obj.sx2.tile_neg_z
+                    tiler['Input_8'] = obj.sx2.tile_pos_z
 
         elif prop == 'hardmode':
             for obj in objs:
