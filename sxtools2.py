@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 10, 7),
+    'version': (1, 11, 1),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2542,6 +2542,11 @@ class SXTOOLS2_modifiers(object):
                 tiler['Input_7'] = obj.sx2.tile_pos_z
                 tiler.show_viewport = False
                 tiler.show_expanded = False
+            # if 'sxAO' not in obj.modifiers:
+            #     if 'sx_ao' not in bpy.data.node_groups:
+            #         setup.create_occlusion_network(100)
+            #     ao = obj.modifiers.new(type='NODES', name='sxAO')
+            #     ao.node_group = bpy.data.node_groups['sx_ao']
             if 'sxSubdivision' not in obj.modifiers:
                 obj.modifiers.new(type='SUBSURF', name='sxSubdivision')
                 obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
@@ -2611,6 +2616,8 @@ class SXTOOLS2_modifiers(object):
                     bpy.ops.object.modifier_apply(modifier='sxMirror')
             if 'sxTiler' in obj.modifiers:
                 bpy.ops.object.modifier_remove(modifier='sxTiler')
+            if 'sxAO' in obj.modifiers:
+                bpy.ops.object.modifier_apply(modifier='sxAO')
             if 'sxSubdivision' in obj.modifiers:
                 if obj.modifiers['sxSubdivision'].levels == 0:
                     bpy.ops.object.modifier_remove(modifier='sxSubdivision')
@@ -2644,7 +2651,7 @@ class SXTOOLS2_modifiers(object):
 
 
     def remove_modifiers(self, objs, reset=False):
-        modifiers = ['sxMirror', 'sxTiler', 'sxGeometryNodes', 'sxSubdivision', 'sxBevel', 'sxWeld', 'sxDecimate', 'sxDecimate2', 'sxEdgeSplit', 'sxWeightedNormal']
+        modifiers = ['sxMirror', 'sxTiler', 'sxAO', 'sxGeometryNodes', 'sxSubdivision', 'sxBevel', 'sxWeld', 'sxDecimate', 'sxDecimate2', 'sxEdgeSplit', 'sxWeightedNormal']
         if reset and ('sx_tiler' in bpy.data.node_groups):
             bpy.data.node_groups.remove(bpy.data.node_groups['sx_tiler'], do_unlink=True)
 
@@ -4570,37 +4577,44 @@ class SXTOOLS2_setup(object):
         index = nodetree.nodes.new(type='GeometryNodeInputIndex')
         index.name = 'index'
         index.location = (-1000, -200)
+        index.hide = True
 
         normal = nodetree.nodes.new(type='GeometryNodeInputNormal')
         normal.name = 'normal'
-        normal.location = (-1000, -300)
+        normal.location = (-1000, -250)
+        normal.hide = True
 
         position = nodetree.nodes.new(type='GeometryNodeInputPosition')
         position.name = 'position'
-        position.location = (-1000, -400)
-
+        position.location = (-1000, -300)
+        position.hide = True
 
         eval_normal = nodetree.nodes.new(type='GeometryNodeFieldAtIndex')
         eval_normal.name = 'eval_normal'
         eval_normal.location = (-800, -200)
         eval_normal.data_type = 'FLOAT_VECTOR'
         eval_normal.domain = 'POINT'
+        eval_normal.hide = True
 
         eval_position = nodetree.nodes.new(type='GeometryNodeFieldAtIndex')
         eval_position.name = 'eval_position'
-        eval_position.location = (-800, -400)
+        eval_position.location = (-800, -250)
         eval_position.data_type = 'FLOAT_VECTOR'
         eval_position.domain = 'POINT'
+        eval_position.hide = True
 
         bias_normal = nodetree.nodes.new(type='ShaderNodeVectorMath')
         bias_normal.name = 'bias_normal'
         bias_normal.location = (-600, -200)
         bias_normal.operation = 'MULTIPLY'
+        bias_normal.hide = True
 
         bias_pos = nodetree.nodes.new(type='ShaderNodeVectorMath')
         bias_pos.name = 'bias_pos'
         bias_pos.location = (-400, -200)
         bias_pos.operation = 'ADD'
+        bias_pos.hide = True
+
 
         connect_nodes(group_in.outputs['Geometry'], group_out.inputs['Geometry'])
 
@@ -4620,19 +4634,22 @@ class SXTOOLS2_setup(object):
         for i in range(raycount):
             random_rot = nodetree.nodes.new(type='ShaderNodeVectorRotate')
             random_rot.name = 'random_rot'
-            random_rot.location = (-200, i * 400 + 400)
+            random_rot.location = (-200, i * 100 + 400)
             random_rot.rotation_type = 'EULER_XYZ'
             random_rot.inputs[4].default_value = hemisphere[i]
+            random_rot.hide =True
 
             raycast = nodetree.nodes.new(type='GeometryNodeRaycast')
             raycast.name = 'raycast'
-            raycast.location = (0, i * 400 + 400)
+            raycast.location = (0, i * 100 + 400)
+            raycast.hide = True
 
             if previous is not None:
                 add_hits = nodetree.nodes.new(type='ShaderNodeMath')
                 add_hits.name = 'add_hits'
-                add_hits.location = (200, i * 400 + 400)
+                add_hits.location = (200, i * 100 + 400)
                 add_hits.operation = 'ADD'
+                add_hits.hide = True
                 connect_nodes(raycast.outputs[0], add_hits.inputs[0])
                 connect_nodes(previous.outputs[0], add_hits.inputs[1])
                 previous = add_hits
