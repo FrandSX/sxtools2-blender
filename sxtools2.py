@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 11, 3),
+    'version': (1, 11, 4),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4770,7 +4770,7 @@ class SXTOOLS2_setup(object):
         color_mix.inputs[6].default_value = (1, 1, 1, 1)
         color_mix.inputs[7].default_value = (0, 0, 0, 1)
 
-        connect_nodes(add_hits.outputs[0], div_hits.inputs[0])
+        connect_nodes(previous.outputs[0], div_hits.inputs[0])
         connect_nodes(div_hits.outputs[0], color_mix.inputs[0])
         connect_nodes(color_mix.outputs[2], group_out.inputs['Color Output'])
 
