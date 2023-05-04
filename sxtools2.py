@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 11, 4),
+    'version': (1, 11, 5),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1298,7 +1298,7 @@ class SXTOOLS2_generate(object):
             return None
 
 
-    def occlusion_list(self, obj, raycount=250, blend=0.5, dist=10.0, groundplane=False, masklayer=None):
+    def occlusion_list(self, obj, raycount=250, blend=0.5, dist=10.0, groundplane=False, groundheight=-0.5, masklayer=None):
         # start_time = time.time()
 
         scene = bpy.context.scene
@@ -1323,7 +1323,7 @@ class SXTOOLS2_generate(object):
 
             if groundplane:
                 pivot = utils.find_root_pivot([obj, ])
-                pivot = (pivot[0], pivot[1], -0.5)  # pivot[2] - 0.5)
+                pivot = (pivot[0], pivot[1], groundheight)
                 size = max(obj.dimensions) * 10
                 ground, groundmesh = self.ground_plane(size, pivot)
 
@@ -2159,7 +2159,7 @@ class SXTOOLS2_tools(object):
             elif scene.toolmode == 'CRV':
                 colors = generate.curvature_list(obj, masklayer)
             elif scene.toolmode == 'OCC':
-                colors = generate.occlusion_list(obj, scene.occlusionrays, scene.occlusionblend, scene.occlusiondistance, scene.occlusiongroundplane, masklayer)
+                colors = generate.occlusion_list(obj, scene.occlusionrays, scene.occlusionblend, scene.occlusiondistance, scene.occlusiongroundplane, scene.occlusiongroundheight, masklayer)
             elif scene.toolmode == 'THK':
                 colors = generate.thickness_list(obj, scene.occlusionrays, masklayer)
             elif scene.toolmode == 'DIR':
@@ -6855,6 +6855,11 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         description='Enable temporary ground plane for occlusion (height -0.5)',
         default=True)
 
+    occlusiongroundheight: bpy.props.FloatProperty(
+        name='Ground Plane Height',
+        description='Ground Z coordinate in world space',
+        default=-0.5)
+
     dirInclination: bpy.props.FloatProperty(
         name='Inclination',
         min=-90.0,
@@ -7488,6 +7493,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         if scene.toolmode == 'OCC':
                             col_fill.prop(scene, 'occlusionblend', slider=True, text='Local/Global Mix')
                             col_fill.prop(scene, 'occlusiondistance', slider=True, text='Ray Distance')
+                            if scene.occlusiongroundplane:
+                                col_fill.prop(scene, 'occlusiongroundheight', text='Ground Plane Height')
                             row_ground = col_fill.row(align=False)
                             row_ground.prop(scene, 'occlusiongroundplane', text='Ground Plane')
                             row_tiling = col_fill.row(align=False)
