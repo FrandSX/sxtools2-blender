@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 11, 5),
+    'version': (1, 12, 1),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2084,7 +2084,10 @@ class SXTOOLS2_tools(object):
         if topcolors is None:
             return basecolors
         else:
-            count = len(basecolors)//4
+            if basecolors is None:
+                basecolors = [0.0] * len(topcolors)
+
+            count = len(topcolors)//4
             colors = [None] * count * 4
             midpoint = 0.5  # convert.srgb_to_linear([0.5, 0.5, 0.5, 1.0])[0]
 
@@ -3124,6 +3127,59 @@ class SXTOOLS2_export(object):
         bpy.context.view_layer.objects.active = active_obj
 
 
+    def generate_emission_meshes(self, objs):
+        offset = 0.01
+        new_objs = []
+
+        bpy.context.tool_settings.mesh_select_mode = (False, False, True)
+        active_obj = bpy.context.view_layer.objects.active
+        tools.select_mask(objs, objs[0].sx2layers['Emission'])
+
+        for obj in objs:
+            bpy.ops.object.mode_set(mode='OBJECT')
+            bpy.context.view_layer.objects.active = obj
+
+            mesh = obj.data
+            face_count = len(mesh.polygons)
+
+            # Get selected faces
+            selected_faces = [False] * face_count
+            mesh.polygons.foreach_get("select", selected_faces)
+            
+            if True in selected_faces:
+                temp_obj = obj.copy()
+                temp_obj.data = obj.data.copy()
+                bpy.context.collection.objects.link(temp_obj)
+
+                mesh = temp_obj.data
+                bm = bmesh.new()
+                bm.from_mesh(mesh)
+
+                to_delete = []
+                # Offset selected faces along their normals
+                for i, face in enumerate(bm.faces):
+                    if selected_faces[i]:
+                        normal_offset = face.normal * offset
+                        for vert in face.verts:
+                            vert.co += normal_offset
+                    else:
+                        to_delete.append(face)
+
+                # Delete unselected faces
+                bmesh.ops.delete(bm, geom=to_delete, context='FACES')     
+
+                bm.to_mesh(mesh)
+                bm.free()
+
+                temp_obj.name = obj.name + "_emission"
+                new_objs.append(temp_obj)
+
+        if len(new_objs) > 0:
+            modifiers.apply_modifiers(new_objs)
+
+        bpy.context.view_layer.objects.active = active_obj
+
+
     def remove_exports(self):
         if 'ExportObjects' in bpy.data.collections:
             export_objects = bpy.data.collections['ExportObjects'].objects
@@ -3559,7 +3615,8 @@ class SXTOOLS2_export(object):
                             for loop_idx in poly.loop_indices:
                                 colors.append(vertex_colors[loop_idx].color[:])
 
-                        color_set = set(colors)
+                        quantized_colors = [(utils.round_stepped(color[0]), utils.round_stepped(color[1]), utils.round_stepped(color[2]), utils.round_stepped(color[3])) for color in colors]
+                        color_set = set(quantized_colors)
 
                         if layer == layers[0]:
                             if len(color_set) > 1:
@@ -5918,7 +5975,9 @@ def update_obj_props(self, context, prop):
                 obj['staticVertexColors'] = int(objs[0].sx2.staticvertexcolors)
 
         elif prop == 'category':
+            utils.mode_manager(objs, set_mode=True, mode_id='load_category')
             load_category(self, context)
+            utils.mode_manager(objs, set_mode=False, mode_id='load_category')
 
         sxglobals.refresh_in_progress = False
 
@@ -6484,6 +6543,11 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         step=0.01,
         default=0.25,
         update=lambda self, context: update_obj_props(self, context, 'collideroffsetfactor'))
+
+    generateemissionmeshes: bpy.props.BoolProperty(
+        name='Generate Emission Meshes',
+        default=False,
+        update=lambda self, context: update_obj_props(self, context, 'generateemissionmeshes'))
 
     exportready: bpy.props.BoolProperty(
         name='Export Ready',
@@ -7830,6 +7894,10 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_lod.label(text='Generate LOD Meshes on Export:')
                             row_lod.prop(sx2, 'lodmeshes', text='', toggle=False)
 
+                            row_emission = col_export.row(align=True)
+                            row_emission.label(text='Generate Emission Meshes on Export:')
+                            row_emission.prop(sx2, 'generateemissionmeshes', text='', toggle=False)
+
                             row_hulls = col_export.row(align=True)
                             row_hulls.label(text='Generate Convex Hulls on Export:')
                             row_hulls.prop(sx2, 'generatehulls', text='', toggle=False)
@@ -7909,6 +7977,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 col_debug.operator('sx2.sxtosx2')
                                 col_debug.operator('sx2.smart_separate', text='Debug: Smart Separate sxMirror')
                                 col_debug.operator('sx2.generatehulls', text='Debug: Generate Convex Hulls')
+                                col_debug.operator('sx2.generateemissionmeshes', text='Debug: Generate Emission Meshes')
                                 col_debug.operator('sx2.create_sxcollection', text='Debug: Update SXCollection')
                                 col_debug.operator('sx2.applymodifiers', text='Debug: Apply Modifiers')
                                 col_debug.operator('sx2.generatemasks', text='Debug: Generate Masks')
@@ -9838,6 +9907,7 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
     def invoke(self, context, event):
         scene = context.scene.sx2
         objs = mesh_selection_validator(self, context)
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
         if bpy.app.background:
             filtered_objs = []
@@ -9873,6 +9943,7 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
 
                 bpy.ops.object.shade_smooth(use_auto_smooth=True)
                 objs[0].sx2.smoothangle = objs[0].sx2.smoothangle
+
         return {'FINISHED'}
 
 
@@ -10122,6 +10193,23 @@ class SXTOOLS2_OT_generate_hulls(bpy.types.Operator):
             export.generate_hulls(hull_objs)
         else:
             message_box('No objects selected with Generate Convex Hulls enabled!')
+
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_generate_emission_meshes(bpy.types.Operator):
+    bl_idname = 'sx2.generateemissionmeshes'
+    bl_label = 'Generate Emission Meshes'
+    bl_description = 'Creates separate objects from faces with emission'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if len(objs) > 0:
+            export.generate_emission_meshes(objs)
+        else:
+            message_box('No objects selected')
 
         return {'FINISHED'}
 
@@ -10516,6 +10604,7 @@ export_classes = (
     SXTOOLS2_OT_create_sxcollection,
     SXTOOLS2_OT_smart_separate,
     SXTOOLS2_OT_generate_hulls,
+    SXTOOLS2_OT_generate_emission_meshes,
     SXTOOLS2_OT_generatemasks,
     SXTOOLS2_OT_resetscene,
     SXTOOLS2_OT_sxtosx2,
