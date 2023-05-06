@@ -2771,7 +2771,7 @@ class SXTOOLS2_export(object):
                     ymirror = obj.sx2.ymirror
                     zmirror = obj.sx2.zmirror
 
-                    if obj.modifiers['sxMirror'].mirror_object is not None:
+                    if ('sxMirror' in obj.modifiers) and (obj.modifiers['sxMirror'].mirror_object is not None):
                         ref_loc = obj.modifiers['sxMirror'].mirror_object.matrix_world.to_translation()
                     else:
                         ref_loc = obj.matrix_world.to_translation()
@@ -3134,20 +3134,20 @@ class SXTOOLS2_export(object):
 
 
     def generate_emission_meshes(self, objs):
+        sxglobals.magic_in_progress = True
         offset = 0.001
-        new_objs = []
         active_obj = bpy.context.view_layer.objects.active
-
         bpy.context.tool_settings.mesh_select_mode = (False, False, True)
 
         for obj in objs:
-            bpy.context.view_layer.objects.active = obj
-            
             # Check if emission layer is empty
             if not layers.get_layer_mask(obj, obj.sx2layers['Emission'])[1]:
+                bpy.context.view_layer.objects.active = obj
                 temp_obj = obj.copy()
                 temp_obj.data = obj.data.copy()
                 bpy.context.collection.objects.link(temp_obj)
+                temp_obj.name = obj.name + "_emission"
+                temp_obj.sx2.smartseparate = True
 
                 modifiers.apply_modifiers([temp_obj, ])
                 tools.select_mask([temp_obj, ], temp_obj.sx2layers['Emission'])
@@ -3173,10 +3173,8 @@ class SXTOOLS2_export(object):
                 bm.to_mesh(mesh)
                 bm.free()
 
-                temp_obj.name = obj.name + "_emission"
-                new_objs.append(temp_obj)
-
         bpy.context.view_layer.objects.active = active_obj
+        sxglobals.magic_in_progress = False
 
 
     def remove_exports(self):
