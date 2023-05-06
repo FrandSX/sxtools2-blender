@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 1),
+    'version': (1, 12, 2),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2323,6 +2323,9 @@ class SXTOOLS2_tools(object):
 
 
     def select_mask(self, objs, layer, invertmask=False):
+        active = bpy.context.view_layer.objects.active
+
+        bpy.context.view_layer.objects.active = objs[0]
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
         bpy.ops.mesh.select_all(action='DESELECT')
         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
@@ -2337,9 +2340,11 @@ class SXTOOLS2_tools(object):
                         if invertmask:
                             if mask[loop_idx] == 0.0:
                                 poly.select = True
+                                break
                         else:
                             if mask[loop_idx] > 0.0:
                                 poly.select = True
+                                break
             else:
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
@@ -2351,6 +2356,7 @@ class SXTOOLS2_tools(object):
                                 mesh.vertices[vert_idx].select = True
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+        bpy.context.view_layer.objects.active = active
 
 
     def update_recent_colors(self, color):
@@ -3128,28 +3134,24 @@ class SXTOOLS2_export(object):
 
 
     def generate_emission_meshes(self, objs):
-        offset = 0.01
+        offset = 0.001
         new_objs = []
+        active_obj = bpy.context.view_layer.objects.active
 
         bpy.context.tool_settings.mesh_select_mode = (False, False, True)
-        active_obj = bpy.context.view_layer.objects.active
-        tools.select_mask(objs, objs[0].sx2layers['Emission'])
 
         for obj in objs:
-            bpy.ops.object.mode_set(mode='OBJECT')
             bpy.context.view_layer.objects.active = obj
-
-            mesh = obj.data
-            face_count = len(mesh.polygons)
-
-            # Get selected faces
-            selected_faces = [False] * face_count
-            mesh.polygons.foreach_get("select", selected_faces)
             
-            if True in selected_faces:
+            # Check if emission layer is empty
+            if not layers.get_layer_mask(obj, obj.sx2layers['Emission'])[1]:
                 temp_obj = obj.copy()
                 temp_obj.data = obj.data.copy()
                 bpy.context.collection.objects.link(temp_obj)
+
+                modifiers.apply_modifiers([temp_obj, ])
+                tools.select_mask([temp_obj, ], temp_obj.sx2layers['Emission'])
+                bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
                 mesh = temp_obj.data
                 bm = bmesh.new()
@@ -3157,8 +3159,8 @@ class SXTOOLS2_export(object):
 
                 to_delete = []
                 # Offset selected faces along their normals
-                for i, face in enumerate(bm.faces):
-                    if selected_faces[i]:
+                for face in bm.faces:
+                    if face.select:
                         normal_offset = face.normal * offset
                         for vert in face.verts:
                             vert.co += normal_offset
@@ -3173,9 +3175,6 @@ class SXTOOLS2_export(object):
 
                 temp_obj.name = obj.name + "_emission"
                 new_objs.append(temp_obj)
-
-        if len(new_objs) > 0:
-            modifiers.apply_modifiers(new_objs)
 
         bpy.context.view_layer.objects.active = active_obj
 
