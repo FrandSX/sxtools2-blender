@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 2),
+    'version': (1, 12, 3),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3134,26 +3134,37 @@ class SXTOOLS2_export(object):
 
 
     def generate_emission_meshes(self, objs):
-        sxglobals.magic_in_progress = True
+        if 'ExportObjects' not in bpy.data.collections:
+            export_objects = bpy.data.collections.new('ExportObjects')
+        else:
+            export_objects = bpy.data.collections['ExportObjects']
+
+        sxglobals.refresh_in_progress = True
         offset = 0.001
         active_obj = bpy.context.view_layer.objects.active
         bpy.context.tool_settings.mesh_select_mode = (False, False, True)
 
+        emission_objs = []
         for obj in objs:
             # Check if emission layer is empty
             if not layers.get_layer_mask(obj, obj.sx2layers['Emission'])[1]:
                 bpy.context.view_layer.objects.active = obj
-                temp_obj = obj.copy()
-                temp_obj.data = obj.data.copy()
-                bpy.context.collection.objects.link(temp_obj)
-                temp_obj.name = obj.name + "_emission"
-                temp_obj.sx2.smartseparate = True
+                emission_obj = obj.copy()
+                emission_obj.data = obj.data.copy()
+                bpy.context.collection.objects.link(emission_obj)
+                export_objects.objects.link(emission_obj)
+                emission_obj.name = obj.name + "_emission"
+                emission_obj.sx2.smartseparate = True
+                emission_obj.sx2.generatehulls = False
+                emission_obj.sx2.lodmeshes = False
+                emission_obj.sx2.generateemissionmeshes = False
+                emission_objs.append(emission_obj)
 
-                modifiers.apply_modifiers([temp_obj, ])
-                tools.select_mask([temp_obj, ], temp_obj.sx2layers['Emission'])
+                modifiers.apply_modifiers([emission_obj, ])
+                tools.select_mask([emission_obj, ], emission_obj.sx2layers['Emission'])
                 bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
-                mesh = temp_obj.data
+                mesh = emission_obj.data
                 bm = bmesh.new()
                 bm.from_mesh(mesh)
 
@@ -3174,7 +3185,9 @@ class SXTOOLS2_export(object):
                 bm.free()
 
         bpy.context.view_layer.objects.active = active_obj
-        sxglobals.magic_in_progress = False
+        sxglobals.refresh_in_progress = False
+
+        return emission_objs
 
 
     def remove_exports(self):
@@ -7972,7 +7985,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             if scene.expanddebug:
                                 col_debug = box_export.column(align=True)
                                 col_debug.operator('sx2.sxtosx2')
-                                col_debug.operator('sx2.smart_separate', text='Debug: Smart Separate sxMirror')
+                                col_debug.operator('sx2.smart_separate', text='Debug: Smart Separate')
                                 col_debug.operator('sx2.generatehulls', text='Debug: Generate Convex Hulls')
                                 col_debug.operator('sx2.generateemissionmeshes', text='Debug: Generate Emission Meshes')
                                 col_debug.operator('sx2.create_sxcollection', text='Debug: Update SXCollection')
@@ -9642,7 +9655,8 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
             groups = utils.find_groups(selected)
 
             if context.scene.sx2.exportquality == 'LO':
-                export.smart_separate(selected)
+                emission_objs = export.generate_emission_meshes(selected)
+                export.smart_separate(selected + emission_objs)
                 export.create_sxcollection()
 
                 hull_objs = []
@@ -9693,6 +9707,7 @@ class SXTOOLS2_OT_exportgroups(bpy.types.Operator):
         prefs = context.preferences.addons['sxtools2'].preferences
         group = context.view_layer.objects.selected[0]
         all_children = utils.find_children(group, recursive=True)
+        export.generate_emission_meshes(all_children)
         export.smart_separate(all_children)
         all_children = utils.find_children(group, recursive=True)
         export.generate_hulls(all_children)
