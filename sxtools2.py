@@ -462,6 +462,19 @@ class SXTOOLS2_utils(object):
                 sxglobals.mode_id = None
 
 
+    def clear_component_selection(self, objs):
+        for obj in objs:
+            mesh = obj.data
+            mesh.vertices.foreach_set('select', [False] * len(mesh.vertices))
+            mesh.edges.foreach_set('select', [False] * len(mesh.edges))
+            mesh.polygons.foreach_set('select', [False] * len(mesh.polygons))
+            mesh.update()
+
+
+    def create_collection(self, collection_name):
+        return bpy.data.collections[collection_name] if collection_name in bpy.data.collections else bpy.data.collections.new(collection_name)
+
+
     def find_sx2material_name(self, obj):
         mat_id = self.get_mat_id(obj)
         if mat_id in sxglobals.sx2material_dict:
@@ -2287,9 +2300,8 @@ class SXTOOLS2_tools(object):
 
 
     def select_color_mask(self, objs, color, invertmask=False):
-        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-        bpy.ops.mesh.select_all(action='DESELECT')
         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+        utils.clear_component_selection(objs)
 
         if objs[0].sx2.shadingmode == 'FULL':
             export.composite_color_layers(objs)
@@ -2327,12 +2339,10 @@ class SXTOOLS2_tools(object):
 
 
     def select_mask(self, objs, layer, invertmask=False):
-        active = bpy.context.view_layer.objects.active
-
-        bpy.context.view_layer.objects.active = objs[0]
-        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-        bpy.ops.mesh.select_all(action='DESELECT')
         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+        active = bpy.context.view_layer.objects.active
+        bpy.context.view_layer.objects.active = objs[0]
+        utils.clear_component_selection(objs)
 
         for obj in objs:
             mesh = obj.data
@@ -2495,7 +2505,7 @@ class SXTOOLS2_modifiers(object):
         else:
             bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='EDGE')
         if clearsel:
-            bpy.ops.mesh.select_all(action='DESELECT')
+            utils.clear_component_selection(objs)
 
         for obj in objs:
             mesh = obj.data
@@ -2747,15 +2757,8 @@ class SXTOOLS2_export(object):
                     if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror:
                         sep_objs.append(obj)
 
-            if 'ExportObjects' not in bpy.data.collections:
-                export_objects = bpy.data.collections.new('ExportObjects')
-            else:
-                export_objects = bpy.data.collections['ExportObjects']
-
-            if 'SourceObjects' not in bpy.data.collections:
-                source_objects = bpy.data.collections.new('SourceObjects')
-            else:
-                source_objects = bpy.data.collections['SourceObjects']
+            export_objects = utils.create_collection('ExportObjects')
+            source_objects = utils.create_collection('SourceObjects')
 
             if len(sep_objs) > 0:
                 for obj in sep_objs:
@@ -2862,15 +2865,8 @@ class SXTOOLS2_export(object):
         bbxheight = zmax - zmin
 
         # Make sure source and export Collections exist
-        if 'ExportObjects' not in bpy.data.collections:
-            export_objects = bpy.data.collections.new('ExportObjects')
-        else:
-            export_objects = bpy.data.collections['ExportObjects']
-
-        if 'SourceObjects' not in bpy.data.collections:
-            source_objects = bpy.data.collections.new('SourceObjects')
-        else:
-            source_objects = bpy.data.collections['SourceObjects']
+        export_objects = utils.create_collection('ExportObjects')
+        source_objects = utils.create_collection('SourceObjects')
 
         lodCount = 1
         for obj in org_obj_array:
@@ -2946,10 +2942,7 @@ class SXTOOLS2_export(object):
                 new_objs = []
                 active_obj = bpy.context.view_layer.objects.active
 
-                if 'SXColliders' not in bpy.data.collections:
-                    colliders = bpy.data.collections.new('SXColliders')
-                else:
-                    colliders = bpy.data.collections['SXColliders']
+                colliders = utils.create_collection('SXColliders')
 
                 if colliders.name not in bpy.context.scene.collection.children:
                     bpy.context.scene.collection.children.link(colliders)
@@ -3042,20 +3035,9 @@ class SXTOOLS2_export(object):
         active_obj = bpy.context.view_layer.objects.active
         scene = bpy.context.scene.sx2
 
-        if 'ExportObjects' not in bpy.data.collections:
-            export_objects = bpy.data.collections.new('ExportObjects')
-        else:
-            export_objects = bpy.data.collections['ExportObjects']
-
-        if 'SXColliders' not in bpy.data.collections:
-            colliders = bpy.data.collections.new('SXColliders')
-        else:
-            colliders = bpy.data.collections['SXColliders']
-
-        if 'CollisionSourceObjects' not in bpy.data.collections:
-            collision_source_objs = bpy.data.collections.new('CollisionSourceObjects')
-        else:
-            collision_source_objs = bpy.data.collections['CollisionSourceObjects']
+        export_objects = utils.create_collection('ExportObjects')
+        colliders = utils.create_collection('SXColliders')
+        collision_source_objs = utils.create_collection('CollisionSourceObjects')
 
         if colliders.name not in bpy.context.scene.collection.children:
             bpy.context.scene.collection.children.link(colliders)
@@ -3138,11 +3120,7 @@ class SXTOOLS2_export(object):
 
 
     def generate_emission_meshes(self, objs):
-        if 'ExportObjects' not in bpy.data.collections:
-            export_objects = bpy.data.collections.new('ExportObjects')
-        else:
-            export_objects = bpy.data.collections['ExportObjects']
-
+        export_objects = utils.create_collection('ExportObjects')
         sxglobals.refresh_in_progress = True
         offset = 0.001
         active_obj = bpy.context.view_layer.objects.active
@@ -3320,18 +3298,16 @@ class SXTOOLS2_export(object):
 
 
     def create_sxcollection(self):
-        if 'SXObjects' not in bpy.data.collections:
-            sxObjects = bpy.data.collections.new('SXObjects')
-        else:
-            sxObjects = bpy.data.collections['SXObjects']
+        sx_objs = utils.create_collection('SXObjects')
+
         for obj in bpy.data.objects:
-            if (len(obj.sx2layers) > 0) and (obj.name not in sxObjects.objects) and (obj.type == 'MESH'):
-                sxObjects.objects.link(obj)
+            if (len(obj.sx2layers) > 0) and (obj.name not in sx_objs.objects) and (obj.type == 'MESH'):
+                sx_objs.objects.link(obj)
 
-        if sxObjects.name not in bpy.context.scene.collection.children:
-            bpy.context.scene.collection.children.link(sxObjects)
+        if sx_objs.name not in bpy.context.scene.collection.children:
+            bpy.context.scene.collection.children.link(sx_objs)
 
-        return sxObjects.all_objects
+        return sx_objs.all_objects
 
 
     def group_objects(self, objs, origin=False):
@@ -3728,15 +3704,8 @@ class SXTOOLS2_magic(object):
                 layer.locked = False
 
         # Make sure export and source Collections exist
-        if 'ExportObjects' not in bpy.data.collections:
-            export_objects = bpy.data.collections.new('ExportObjects')
-        else:
-            export_objects = bpy.data.collections['ExportObjects']
-
-        if 'SourceObjects' not in bpy.data.collections:
-            source_objects = bpy.data.collections.new('SourceObjects')
-        else:
-            source_objects = bpy.data.collections['SourceObjects']
+        export_objects = utils.create_collection('ExportObjects')
+        source_objects = utils.create_collection('SourceObjects')
 
         # Make sure objects are in groups
         for obj in objs:
@@ -5934,6 +5903,7 @@ def update_curvature_selection(self, context):
     if not sxglobals.curvature_update:
         sxglobals.curvature_update = True
 
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
         objs = mesh_selection_validator(self, context)
         sel_mode = context.tool_settings.mesh_select_mode[:]
         limitvalue = context.scene.sx2.curvaturelimit
@@ -5943,9 +5913,7 @@ def update_curvature_selection(self, context):
         scene.curvaturenormalize = True
         context.tool_settings.mesh_select_mode = (True, False, False)
 
-        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-        bpy.ops.mesh.select_all(action='DESELECT')
-        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+        utils.clear_component_selection(objs)
 
         for obj in objs:
             vert_curv_dict = generate.curvature_list(obj, returndict=True)
@@ -5953,7 +5921,6 @@ def update_curvature_selection(self, context):
 
             for vert in mesh.vertices:
                 vert.select = abs(vert_curv_dict[vert.index] - limitvalue) < tolerance
-                # vert.select = math.isclose(limitvalue, vert_curv_dict[vert.index], abs_tol=tolerance)
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
         context.tool_settings.mesh_select_mode = sel_mode
@@ -10704,3 +10671,4 @@ if __name__ == '__main__':
 # BUG: Grouping of objs with armatures
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
+# BUG: Check decimation angle changes with hull and emission mesh generation
