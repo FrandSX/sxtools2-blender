@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 5),
+    'version': (1, 12, 6),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1071,10 +1071,14 @@ class SXTOOLS2_generate(object):
                     edgeWeights.append(edge.calc_length())
                     angles.append(math.acos(vert.normal.normalized() @ (edge.other_vert(vert).co - vert.co).normalized()))
 
+                total_weight = sum(edgeWeights)
+
                 vtxCurvature = 0.0
                 for i in range(numConnected):
                     curvature = angles[i] / math.pi - 0.5
-                    vtxCurvature += curvature
+                    weighted_curvature = (curvature * edgeWeights[i]) / total_weight
+                    # vtxCurvature += curvature
+                    vtxCurvature += weighted_curvature
 
                 vtxCurvature = min(vtxCurvature / float(numConnected), 1.0)
 
@@ -10667,7 +10671,6 @@ if __name__ == '__main__':
 
 # TODO:
 # BUG: Grouping of objs with armatures
+# BUG: Check decimation angle changes with hull and emission mesh generation
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
-# BUG: Check decimation angle changes with hull and emission mesh generation
-# BUG: HSL update broken, multi-obj gives 0, 0, 0. ALPHA-mode adjusts colors and not alpha
