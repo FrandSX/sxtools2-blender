@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 3),
+    'version': (1, 12, 5),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -534,7 +534,7 @@ class SXTOOLS2_utils(object):
                 color_array += values
 
         if alphavalues:
-            color_array = [convert.luminance_to_color(color[3]) for color in color_array if color[3] > 0.0]
+            colors = [convert.luminance_to_color(color[3]) for color in color_array if color[3] > 0.0]
         else:
             colors = [color for color in color_array if color[3] > 0.0]
 
@@ -2136,6 +2136,11 @@ class SXTOOLS2_tools(object):
                     if (selectionmask is None) or (selectionmask[i] != 0.0):
                         base = top
 
+                elif blendmode == 'PAL':
+                    alpha = base[3]
+                    base = top * blendvalue + base * (1 - blendvalue)
+                    base[3] = alpha
+
                 # if (base[3] == 0.0) and (blendmode != 'REP'):
                 #     base = [0.0, 0.0, 0.0, 0.0]
 
@@ -2216,11 +2221,12 @@ class SXTOOLS2_tools(object):
 
         colors = utils.find_colors_by_frequency(objs, layer.name)
         if len(colors) > 0:
-            valueArray = []
+            value = 0
             for color in colors:
                 hsl = convert.rgb_to_hsl(color)
-                valueArray.append(hsl[hslmode])
-            offset = newValue - max(valueArray)
+                modevalue = hsl[hslmode]
+                value = modevalue if modevalue > value else value
+            offset = newValue - value
         else:
             offset = newValue
 
@@ -2243,7 +2249,7 @@ class SXTOOLS2_tools(object):
 
 
     def preview_palette(self, objs, palette):
-        utils.mode_manager(objs, set_mode=True, mode_id='apply_palette')
+        utils.mode_manager(objs, set_mode=True, mode_id='preview_palette')
         scene = bpy.context.scene
 
         for i in range(5):
@@ -2253,40 +2259,40 @@ class SXTOOLS2_tools(object):
         for obj in objs:
             obj.sx2.palettedshading = 1.0
 
-        utils.mode_manager(objs, set_mode=False, mode_id='apply_palette')
+        utils.mode_manager(objs, set_mode=False, mode_id='preview_palette')
 
 
     def apply_palette(self, objs, palette):
-        utils.mode_manager(objs, set_mode=True, mode_id='apply_palette')
         if not sxglobals.refresh_in_progress:
             sxglobals.refresh_in_progress = True
+            utils.mode_manager(objs, set_mode=True, mode_id='apply_palette')
 
-        scene = bpy.context.scene.sx2
-        palette = [
-            scene.newpalette0,
-            scene.newpalette1,
-            scene.newpalette2,
-            scene.newpalette3,
-            scene.newpalette4]
+            scene = bpy.context.scene.sx2
+            palette = [
+                scene.newpalette0,
+                scene.newpalette1,
+                scene.newpalette2,
+                scene.newpalette3,
+                scene.newpalette4]
 
-        for obj in objs:
-            if len(obj.sx2layers) > 0:
-                for layer in obj.sx2layers:
-                    if layer.paletted:
-                        source_colors = layers.get_layer(obj, layer)
-                        colors = generate.color_list(obj, palette[layer.palette_index], masklayer=layer)
-                        if colors is not None:
-                            values = tools.blend_values(colors, source_colors, 'ALPHA', obj.sx2.palettedshading)
-                            layers.set_layer(obj, values, layer)
+            for obj in objs:
+                if len(obj.sx2layers) > 0:
+                    for layer in obj.sx2layers:
+                        if layer.paletted:
+                            source_colors = layers.get_layer(obj, layer)
+                            colors = generate.color_list(obj, palette[layer.palette_index], masklayer=layer)
+                            if colors is not None:
+                                values = tools.blend_values(colors, source_colors, 'PAL', obj.sx2.palettedshading)
+                                layers.set_layer(obj, values, layer)
 
-        sxglobals.refresh_in_progress = False
-        utils.mode_manager(objs, set_mode=False, mode_id='apply_palette')
+            utils.mode_manager(objs, set_mode=False, mode_id='apply_palette')
+            sxglobals.refresh_in_progress = False
 
 
     def apply_material(self, objs, targetlayer, material):
-        utils.mode_manager(objs, set_mode=True, mode_id='apply_material')
         if not sxglobals.refresh_in_progress:
             sxglobals.refresh_in_progress = True
+            utils.mode_manager(objs, set_mode=True, mode_id='apply_material')
 
             material = bpy.context.scene.sx2materials[material]
             scene = bpy.context.scene.sx2
@@ -2295,8 +2301,8 @@ class SXTOOLS2_tools(object):
             setattr(scene, 'newmaterial1', material.color1)
             setattr(scene, 'newmaterial2', material.color2)
 
-        sxglobals.refresh_in_progress = False
-        utils.mode_manager(objs, set_mode=False, mode_id='apply_material')
+            utils.mode_manager(objs, set_mode=False, mode_id='apply_material')
+            sxglobals.refresh_in_progress = False
 
 
     def select_color_mask(self, objs, color, invertmask=False):
@@ -5458,21 +5464,16 @@ def refresh_swatches(self, context):
             obj = objs[0]
             if len(obj.sx2layers) > 0:
                 layer = obj.sx2layers[obj.sx2.selectedlayer]
-                colors = utils.find_colors_by_frequency([obj, ], layer.name, 8)
+                colors = utils.find_colors_by_frequency(objs, layer.name, 8, alphavalues=(mode == 'ALPHA'))
 
                 # Refresh SX Tools UI to latest selection
                 # 1) Update layer HSL elements
-                hArray = []
-                sArray = []
-                lArray = []
+                hue, sat, lightness = 0, 0, 0
                 for color in colors:
-                    hsl = convert.rgb_to_hsl(color)
-                    hArray.append(hsl[0])
-                    sArray.append(hsl[1])
-                    lArray.append(hsl[2])
-                hue = max(hArray)
-                sat = max(sArray)
-                lightness = max(lArray)
+                    h, s, l = convert.rgb_to_hsl(color)
+                    hue = h if h > hue else hue
+                    sat = s if s > sat else sat
+                    lightness = l if l > lightness else lightness
 
                 sxglobals.hsl_update = True
                 obj.sx2.huevalue = hue
@@ -5481,12 +5482,6 @@ def refresh_swatches(self, context):
                 sxglobals.hsl_update = False
 
                 # 2) Update layer palette elements
-                layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-                if mode == 'ALPHA':
-                    colors = utils.find_colors_by_frequency(objs, layer.name, 8, alphavalues=True)
-                else:
-                    colors = utils.find_colors_by_frequency(objs, layer.name, 8)
-
                 for i, pcol in enumerate(colors):
                     palettecolor = (pcol[0], pcol[1], pcol[2], 1.0)
                     setattr(scene, 'layerpalette' + str(i + 1), palettecolor)
@@ -7448,6 +7443,9 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     if layer.layer_type in gray_channels:
                         row_hue.enabled = False
                         row_sat.enabled = False
+
+                    if obj.sx2.shadingmode == 'ALPHA':
+                        col_hsl.enabled = False
 
                 row_palette = layout.row(align=True)
                 for i in range(8):
@@ -10672,3 +10670,4 @@ if __name__ == '__main__':
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
 # BUG: Check decimation angle changes with hull and emission mesh generation
+# BUG: HSL update broken, multi-obj gives 0, 0, 0. ALPHA-mode adjusts colors and not alpha
