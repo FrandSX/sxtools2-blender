@@ -2308,9 +2308,13 @@ class SXTOOLS2_tools(object):
                 for poly in mesh.polygons:
                     for loop_idx in poly.loop_indices:
                         if invertmask:
-                            poly.select = not utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01)
+                            if not utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01):
+                                poly.select = True
+                                break
                         else:
-                            poly.select = utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01)
+                            if utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01):
+                                poly.select = False
+                                break
             else:
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
