@@ -2769,15 +2769,10 @@ class SXTOOLS2_export(object):
             mode = objs[0].mode
             objs = objs[:]
 
-            sep_objs = []
-            for obj in objs:
-                if obj.sx2.smartseparate:
-                    if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror:
-                        sep_objs.append(obj)
-
             export_objects = utils.create_collection('ExportObjects')
             source_objects = utils.create_collection('SourceObjects')
 
+            sep_objs = [obj for obj in objs if obj.sx2.smartseparate]
             if len(sep_objs) > 0:
                 for obj in sep_objs:
                     if (scene.exportquality == 'LO') and (obj.name not in source_objects.objects.keys()) and (obj.name not in export_objects.objects.keys()) and (obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror):
@@ -2798,11 +2793,10 @@ class SXTOOLS2_export(object):
 
                     if ('sxMirror' in obj.modifiers) and (obj.modifiers['sxMirror'].mirror_object is not None):
                         ref_loc = obj.modifiers['sxMirror'].mirror_object.matrix_world.to_translation()
+                        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                        bpy.ops.object.modifier_apply(modifier='sxMirror')
                     else:
                         ref_loc = obj.matrix_world.to_translation()
-
-                    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                    bpy.ops.object.modifier_apply(modifier='sxMirror')
 
                     bpy.ops.object.mode_set(mode='EDIT', toggle=False)
                     bpy.ops.mesh.select_all(action='SELECT')
@@ -10151,11 +10145,8 @@ class SXTOOLS2_OT_smart_separate(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        sep_objs = []
-        for obj in objs:
-            if obj.sx2.smartseparate:
-                if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror:
-                    sep_objs.append(obj)
+        sep_objs = [obj for obj in objs if obj.sx2.smartseparate]
+
         if len(sep_objs) > 0:
             for obj in sep_objs:
                 if obj.parent is None:
