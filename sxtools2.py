@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 6),
+    'version': (1, 12, 8),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1051,96 +1051,104 @@ class SXTOOLS2_generate(object):
             return blur_list
 
 
-    def curvature_list(self, obj, masklayer=None, returndict=False):
+    def curvature_list(self, obj, norm_objs, masklayer=None, returndict=False):
+
+        def generate_curvature_dict(curv_obj):
+            vert_curv_dict = {}
+            mesh = curv_obj.data
+            bm = bmesh.new()
+            bm.from_mesh(mesh)
+            bm.normal_update()
+
+            # pass 1: calculate curvatures
+            for vert in bm.verts:
+                numConnected = len(vert.link_edges)
+                if numConnected > 0:
+                    edgeWeights = []
+                    angles = []
+                    for edge in vert.link_edges:
+                        edgeWeights.append(edge.calc_length())
+                        angles.append(math.acos(vert.normal.normalized() @ (edge.other_vert(vert).co - vert.co).normalized()))
+
+                    total_weight = sum(edgeWeights)
+
+                    vtxCurvature = 0.0
+                    for i in range(numConnected):
+                        curvature = angles[i] / math.pi - 0.5
+                        vtxCurvature += curvature
+                        # weighted_curvature = (curvature * edgeWeights[i]) / total_weight
+                        # vtxCurvature += weighted_curvature
+
+                    vtxCurvature = min(vtxCurvature / float(numConnected), 1.0)
+
+                    vert_curv_dict[vert.index] = round(vtxCurvature, 5)
+                else:
+                    vert_curv_dict[vert.index] = 0.0
+
+            # pass 2: if tiling, copy the curvature value from the connected vert of the edge that's pointing away from the mirror axis
+            if curv_obj.sx2.tiling:
+                if 'sxTiler' in curv_obj.modifiers:
+                    curv_obj.modifiers['sxTiler'].show_viewport = False
+                    curv_obj.modifiers.update()
+                    bpy.context.view_layer.update()
+
+                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([curv_obj, ], local=True)
+                tiling_props = [('tile_neg_x', 'tile_pos_x'), ('tile_neg_y', 'tile_pos_y'), ('tile_neg_z', 'tile_pos_z')]
+                axis_vectors = [(Vector((-1.0, 0.0, 0.0)), Vector((1.0, 0.0, 0.0))), (Vector((0.0, -1.0, 0.0)), Vector((0.0, 1.0, 0.0))), (Vector((0.0, 0.0, -1.0)), Vector((0.0, 0.0, 1.0)))]
+                bounds = [(xmin, xmax), (ymin, ymax), (zmin, zmax)]
+
+                for vert in bm.verts:
+                    bound_ids = None
+                    for i, coord in enumerate(vert.co):
+                        for j, prop in enumerate(tiling_props[i]):
+                            if getattr(obj.sx2, prop) and (round(coord, 2) == round(bounds[i][j], 2)):
+                                bound_ids = (i, j)
+
+                    if bound_ids is not None:
+                        numConnected = len(vert.link_edges)
+                        if numConnected > 0:
+                            angles = []
+                            other_verts = []
+                            for i, edge in enumerate(vert.link_edges):
+                                edgeVec = edge.other_vert(vert).co - vert.co
+                                angles.append(axis_vectors[bound_ids[0]][bound_ids[1]].dot(edgeVec))
+                                other_verts.append(edge.other_vert(vert))
+                            value_vert_id = other_verts[angles.index(min(angles))].index
+                            vert_curv_dict[vert.index] = vert_curv_dict[value_vert_id]
+                        else:
+                            vert_curv_dict[vert.index] = 0.0
+
+                if 'sxTiler' in curv_obj.modifiers:
+                    curv_obj.modifiers['sxTiler'].show_viewport = curv_obj.sx2.tile_preview
+                    curv_obj.modifiers.update()
+                    bpy.context.view_layer.update()
+
+            bm.free()
+            return vert_curv_dict
+
+
         scene = bpy.context.scene.sx2
         normalize = scene.curvaturenormalize
         invert = scene.toolinvert
-        vert_curv_dict = {}
-        mesh = obj.data
-        bm = bmesh.new()
-        bm.from_mesh(mesh)
-        bm.normal_update()
 
-        # pass 1: calculate curvatures
-        for vert in bm.verts:
-            numConnected = len(vert.link_edges)
-            if numConnected > 0:
-                edgeWeights = []
-                angles = []
-                for edge in vert.link_edges:
-                    edgeWeights.append(edge.calc_length())
-                    angles.append(math.acos(vert.normal.normalized() @ (edge.other_vert(vert).co - vert.co).normalized()))
-
-                total_weight = sum(edgeWeights)
-
-                vtxCurvature = 0.0
-                for i in range(numConnected):
-                    curvature = angles[i] / math.pi - 0.5
-                    weighted_curvature = (curvature * edgeWeights[i]) / total_weight
-                    # vtxCurvature += curvature
-                    vtxCurvature += weighted_curvature
-
-                vtxCurvature = min(vtxCurvature / float(numConnected), 1.0)
-
-                vert_curv_dict[vert.index] = round(vtxCurvature, 5)
-            else:
-                vert_curv_dict[vert.index] = 0.0
-
-        # pass 2: if tiling, copy the curvature value from the connected vert of the edge that's pointing away from the mirror axis
-        if obj.sx2.tiling:
-            if 'sxTiler' in obj.modifiers:
-                obj.modifiers['sxTiler'].show_viewport = False
-                obj.modifiers.update()
-                bpy.context.view_layer.update()
-
-            xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], local=True)
-            tiling_props = [('tile_neg_x', 'tile_pos_x'), ('tile_neg_y', 'tile_pos_y'), ('tile_neg_z', 'tile_pos_z')]
-            axis_vectors = [(Vector((-1.0, 0.0, 0.0)), Vector((1.0, 0.0, 0.0))), (Vector((0.0, -1.0, 0.0)), Vector((0.0, 1.0, 0.0))), (Vector((0.0, 0.0, -1.0)), Vector((0.0, 0.0, 1.0)))]
-            bounds = [(xmin, xmax), (ymin, ymax), (zmin, zmax)]
-
-            for vert in bm.verts:
-                bound_ids = None
-                for i, coord in enumerate(vert.co):
-                    for j, prop in enumerate(tiling_props[i]):
-                        if getattr(obj.sx2, prop) and (round(coord, 2) == round(bounds[i][j], 2)):
-                            bound_ids = (i, j)
-
-                if bound_ids is not None:
-                    numConnected = len(vert.link_edges)
-                    if numConnected > 0:
-                        angles = []
-                        other_verts = []
-                        for i, edge in enumerate(vert.link_edges):
-                            edgeVec = edge.other_vert(vert).co - vert.co
-                            angles.append(axis_vectors[bound_ids[0]][bound_ids[1]].dot(edgeVec))
-                            other_verts.append(edge.other_vert(vert))
-                        value_vert_id = other_verts[angles.index(min(angles))].index
-                        vert_curv_dict[vert.index] = vert_curv_dict[value_vert_id]
-                    else:
-                        vert_curv_dict[vert.index] = 0.0
-
-            if 'sxTiler' in obj.modifiers:
-                obj.modifiers['sxTiler'].show_viewport = obj.sx2.tile_preview
-                obj.modifiers.update()
-                bpy.context.view_layer.update()
-
-        bm.free()
-
-        # Normalize convex and concave separately
-        # to maximize artist ability to crease
-
+        # Generate curvature dictionary of all objects in a multi-selection
         if normalize:
-            minCurv = min(vert_curv_dict.values())
-            maxCurv = max(vert_curv_dict.values())
+            norm_obj_curvature_dict = {norm_obj: generate_curvature_dict(norm_obj) for norm_obj in norm_objs}
+            min_curv = min(min(curv_dict.values()) for curv_dict in norm_obj_curvature_dict.values())
+            max_curv = max(max(curv_dict.values()) for curv_dict in norm_obj_curvature_dict.values())
+            vert_curv_dict = norm_obj_curvature_dict[obj]
 
+            # Normalize convex and concave separately
+            # to maximize artist ability to crease
             for vert, vtxCurvature in vert_curv_dict.items():
                 if vtxCurvature < 0.0:
-                    vert_curv_dict[vert] = (vtxCurvature / float(minCurv)) * -0.5 + 0.5
+                    vert_curv_dict[vert] = (vtxCurvature / float(min_curv)) * -0.5 + 0.5
                 elif vtxCurvature == 0.0:
                     vert_curv_dict[vert] = 0.5
                 else:
-                    vert_curv_dict[vert] = (vtxCurvature / float(maxCurv)) * 0.5 + 0.5
+                    vert_curv_dict[vert] = (vtxCurvature / float(max_curv)) * 0.5 + 0.5
         else:
+            vert_curv_dict = generate_curvature_dict(obj)
             for vert, vtxCurvature in vert_curv_dict.items():
                 vert_curv_dict[vert] = (vtxCurvature + 0.5)
 
@@ -2182,7 +2190,7 @@ class SXTOOLS2_tools(object):
             elif scene.toolmode == 'NSE':
                 colors = generate.noise_list(obj, amplitude, offset, mono, masklayer)
             elif scene.toolmode == 'CRV':
-                colors = generate.curvature_list(obj, masklayer)
+                colors = generate.curvature_list(obj, objs, masklayer)
             elif scene.toolmode == 'OCC':
                 colors = generate.occlusion_list(obj, scene.occlusionrays, scene.occlusionblend, scene.occlusiondistance, scene.occlusiongroundplane, scene.occlusiongroundheight, masklayer)
             elif scene.toolmode == 'THK':
@@ -4142,7 +4150,7 @@ class SXTOOLS2_magic(object):
             # Combine roughness base mask with custom curvature gradient
             scene.curvaturenormalize = True
             scene.ramplist = 'CURVATUREROUGHNESS'
-            colors1 = generate.curvature_list(obj)
+            colors1 = generate.curvature_list(obj, objs)
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
             colors = tools.blend_values(colors1, colors, 'ADD', 0.1)
@@ -4199,7 +4207,7 @@ class SXTOOLS2_magic(object):
             # Combine roughness base mask with custom curvature gradient
             scene.curvaturenormalize = True
             scene.ramplist = 'CURVATUREROUGHNESS'
-            colors1 = generate.curvature_list(obj)
+            colors1 = generate.curvature_list(obj, objs)
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
             colors = tools.blend_values(colors1, colors, 'ADD', 0.1)
@@ -4256,7 +4264,7 @@ class SXTOOLS2_magic(object):
         scene.curvaturenormalize = False
         scene.ramplist = 'WEARANDTEAR'
         for obj in objs:
-            colors = generate.curvature_list(obj)
+            colors = generate.curvature_list(obj, objs)
             values = layers.get_luminances(obj, colors=colors)
             colors1 = generate.luminance_remap_list(obj, values=values)
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
@@ -4284,7 +4292,7 @@ class SXTOOLS2_magic(object):
             # Combine roughness base mask with custom curvature gradient
             scene.curvaturenormalize = True
             scene.ramplist = 'CURVATUREROUGHNESS'
-            colors1 = generate.curvature_list(obj)
+            colors1 = generate.curvature_list(obj, objs)
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
             colors = tools.blend_values(colors1, colors, 'MUL', 0.2)
@@ -4336,7 +4344,7 @@ class SXTOOLS2_magic(object):
         scene.curvaturenormalize = True
         for obj in objs:
             layer = obj.sx2layers['Overlay']
-            colors = generate.curvature_list(obj)
+            colors = generate.curvature_list(obj, objs)
             # Noise for variance
             colors1 = generate.noise_list(obj, 0.03, False)
             colors = tools.blend_values(colors1, colors, 'OVR', 1.0)
@@ -5915,7 +5923,7 @@ def update_curvature_selection(self, context):
         utils.clear_component_selection(objs)
 
         for obj in objs:
-            vert_curv_dict = generate.curvature_list(obj, returndict=True)
+            vert_curv_dict = generate.curvature_list(obj, objs, returndict=True)
             mesh = obj.data
 
             for vert in mesh.vertices:
