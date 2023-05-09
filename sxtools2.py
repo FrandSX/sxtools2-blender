@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 10),
+    'version': (1, 12, 11),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -10679,6 +10679,5 @@ if __name__ == '__main__':
 # TODO:
 # BUG: Grouping of objs with armatures
 # BUG: Check decimation angle changes with hull and emission mesh generation
-# BUG: AO is wrong after first magic run, tiler preview needs to be toggled once for correct results
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
