@@ -1335,6 +1335,8 @@ class SXTOOLS2_generate(object):
         if obj.sx2.tiling:
             blend = 0.0
             groundplane = False
+            if not 'sxTiler' in obj.modifiers:
+                modifiers.add_modifiers([obj, ])
             obj.modifiers['sxTiler'].show_viewport = False
             obj.modifiers.update()
             bpy.context.view_layer.update()
@@ -2579,12 +2581,12 @@ class SXTOOLS2_modifiers(object):
                 tiler = obj.modifiers.new(type='NODES', name='sxTiler')
                 tiler.node_group = bpy.data.node_groups['sx_tiler']
                 tiler['Input_1'] = obj.sx2.tile_offset
-                tiler['Input_2'] = obj.sx2.tile_neg_x
-                tiler['Input_3'] = obj.sx2.tile_pos_x
-                tiler['Input_4'] = obj.sx2.tile_neg_y
-                tiler['Input_5'] = obj.sx2.tile_pos_y
-                tiler['Input_6'] = obj.sx2.tile_neg_z
-                tiler['Input_7'] = obj.sx2.tile_pos_z
+                tiler['Input_3'] = obj.sx2.tile_neg_x
+                tiler['Input_4'] = obj.sx2.tile_pos_x
+                tiler['Input_5'] = obj.sx2.tile_neg_y
+                tiler['Input_6'] = obj.sx2.tile_pos_y
+                tiler['Input_7'] = obj.sx2.tile_neg_z
+                tiler['Input_8'] = obj.sx2.tile_pos_z
                 tiler.show_viewport = False
                 tiler.show_expanded = False
             # if 'sxAO' not in obj.modifiers:
