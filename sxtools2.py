@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 8),
+    'version': (1, 12, 10),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1336,25 +1336,29 @@ class SXTOOLS2_generate(object):
             blend = 0.0
             groundplane = False
             obj.modifiers['sxTiler'].show_viewport = False
+            obj.modifiers.update()
             bpy.context.view_layer.update()
             xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], local=True)
             dist = 2.0 * min(xmax-xmin, ymax-ymin, zmax-zmin)
             obj.modifiers['sxTiler'].show_viewport = True
+            obj.modifiers.update()
+            bpy.context.view_layer.update()
 
         vert_occ_dict = {}
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=True)
 
         if len(vert_dict.keys()) > 0:
 
-            if groundplane:
+            if (blend > 0.0) and groundplane:
                 pivot = utils.find_root_pivot([obj, ])
                 pivot = (pivot[0], pivot[1], groundheight)
                 size = max(obj.dimensions) * 10
                 ground, groundmesh = self.ground_plane(size, pivot)
 
-                edg = bpy.context.evaluated_depsgraph_get()
-                # obj_eval = obj.evaluated_get(edg)
-                bvh = BVHTree.FromObject(obj, edg)
+            edg = bpy.context.evaluated_depsgraph_get()
+            # edg.update()
+            # obj_eval = obj.evaluated_get(edg)
+            bvh = BVHTree.FromObject(obj, edg)
 
             for vert_id in vert_dict:
                 bias = 0.001
@@ -1436,7 +1440,7 @@ class SXTOOLS2_generate(object):
 
                 vert_occ_dict[vert_id] = float((occValue * (1.0 - mix)) + (scnOccValue * mix))
 
-            if groundplane:
+            if (blend > 0.0) and groundplane:
                 bpy.data.objects.remove(ground, do_unlink=True)
                 bpy.data.meshes.remove(groundmesh, do_unlink=True)
 
@@ -3490,6 +3494,7 @@ class SXTOOLS2_export(object):
 
 
     def revert_objects(self, objs):
+        sxglobals.magic_in_progress = True
         modifiers.remove_modifiers(objs)
 
         for obj in objs:
@@ -3505,6 +3510,7 @@ class SXTOOLS2_export(object):
             bpy.ops.mesh.customdata_custom_splitnormals_clear()
 
         bpy.context.view_layer.objects.active = active
+        sxglobals.magic_in_progress = False
 
 
     def zero_verts(self, objs):
@@ -4254,7 +4260,7 @@ class SXTOOLS2_magic(object):
         self.apply_palette_overrides(objs, clear=True)
         self.apply_occlusion(objs, masklayername=utils.find_color_layers(obj, 6).name, blend=0.0, groundplane=False, distance=0.5)
 
-        # Apply normalized curvature with luma remapping to overlay, clear windows
+        # Apply curvature with luma remapping to overlay, clear windows
         scene.curvaturenormalize = False
         scene.ramplist = 'WEARANDTEAR'
         for obj in objs:
@@ -4284,7 +4290,7 @@ class SXTOOLS2_magic(object):
             colors1 = generate.color_list(obj, palette[2], utils.find_color_layers(obj, 6))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             # Combine roughness base mask with custom curvature gradient
-            scene.curvaturenormalize = True
+            scene.curvaturenormalize = False
             scene.ramplist = 'CURVATUREROUGHNESS'
             colors1 = generate.curvature_list(obj, objs)
             values = layers.get_luminances(obj, colors=colors1)
@@ -10671,5 +10677,6 @@ if __name__ == '__main__':
 # TODO:
 # BUG: Grouping of objs with armatures
 # BUG: Check decimation angle changes with hull and emission mesh generation
+# BUG: AO is wrong after first magic run, tiler preview needs to be toggled once for correct results
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
