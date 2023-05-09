@@ -1338,12 +1338,10 @@ class SXTOOLS2_generate(object):
             if not 'sxTiler' in obj.modifiers:
                 modifiers.add_modifiers([obj, ])
             obj.modifiers['sxTiler'].show_viewport = False
-            obj.modifiers.update()
             bpy.context.view_layer.update()
             xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], local=True)
             dist = 2.0 * min(xmax-xmin, ymax-ymin, zmax-zmin)
             obj.modifiers['sxTiler'].show_viewport = True
-            obj.modifiers.update()
             bpy.context.view_layer.update()
 
         vert_occ_dict = {}
@@ -3325,7 +3323,7 @@ class SXTOOLS2_export(object):
         if sx_objs.name not in bpy.context.scene.collection.children:
             bpy.context.scene.collection.children.link(sx_objs)
 
-        return sx_objs.all_objects
+        return [obj for obj in sx_objs.all_objects]
 
 
     def group_objects(self, objs, origin=False):
