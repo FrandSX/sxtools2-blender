@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 15),
+    'version': (1, 12, 16),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -255,7 +255,7 @@ class SXTOOLS2_files(object):
                     sel['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
                     sel['colorSpace'] = export_dict[prefs.exportspace]
 
-            if len(obj_array) > 0:
+            if obj_array:
                 empty = False
 
                 # Create palette masks
@@ -291,7 +291,7 @@ class SXTOOLS2_files(object):
                     path = scene.exportfolder + subfolder + os.path.sep + category + os.path.sep
                 pathlib.Path(path).mkdir(exist_ok=True, parents=True)
 
-                if len(collider_array) > 0:
+                if collider_array:
                     for collider in collider_array:
                         collider.select_set(True)
 
@@ -496,7 +496,7 @@ class SXTOOLS2_utils(object):
 
 
     def find_layer_by_stack_index(self, obj, index):
-        if len(obj.sx2layers) > 0:
+        if obj.sx2layers:
             stack_dict = sxglobals.layer_stack_dict.get(obj.name, {})
             if len(stack_dict) == 0:
                 layers = [(layer.index, layer.color_attribute) for layer in obj.sx2layers]
@@ -552,7 +552,7 @@ class SXTOOLS2_utils(object):
 
     # The index parameter returns the nth color layer in the stack
     def find_color_layers(self, obj, index=None, staticvertexcolors=True):
-        if len(obj.sx2layers) > 0:
+        if obj.sx2layers:
             color_layers = [layer for layer in obj.sx2layers if layer.layer_type == 'COLOR']
 
             if not staticvertexcolors:
@@ -594,7 +594,7 @@ class SXTOOLS2_utils(object):
         def child_recurse(children):
             for child in children:
                 child_list = get_children(child)
-                if len(child_list) > 0:
+                if child_list:
                     results.extend(child_list)
                     child_recurse(child_list)
 
@@ -701,10 +701,10 @@ class SXTOOLS2_utils(object):
 
     def sort_stack_indices(self, obj, sort_layers=None):
         stack_dict = sxglobals.layer_stack_dict.get(obj.name, {})
-        if len(stack_dict) > 0:
+        if stack_dict:
             sxglobals.layer_stack_dict[obj.name].clear()
 
-        if len(obj.sx2layers) > 0:
+        if obj.sx2layers:
             if sort_layers is None:
                 sort_layers = obj.sx2layers[:]
                 sort_layers.sort(key=lambda x: x.index)
@@ -735,7 +735,7 @@ class SXTOOLS2_utils(object):
                 vert_dict = generate.vertex_data_dict(obj)
                 xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box([obj, ], local=True)
 
-                if len(vert_dict.keys()) > 0:
+                if vert_dict:
                     for vert_id in vert_dict:
                         vertLoc = Vector(vert_dict[vert_id][0])
 
@@ -768,7 +768,7 @@ class SXTOOLS2_utils(object):
                     obj.matrix_parent_inverse.identity()
                     obj.matrix_world = mtx_dict[obj]
                     task_list.remove(obj)
-                    if len(task_list) == 0:
+                    if not task_list:
                         break
 
         bpy.context.view_layer.objects.active = active
@@ -1181,7 +1181,7 @@ class SXTOOLS2_generate(object):
 
         vert_dict = self.vertex_data_dict(obj, masklayer)
 
-        if len(vert_dict.keys()) > 0:
+        if vert_dict:
             vert_dir_dict = {vert_id: 0.0 for vert_id in vert_dict}
             inclination = math.radians(scene.dirInclination - 90.0)
             angle = math.radians(scene.dirAngle + 90)
@@ -1309,7 +1309,7 @@ class SXTOOLS2_generate(object):
 
 
         vert_dict = self.vertex_data_dict(obj, masklayer)
-        if len(vert_dict.keys()) > 0:
+        if vert_dict:
             edg = bpy.context.evaluated_depsgraph_get()
             obj_eval = obj.evaluated_get(edg)
             contribution = 1.0 / float(raycount)
@@ -1355,7 +1355,7 @@ class SXTOOLS2_generate(object):
         vert_occ_dict = {}
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=True)
 
-        if len(vert_dict.keys()) > 0:
+        if vert_dict:
 
             if (blend > 0.0) and groundplane:
                 pivot = utils.find_root_pivot([obj, ])
@@ -1750,7 +1750,7 @@ class SXTOOLS2_layers(object):
         data_types = {'FLOAT': 'FLOAT_COLOR', 'BYTE': 'BYTE_COLOR'}
         alpha_mats = {'OCC': 'Occlusion', 'MET': 'Metallic', 'RGH': 'Roughness', 'TRN': 'Transmission'}
         layer_dict = {}
-        if len(objs) > 0:
+        if objs:
             # Use largest layercount to avoid material mismatches
             for obj in objs:
                 layercount = max([obj.sx2.layercount for obj in objs])
@@ -2244,7 +2244,7 @@ class SXTOOLS2_tools(object):
         utils.mode_manager(objs, set_mode=True, mode_id='apply_hsl')
 
         colors = utils.find_colors_by_frequency(objs, layer.name)
-        if len(colors) > 0:
+        if colors:
             value = 0
             for color in colors:
                 hsl = convert.rgb_to_hsl(color)
@@ -2300,7 +2300,7 @@ class SXTOOLS2_tools(object):
                 scene.newpalette4]
 
             for obj in objs:
-                if len(obj.sx2layers) > 0:
+                if obj.sx2layers:
                     for layer in obj.sx2layers:
                         if layer.paletted:
                             source_colors = layers.get_layer(obj, layer)
@@ -2756,13 +2756,8 @@ class SXTOOLS2_export(object):
 
     def composite_color_layers(self, objs):
         utils.mode_manager(objs, set_mode=True, mode_id='composite_color_layers')
-
-        cmp_add_objs = []
-        for obj in objs:
-            if 'Composite' not in obj.sx2layers.keys():
-                cmp_add_objs.append(obj)
-
-        if len(cmp_add_objs) > 0:
+        cmp_add_objs = [obj for obj in objs if 'Composite' not in obj.sx2layers.keys()]
+        if cmp_add_objs:
             layers.add_layer(cmp_add_objs, name='Composite', layer_type='CMP')
 
         for obj in objs:
@@ -2773,25 +2768,24 @@ class SXTOOLS2_export(object):
 
 
     def smart_separate(self, objs):
-        if len(objs) > 0:
+        if objs:
             mirror_pairs = [('_top', '_bottom'), ('_front', '_rear'), ('_left', '_right'), ('_bottom', '_top'), ('_rear', '_front'), ('_right', '_left')]
             prefs = bpy.context.preferences.addons['sxtools2'].preferences
             scene = bpy.context.scene.sx2
             view_layer = bpy.context.view_layer
             mode = objs[0].mode
             objs = objs[:]
+            separated_objs = []
 
             export_objects = utils.create_collection('ExportObjects')
             source_objects = utils.create_collection('SourceObjects')
 
             sep_objs = [obj for obj in objs if obj.sx2.smartseparate]
-            if len(sep_objs) > 0:
+            if sep_objs:
                 for obj in sep_objs:
                     if (scene.exportquality == 'LO') and (obj.name not in source_objects.objects.keys()) and (obj.name not in export_objects.objects.keys()) and (obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror):
                         source_objects.objects.link(obj)
 
-            separated_objs = []
-            if len(sep_objs) > 0:
                 active = view_layer.objects.active
                 bpy.ops.object.select_all(action='DESELECT')
                 for obj in sep_objs:
@@ -2956,12 +2950,9 @@ class SXTOOLS2_export(object):
     # Multi-pass convex hull generator, latter convex hull generation
     # necessary to guarantee convex shape after shrink and weld
     def generate_hulls(self, objs):
-        if len(objs) > 0:
-            hull_objs = []
-            for obj in objs:
-                if obj.sx2.generatehulls:
-                    hull_objs.append(obj)
-            if len(hull_objs) > 0:
+        if objs:
+            hull_objs = [obj for obj in objs if obj.sx2.generatehulls]
+            if hull_objs:
                 org_objs = hull_objs[:]
                 new_objs = []
                 active_obj = bpy.context.view_layer.objects.active
@@ -3054,10 +3045,10 @@ class SXTOOLS2_export(object):
 
     def generate_mesh_colliders(self, objs):
         org_objs = objs[:]
-        name_array = []
         new_objs = []
         active_obj = bpy.context.view_layer.objects.active
         scene = bpy.context.scene.sx2
+        name_array = [(obj.name[:], obj.data.name[:]) for obj in org_objs]
 
         export_objects = utils.create_collection('ExportObjects')
         colliders = utils.create_collection('SXColliders')
@@ -3065,9 +3056,6 @@ class SXTOOLS2_export(object):
 
         if colliders.name not in bpy.context.scene.collection.children:
             bpy.context.scene.collection.children.link(colliders)
-
-        for obj in org_objs:
-            name_array.append((obj.name[:], obj.data.name[:]))
 
         for j, obj in enumerate(org_objs):
             new_obj = obj.copy()
@@ -3240,7 +3228,7 @@ class SXTOOLS2_export(object):
             for uvlayer in obj.data.uv_layers:
                 if uvlayer.name not in reserved:
                     to_delete.append(uvlayer.name[:])
-            if len(to_delete) > 0:
+            if to_delete:
                 for uvlayer_name in to_delete:
                     obj.data.uv_layers.remove(obj.data.uv_layers[uvlayer_name])
 
@@ -3483,14 +3471,14 @@ class SXTOOLS2_export(object):
     def bytes_to_floats(self, objs):
         active = bpy.context.view_layer.objects.active
         for obj in objs:
-            if len(obj.sx2layers) > 0:
+            if obj.sx2layers:
                 bpy.context.view_layer.objects.active = obj
                 byte_colors = []
                 for color_attribute in obj.data.color_attributes:
                     if color_attribute.data_type == 'BYTE_COLOR':
                         byte_colors.append(color_attribute.name)
 
-                if len(byte_colors) > 0:
+                if byte_colors:
                     for byte_color in byte_colors:
                         # VertexColor0 was only used by SX Tools 1 for compositing, and is redundant
                         if byte_color == 'VertexColor0':
@@ -3668,7 +3656,7 @@ class SXTOOLS2_export(object):
         for obj in objs:
             if ('Composite' in obj.sx2layers.keys()) and (obj.sx2layers['Composite'].layer_type == 'CMP'):
                 cmp_objs.append(obj)
-        if len(cmp_objs) > 0:
+        if cmp_objs:
             layers.del_layer(cmp_objs, 'Composite')
 
         for obj in objs:
@@ -3767,7 +3755,7 @@ class SXTOOLS2_magic(object):
                     if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror:
                         sep_objs.append(obj)
 
-            if len(sep_objs) > 0:
+            if sep_objs:
                 part_objs = export.smart_separate(sep_objs)
                 for obj in part_objs:
                     if obj not in objs:
@@ -3806,7 +3794,7 @@ class SXTOOLS2_magic(object):
 
                 obj.parent = viewlayer.objects[obj.parent.name + '_org']
 
-            if len(lod_objs) > 0:
+            if lod_objs:
                 new_obj_array = export.generate_lods(lod_objs)
                 for new_obj in new_obj_array:
                     new_objs.append(new_obj)
@@ -3845,16 +3833,11 @@ class SXTOOLS2_magic(object):
         viewlayer.update()
 
         category_list = list(sxglobals.category_dict.keys())
-        categories = []
-        for category in category_list:
-            categories.append(category.replace(" ", "_").upper())
+        categories = [category.replace(" ", "_").upper() for category in category_list]
         for category in categories:
-            category_objs = []
-            for obj in objs:
-                if obj.sx2.category == category:
-                    category_objs.append(obj)
+            category_objs = [obj for obj in objs if obj.sx2.category == category]
 
-            if len(category_objs) > 0:
+            if category_objs:
                 groupList = utils.find_groups(category_objs)
                 for group in groupList:
                     createLODs = False
@@ -3953,7 +3936,7 @@ class SXTOOLS2_magic(object):
                 else:
                     obj.select_set(True)
 
-            if len(non_lod_objs) > 0:
+            if non_lod_objs:
                 lod_objs = export.generate_lods(non_lod_objs)
                 bpy.ops.object.select_all(action='DESELECT')
                 for obj in non_lod_objs:
@@ -4000,10 +3983,7 @@ class SXTOOLS2_magic(object):
         for obj in objs:
             if obj.sx2.metallicoverride or obj.sx2.roughnessoverride:
                 color_layers = utils.find_color_layers(obj, staticvertexcolors=int(obj.sx2.staticvertexcolors))
-                paletted_layers = []
-                for layer in color_layers:
-                    if layer.paletted:
-                        paletted_layers.append(layer)
+                paletted_layers = [layer for layer in color_layers if layer.paletted]
 
             if obj.sx2.roughnessoverride:
                 if clear:
@@ -4854,7 +4834,7 @@ class SXTOOLS2_setup(object):
         scene = bpy.context.scene.sx2
 
         for obj in objs:
-            if len(obj.sx2layers) > 0:
+            if obj.sx2layers:
                 sxmaterial = bpy.data.materials.new(name='SX2Material_'+obj.name)
                 sxmaterial.use_nodes = True
                 sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'].default_value = [0.0, 0.0, 0.0, 1.0]
@@ -5314,12 +5294,9 @@ class SXTOOLS2_setup(object):
 
             # Get a list of all unique materials in sx2 objects
             # and remove them
-            sx_mats = []
-            for mat in bpy.data.materials:
-                if 'SX2Material_' in mat.name:
-                    sx_mats.append(mat)
+            sx_mats = [mat for mat in bpy.data.materials if 'SX2Material_' in mat.name]
 
-            if len(sx_mats) > 0:
+            if sx_mats:
                 for mat in sx_mats:
                     bpy.data.materials.remove(mat, do_unlink=True)
 
@@ -5381,12 +5358,9 @@ class SXTOOLS2_setup(object):
         scene.sx2.toolblend = 'ALPHA'
 
         # Clear SX2 Materials
-        sx_mats = []
-        for mat in bpy.data.materials:
-            if 'SX2Material_' in mat.name:
-                sx_mats.append(mat)
+        sx_mats = [mat for mat in bpy.data.materials if 'SX2Material_' in mat.name]
 
-        if len(sx_mats) > 0:
+        if sx_mats:
             for mat in sx_mats:
                 bpy.data.materials.remove(mat, do_unlink=True)
 
@@ -5473,9 +5447,9 @@ def refresh_swatches(self, context):
 
         utils.mode_manager(objs, set_mode=True, mode_id='refresh_swatches')
 
-        if len(objs) > 0:
+        if objs:
             obj = objs[0]
-            if len(obj.sx2layers) > 0:
+            if obj.sx2layers:
                 layer = obj.sx2layers[obj.sx2.selectedlayer]
                 colors = utils.find_colors_by_frequency(objs, layer.name, 8, alphavalues=(mode == 'ALPHA'))
 
@@ -5596,7 +5570,7 @@ def update_selected_layer(self, context):
     if (not sxglobals.magic_in_progress) and (not bpy.app.background):
         objs = mesh_selection_validator(self, context)
         for obj in objs:
-            if len(obj.sx2layers) > 0:
+            if obj.sx2layers:
                 obj.data.attributes.active_color = obj.data.attributes[obj.sx2layers[obj.sx2.selectedlayer].color_attribute]
 
         areas = bpy.context.workspace.screens[0].areas
@@ -5619,7 +5593,7 @@ def update_selected_layer(self, context):
 def update_modifiers(self, context, prop):
     update_obj_props(self, context, prop)
     objs = mesh_selection_validator(self, context)
-    if len(objs) > 0:
+    if objs:
         if prop == 'modifiervisibility':
             for obj in objs:
                 if 'sxMirror' in obj.modifiers:
@@ -5763,7 +5737,7 @@ def adjust_hsl(self, context, hslmode):
     if not sxglobals.hsl_update:
         objs = mesh_selection_validator(self, context)
 
-        if len(objs) > 0:
+        if objs:
             hslvalues = [objs[0].sx2.huevalue, objs[0].sx2.saturationvalue, objs[0].sx2.lightnessvalue]
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             tools.apply_hsl(objs, layer, hslmode, hslvalues[hslmode])
@@ -5795,7 +5769,7 @@ def ext_category_lister(self, context, category):
 
 def load_category(self, context):
     objs = mesh_selection_validator(self, context)
-    if len(objs) > 0:
+    if objs:
         active = context.view_layer.objects.active
         category_data = sxglobals.category_dict[sxglobals.preset_lookup[objs[0].sx2.category]]
         sxglobals.magic_in_progress = True
@@ -5986,7 +5960,7 @@ def update_layer_props(self, context, prop):
         elif prop == 'opacity':
             # Pack props into vectors to bypass prop count limits
             for obj in objs:
-                if len(obj.sx2layers) > 0:
+                if obj.sx2layers:
                     color_stack = []
                     material_stack = []
                     for layer in obj.sx2layers:
@@ -7396,13 +7370,13 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
             if len(prefs.libraryfolder) > 0:
                 col.operator('sx2.loadlibraries', text='Reload Libraries')
 
-        elif len(objs) > 0:
+        elif objs:
             obj = objs[0]
             mode = obj.mode
             sx2 = obj.sx2
             scene = context.scene.sx2
 
-            if len(obj.sx2layers) == 0:
+            if not obj.sx2layers:
                 layer = None
             else:
                 layer = obj.sx2layers[sx2.selectedlayer]
@@ -7993,7 +7967,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                     col_batchexport = box_export.column(align=True)
                                     col_cataloguebuttons = box_export.column(align=True)
                                     groups = utils.find_groups()
-                                    if len(groups) == 0:
+                                    if not groups:
                                         col_batchexport.label(text='No Groups Selected')
                                     else:
                                         col_batchexport.label(text='Groups to Batch Process:')
@@ -8084,12 +8058,9 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
 
     def filter_items(self, context, data, propname):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
-            flt_flags = []
-            flt_neworder = []
+        if objs:
+            flt_neworder = [layer.index for layer in objs[0].sx2layers]
             flt_flags = [self.bitflag_filter_item] * len(objs[0].sx2layers)
-            for layer in objs[0].sx2layers:
-                flt_neworder.append(layer.index)
 
             return flt_flags, flt_neworder
 
@@ -8220,7 +8191,7 @@ class SXTOOLS2_MT_piemenu(bpy.types.Menu):
 
     def draw(self, context):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             obj = objs[0]
 
             layout = self.layout
@@ -8290,12 +8261,12 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
         objs = mesh_selection_validator(self, context)
         if (len(objs) == 0) and (context.active_object is not None) and (context.object.mode == 'EDIT'):
             objs = context.objects_in_mode
-            if len(objs) > 0:
+            if objs:
                 for obj in objs:
                     obj.select_set(True)
                 context.view_layer.objects.active = objs[0]
 
-        if len(objs) > 0:
+        if objs:
             mode = objs[0].mode
             if mode != sxglobals.prev_mode:
                 # print('selectionmonitor: mode change')
@@ -8603,7 +8574,7 @@ class SXTOOLS2_OT_layers_to_palette(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             layers.color_layers_to_swatches(objs)
         return {'FINISHED'}
 
@@ -8806,8 +8777,8 @@ class SXTOOLS2_OT_applytool(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
-            if len(objs[0].sx2layers) == 0:
+        if objs:
+            if not objs[0].sx2layers:
                 layers.add_layer(objs)
                 setup.update_sx2material(context)
 
@@ -8846,10 +8817,7 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
     def poll(cls, context):
         enabled = False
         objs = context.view_layer.objects.selected
-        mesh_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                mesh_objs.append(obj)
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
         if len(mesh_objs[0].data.color_attributes) < 14:
             enabled = True
@@ -8861,7 +8829,7 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
         objs = mesh_selection_validator(self, context)
         utils.mode_manager(objs, set_mode=True, mode_id='add_layer')
         # for obj in objs:
-        #     if len(obj.sx2layers) == 0:
+        #     if not obj.sx2layers:
         #         export.create_reserved_uvsets([obj, ])
         layers.add_layer(objs)
         setup.update_sx2material(context)
@@ -8882,12 +8850,9 @@ class SXTOOLS2_OT_del_layer(bpy.types.Operator):
     def poll(cls, context):
         enabled = False
         objs = context.view_layer.objects.selected
-        mesh_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                mesh_objs.append(obj)
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if len(mesh_objs[0].sx2layers) > 0:
+        if mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -8895,13 +8860,13 @@ class SXTOOLS2_OT_del_layer(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             utils.mode_manager(objs, set_mode=True, mode_id='del_layer')
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             layers.del_layer(objs, layer.name)
             setup.update_sx2material(context)
             utils.mode_manager(objs, set_mode=False, mode_id='del_layer')
-            if len(objs[0].sx2layers) > 0:
+            if objs[0].sx2layers:
                 refresh_swatches(self, context)
 
         return {'FINISHED'}
@@ -8918,12 +8883,9 @@ class SXTOOLS2_OT_layer_up(bpy.types.Operator):
     def poll(cls, context):
         enabled = False
         objs = context.view_layer.objects.selected
-        mesh_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                mesh_objs.append(obj)
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if len(mesh_objs[0].sx2layers) > 0:
+        if mesh_objs[0].sx2layers:
             layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
             if (layer.index < (len(sxglobals.layer_stack_dict.get(mesh_objs[0].name, [])) - 1)):
                 enabled = True
@@ -8933,11 +8895,11 @@ class SXTOOLS2_OT_layer_up(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             idx = objs[0].sx2.selectedlayer
             updated = False
             for obj in objs:
-                if len(obj.sx2layers) > 0:
+                if obj.sx2layers:
                     utils.mode_manager(objs, set_mode=True, mode_id='layer_up')
                     new_index = obj.sx2layers[idx].index + 1 if obj.sx2layers[idx].index + 1 < len(obj.sx2layers) else obj.sx2layers[idx].index
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
@@ -8961,12 +8923,9 @@ class SXTOOLS2_OT_layer_down(bpy.types.Operator):
     def poll(cls, context):
         enabled = False
         objs = context.view_layer.objects.selected
-        mesh_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                mesh_objs.append(obj)
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if len(mesh_objs[0].sx2layers) > 0:
+        if mesh_objs[0].sx2layers:
             layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
             if (layer.index > 0):
                 enabled = True
@@ -8976,11 +8935,11 @@ class SXTOOLS2_OT_layer_down(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             idx = objs[0].sx2.selectedlayer
             updated = False
             for obj in objs:
-                if len(obj.sx2layers) > 0:
+                if obj.sx2layers:
                     utils.mode_manager(objs, set_mode=True, mode_id='layer_down')
                     new_index = obj.sx2layers[idx].index - 1 if obj.sx2layers[idx].index -1 >= 0 else 0
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
@@ -9020,12 +8979,9 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
     def poll(cls, context):
         enabled = False
         objs = context.view_layer.objects.selected
-        mesh_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                mesh_objs.append(obj)
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if len(mesh_objs[0].sx2layers) > 0:
+        if mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -9071,7 +9027,7 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                 message_box('Layer stack at max, delete a color layer and try again.')
                 return {'FINISHED'}
 
-            if len(obj.sx2layers) > 0:
+            if obj.sx2layers:
                 if self.layer_type == 'OCC':
                     name = 'Occlusion'
                 elif self.layer_type == 'MET':
@@ -9146,23 +9102,21 @@ class SXTOOLS2_OT_mergeup(bpy.types.Operator):
     def poll(cls, context):
         enabled = False
         objs = context.view_layer.objects.selected
-        mesh_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                mesh_objs.append(obj)
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if len(mesh_objs[0].sx2layers) > 0:
+        if mesh_objs[0].sx2layers:
             layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
             if layer.layer_type == 'CMP':
                 enabled = False
             elif (layer.layer_type == 'COLOR') and (layer.index < (len(sxglobals.layer_stack_dict.get(mesh_objs[0].name, [])) - 1)):
                 enabled = True
+
         return enabled
 
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             for obj in objs:
                 utils.sort_stack_indices(obj)
             baseLayer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
@@ -9194,12 +9148,9 @@ class SXTOOLS2_OT_mergedown(bpy.types.Operator):
     def poll(cls, context):
         enabled = False
         objs = context.view_layer.objects.selected
-        mesh_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                mesh_objs.append(obj)
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if len(mesh_objs[0].sx2layers) > 0:
+        if mesh_objs[0].sx2layers:
             layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
             if layer.layer_type == 'CMP':
                 enabled = False
@@ -9207,12 +9158,13 @@ class SXTOOLS2_OT_mergedown(bpy.types.Operator):
                 nextLayer = utils.find_layer_by_stack_index(mesh_objs[0], layer.index - 1)
                 if (nextLayer.layer_type == 'COLOR') and (layer.layer_type == 'COLOR'):
                     enabled = True
+
         return enabled
 
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             for obj in objs:
                 utils.sort_stack_indices(obj)
             topLayer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
@@ -9236,12 +9188,9 @@ class SXTOOLS2_OT_copylayer(bpy.types.Operator):
     def poll(cls, context):
         enabled = False
         objs = context.view_layer.objects.selected
-        mesh_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                mesh_objs.append(obj)
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if len(mesh_objs[0].sx2layers) > 0:
+        if mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -9250,7 +9199,7 @@ class SXTOOLS2_OT_copylayer(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         utils.mode_manager(objs, set_mode=True, mode_id='copy_layer')
-        if len(objs) > 0:
+        if objs:
             for obj in objs:
                 colors = layers.get_layer(obj, obj.sx2layers[objs[0].sx2.selectedlayer])
                 sxglobals.copy_buffer[obj.name] = generate.mask_list(obj, colors)
@@ -9269,12 +9218,9 @@ class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
     def poll(cls, context):
         enabled = False
         objs = context.view_layer.objects.selected
-        mesh_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                mesh_objs.append(obj)
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if len(mesh_objs[0].sx2layers) > 0:
+        if mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -9282,7 +9228,7 @@ class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             for obj in objs:
                 target_layer = obj.sx2layers[objs[0].sx2.selectedlayer]
 
@@ -9313,12 +9259,9 @@ class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
     def poll(cls, context):
         enabled = False
         objs = context.view_layer.objects.selected
-        mesh_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                mesh_objs.append(obj)
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if len(mesh_objs[0].sx2layers) > 0:
+        if mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -9326,14 +9269,12 @@ class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             utils.mode_manager(objs, set_mode=True, mode_id='clearlayers')
             if event.ctrl:
                 for obj in objs:
                     comp_layers = utils.find_color_layers(obj)
-                    layer_attributes = []
-                    for layer in comp_layers:
-                        layer_attributes.append((layer.color_attribute, layer.name))
+                    layer_attributes = [(layer.color_attribute, layer.name) for layer in comp_layers]
 
                     layers.add_layer([obj, ], name='Flattened', layer_type='COLOR')
                     layers.blend_layers([obj, ], comp_layers, comp_layers[0], obj.sx2layers['Flattened'])
@@ -9371,12 +9312,9 @@ class SXTOOLS2_OT_selmask(bpy.types.Operator):
     def poll(cls, context):
         enabled = False
         objs = context.view_layer.objects.selected
-        mesh_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                mesh_objs.append(obj)
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if len(mesh_objs[0].sx2layers) > 0:
+        if mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -9384,7 +9322,7 @@ class SXTOOLS2_OT_selmask(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             context.view_layer.objects.active = objs[0]
 
             if event.shift:
@@ -9417,7 +9355,7 @@ class SXTOOLS2_OT_previewpalette(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             palette = self.label
             tools.preview_palette(objs, palette)
 
@@ -9439,7 +9377,7 @@ class SXTOOLS2_OT_applypalette(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             palette = self.label
             tools.apply_palette(objs, palette)
             for obj in objs:
@@ -9461,7 +9399,7 @@ class SXTOOLS2_OT_applymaterial(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             material = self.label
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             tools.apply_material(objs, layer, material)
@@ -9481,7 +9419,7 @@ class SXTOOLS2_OT_selectup(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             for obj in objs:
                 utils.sort_stack_indices(obj)
 
@@ -9505,7 +9443,7 @@ class SXTOOLS2_OT_selectdown(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             for obj in objs:
                 utils.sort_stack_indices(obj)
 
@@ -9528,7 +9466,7 @@ class SXTOOLS2_OT_addmodifiers(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             modifiers.add_modifiers(objs)
 
             if objs[0].mode == 'OBJECT':
@@ -9560,7 +9498,7 @@ class SXTOOLS2_OT_applymodifiers(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             modifiers.apply_modifiers(objs)
         return {'FINISHED'}
 
@@ -9574,7 +9512,7 @@ class SXTOOLS2_OT_removemodifiers(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             modifiers.remove_modifiers(objs, reset=True)
 
             if objs[0].mode == 'OBJECT':
@@ -9594,7 +9532,7 @@ class SXTOOLS2_OT_setgroup(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         scene = context.scene.sx2
-        if len(objs) > 0:
+        if objs:
             setmode = self.setmode
             setvalue = self.setvalue
             if event.shift:
@@ -9716,7 +9654,7 @@ class SXTOOLS2_OT_setpivots(bpy.types.Operator):
             pivotmode = 1
 
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             export.set_pivots(objs, pivotmode, force=True)
 
         return {'FINISHED'}
@@ -9744,7 +9682,7 @@ class SXTOOLS2_OT_createuv0(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             export.create_reserved_uvsets(objs)
         return {'FINISHED'}
 
@@ -9759,7 +9697,7 @@ class SXTOOLS2_OT_groupobjects(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         origin = event.shift
-        if len(objs) > 0:
+        if objs:
             export.group_objects(objs, origin)
         return {'FINISHED'}
 
@@ -9775,12 +9713,10 @@ class SXTOOLS2_OT_generatelods(bpy.types.Operator):
         objs = mesh_selection_validator(self, context)
         org_objs = []
 
-        if len(objs) > 0:
-            for obj in objs:
-                if '_LOD' not in obj.name:
-                    org_objs.append(obj)
+        if objs:
+            org_objs = [obj for obj in objs if '_LOD' not in obj.name]
 
-        if len(org_objs) > 0:
+        if org_objs:
             for obj in org_objs:
                 if obj.parent is None:
                     obj.hide_viewport = False
@@ -9799,7 +9735,7 @@ class SXTOOLS2_OT_revertobjects(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             utils.mode_manager(objs, set_mode=True, mode_id='revertobjects')
             export.revert_objects(objs)
 
@@ -9820,7 +9756,7 @@ class SXTOOLS2_OT_zeroverts(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             export.zero_verts(objs)
         return {'FINISHED'}
 
@@ -9834,7 +9770,7 @@ class SXTOOLS2_OT_bytestofloats(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             export.bytes_to_floats(objs)
 
         return {'FINISHED'}
@@ -9851,12 +9787,9 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
     def poll(cls, context):
         enabled = False
         objs = context.view_layer.objects.selected
-        mesh_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                mesh_objs.append(obj)
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if len(mesh_objs[0].sx2layers) > 0:
+        if mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -9914,7 +9847,7 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
 
             objs = filtered_objs
 
-        if len(objs) > 0:
+        if objs:
             if bpy.app.background:
                 setup.create_sxtoolmaterial()
 
@@ -10142,7 +10075,7 @@ class SXTOOLS2_OT_smart_separate(bpy.types.Operator):
         objs = mesh_selection_validator(self, context)
         sep_objs = [obj for obj in objs if obj.sx2.smartseparate]
 
-        if len(sep_objs) > 0:
+        if sep_objs:
             for obj in sep_objs:
                 if obj.parent is None:
                     obj.hide_viewport = False
@@ -10164,11 +10097,9 @@ class SXTOOLS2_OT_generate_hulls(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        hull_objs = []
-        for obj in objs:
-            if obj.sx2.generatehulls:
-                hull_objs.append(obj)
-        if len(hull_objs) > 0:
+        hull_objs = [obj for obj in objs if obj.sx2.generatehulls]
+
+        if hull_objs:
             export.generate_hulls(hull_objs)
         else:
             message_box('No objects selected with Generate Convex Hulls enabled!')
@@ -10185,7 +10116,7 @@ class SXTOOLS2_OT_generate_emission_meshes(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             export.generate_emission_meshes(objs)
         else:
             message_box('No objects selected')
@@ -10202,7 +10133,7 @@ class SXTOOLS2_OT_generatemasks(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             export.generate_palette_masks(objs)
             export.generate_uv_channels(objs)
         return {'FINISHED'}
@@ -10233,12 +10164,9 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
 
     def invoke(self, context, event):
         test_objs = mesh_selection_validator(self, context)
-        objs = []
-        for obj in test_objs:
-            if 'sxtools' in obj:
-                objs.append(obj)
+        objs = [obj for obj in test_objs if 'sxtools' in obj]
 
-        if len(objs) > 0:
+        if objs:
             if not sxglobals.refresh_in_progress:
                 sxglobals.refresh_in_progress = True
                 sxglobals.magic_in_progress = True
@@ -10419,7 +10347,7 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if len(objs) > 0:
+        if objs:
             material_sources = ['Occlusion', 'Metallic', 'Roughness', 'Transmission', 'Subsurface', 'Emission']
             export.composite_color_layers(objs)
             raw_palette = utils.find_colors_by_frequency(objs, 'Composite')
