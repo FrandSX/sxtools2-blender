@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 18),
+    'version': (1, 12, 19),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2348,22 +2348,11 @@ class SXTOOLS2_tools(object):
 
             if bpy.context.tool_settings.mesh_select_mode[2]:
                 for poly in mesh.polygons:
-                    for loop_idx in poly.loop_indices:
-                        if invertmask:
-                            if not utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01):
-                                poly.select = True
-                                break
-                        else:
-                            if utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01):
-                                poly.select = False
-                                break
+                    poly.select = any(utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01) ^ invertmask for loop_idx in poly.loop_indices)
             else:
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        if invertmask:
-                            mesh.vertices[vert_idx].select = not utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01)
-                        else:
-                            mesh.vertices[vert_idx].select = utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01)
+                        mesh.vertices[vert_idx].select = utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], color, 0.01) ^ invertmask
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
 
@@ -2373,31 +2362,19 @@ class SXTOOLS2_tools(object):
         active = bpy.context.view_layer.objects.active
         bpy.context.view_layer.objects.active = objs[0]
         utils.clear_component_selection(objs)
-
+        select_mode = bpy.context.tool_settings.mesh_select_mode[2]
+    
         for obj in objs:
             mesh = obj.data
-            mask = (layers.get_layer_mask(obj, layer))[0]
-
-            if bpy.context.tool_settings.mesh_select_mode[2]:
+            mask = layers.get_layer_mask(obj, layer)[0]
+            
+            if select_mode:
                 for poly in mesh.polygons:
-                    for loop_idx in poly.loop_indices:
-                        if invertmask:
-                            if mask[loop_idx] == 0.0:
-                                poly.select = True
-                                break
-                        else:
-                            if mask[loop_idx] > 0.0:
-                                poly.select = True
-                                break
+                    poly.select = any((mask[loop_idx] > 0.0) ^ invertmask for loop_idx in poly.loop_indices)
             else:
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        if invertmask:
-                            if mask[loop_idx] == 0.0:
-                                mesh.vertices[vert_idx].select = True
-                        else:
-                            if mask[loop_idx] > 0.0:
-                                mesh.vertices[vert_idx].select = True
+                        mesh.vertices[vert_idx].select = (mask[loop_idx] > 0.0) ^ invertmask
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
         bpy.context.view_layer.objects.active = active
@@ -2525,7 +2502,6 @@ class SXTOOLS2_modifiers(object):
             'CRS': 'SubSurfCrease',
             'BEV': 'BevelWeight'}
         weight = setvalue
-        modename = modeDict[setmode]
 
         bpy.context.view_layer.objects.active = objs[0]
 
@@ -2541,7 +2517,7 @@ class SXTOOLS2_modifiers(object):
             mesh = obj.data
 
             if bpy.context.tool_settings.mesh_select_mode[0]:
-                if mesh.vertex_creases:
+                if mesh.has_crease_vertex:
                     for vert in mesh.vertices:
                         creaseweight = mesh.vertex_creases[0].data[vert.index].value
                         if math.isclose(creaseweight, weight, abs_tol=0.1):
