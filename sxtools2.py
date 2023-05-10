@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 11),
+    'version': (1, 12, 12),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3144,43 +3144,44 @@ class SXTOOLS2_export(object):
 
         emission_objs = []
         for obj in objs:
-            # Check if emission layer is empty
-            if not layers.get_layer_mask(obj, obj.sx2layers['Emission'])[1]:
-                bpy.context.view_layer.objects.active = obj
-                emission_obj = obj.copy()
-                emission_obj.data = obj.data.copy()
-                bpy.context.collection.objects.link(emission_obj)
-                export_objects.objects.link(emission_obj)
-                emission_obj.name = obj.name + "_emission"
-                emission_obj.sx2.smartseparate = True
-                emission_obj.sx2.generatehulls = False
-                emission_obj.sx2.lodmeshes = False
-                emission_obj.sx2.generateemissionmeshes = False
-                emission_objs.append(emission_obj)
+            if obj.type == 'MESH':
+                # Check if emission layer is empty
+                if not layers.get_layer_mask(obj, obj.sx2layers['Emission'])[1]:
+                    bpy.context.view_layer.objects.active = obj
+                    emission_obj = obj.copy()
+                    emission_obj.data = obj.data.copy()
+                    bpy.context.collection.objects.link(emission_obj)
+                    export_objects.objects.link(emission_obj)
+                    emission_obj.name = obj.name + "_emission"
+                    emission_obj.sx2.smartseparate = True
+                    emission_obj.sx2.generatehulls = False
+                    emission_obj.sx2.lodmeshes = False
+                    emission_obj.sx2.generateemissionmeshes = False
+                    emission_objs.append(emission_obj)
 
-                modifiers.apply_modifiers([emission_obj, ])
-                tools.select_mask([emission_obj, ], emission_obj.sx2layers['Emission'])
-                bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                    modifiers.apply_modifiers([emission_obj, ])
+                    tools.select_mask([emission_obj, ], emission_obj.sx2layers['Emission'])
+                    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
-                mesh = emission_obj.data
-                bm = bmesh.new()
-                bm.from_mesh(mesh)
+                    mesh = emission_obj.data
+                    bm = bmesh.new()
+                    bm.from_mesh(mesh)
 
-                to_delete = []
-                # Offset selected faces along their normals
-                for face in bm.faces:
-                    if face.select:
-                        normal_offset = face.normal * offset
-                        for vert in face.verts:
-                            vert.co += normal_offset
-                    else:
-                        to_delete.append(face)
+                    to_delete = []
+                    # Offset selected faces along their normals
+                    for face in bm.faces:
+                        if face.select:
+                            normal_offset = face.normal * offset
+                            for vert in face.verts:
+                                vert.co += normal_offset
+                        else:
+                            to_delete.append(face)
 
-                # Delete unselected faces
-                bmesh.ops.delete(bm, geom=to_delete, context='FACES')     
+                    # Delete unselected faces
+                    bmesh.ops.delete(bm, geom=to_delete, context='FACES')     
 
-                bm.to_mesh(mesh)
-                bm.free()
+                    bm.to_mesh(mesh)
+                    bm.free()
 
         bpy.context.view_layer.objects.active = active_obj
         sxglobals.refresh_in_progress = False
@@ -3849,7 +3850,7 @@ class SXTOOLS2_magic(object):
                 groupList = utils.find_groups(category_objs)
                 for group in groupList:
                     createLODs = False
-                    group_objs = utils.find_children(group, category_objs)
+                    group_objs = utils.find_children(group, category_objs, recursive=True)
                     filter_list = []
                     for group_obj in group_objs:
                         if group_obj.type == 'MESH':
