@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 12),
+    'version': (1, 12, 13),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -9628,7 +9628,10 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
         prefs = context.preferences.addons['sxtools2'].preferences
         selected = None
 
-        if ((event is not None) and (event.shift)) or bpy.app.background:
+        if bpy.app.background:
+            all_objs = export.create_sxcollection()
+            selected = [obj for obj in all_objs if obj.sx2.exportready]
+        elif (event is not None) and (event.shift):
             selected = export.create_sxcollection()
         else:
             selected = mesh_selection_validator(self, context)
