@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 13),
+    'version': (1, 12, 14),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -578,7 +578,7 @@ class SXTOOLS2_utils(object):
 
 
     # ARMATUREs check for grandparent
-    def find_children(self, group, objs=None, recursive=False):
+    def find_children(self, group, objs=None, recursive=False, child_type=None):
 
         def get_children(parent):
             children = []
@@ -604,17 +604,21 @@ class SXTOOLS2_utils(object):
         if recursive:
             child_list = [group, ]
             child_recurse(child_list)
-            return results
         else:
-            return get_children(group)
+            results = get_children(group)
 
+        if child_type is not None:
+            results = [child for child in results if child.type == child_type]
+
+        return results
+                        
 
     # Finds groups to be exported,
     # only EMPTY objects with no parents
     # treat ARMATURE objects as a special case
-    def find_groups(self, objs, all_groups=False):
+    def find_groups(self, objs=None, exportready=False):
         groups = []
-        if all_groups:
+        if objs is None:
             objs = bpy.context.view_layer.objects
 
         for obj in objs:
@@ -626,6 +630,9 @@ class SXTOOLS2_utils(object):
                 groups.append(obj.parent)
             elif (parent is not None) and (parent.type == 'ARMATURE') and (parent.parent is not None) and (parent.parent.type == 'EMPTY'):
                 groups.append(parent.parent)
+
+        if exportready:
+            groups = [group for group in groups if group.sx2.exportready]
 
         return list(set(groups))
 
@@ -3850,12 +3857,7 @@ class SXTOOLS2_magic(object):
                 groupList = utils.find_groups(category_objs)
                 for group in groupList:
                     createLODs = False
-                    group_objs = utils.find_children(group, category_objs, recursive=True)
-                    filter_list = []
-                    for group_obj in group_objs:
-                        if group_obj.type == 'MESH':
-                            filter_list.append(group_obj)
-                    group_objs = filter_list
+                    group_objs = utils.find_children(group, category_objs, recursive=True, child_type='MESH')
                     viewlayer.objects.active = group_objs[0]
                     for obj in group_objs:
                         if obj.sx2.lodmeshes:
@@ -5443,10 +5445,7 @@ def mesh_selection_validator(self, context):
         elif (obj.type == 'MESH') and (obj.hide_viewport is False):
             mesh_objs.append(obj)
         elif obj.type == 'ARMATURE':
-            all_children = utils.find_children(obj, recursive=True)
-            for child in all_children:
-                if child.type == 'MESH':
-                    mesh_objs.append(child)
+            mesh_objs += utils.find_children(obj, recursive=True, child_type='MESH')
 
     return list(set(mesh_objs))
 
@@ -7992,7 +7991,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 if scene.expandbatchexport:
                                     col_batchexport = box_export.column(align=True)
                                     col_cataloguebuttons = box_export.column(align=True)
-                                    groups = utils.find_groups(objs, all_groups=True)
+                                    groups = utils.find_groups()
                                     if len(groups) == 0:
                                         col_batchexport.label(text='No Groups Selected')
                                     else:
@@ -9628,17 +9627,32 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
         prefs = context.preferences.addons['sxtools2'].preferences
         selected = None
 
+        # Batch export only groups that are marked ready
         if bpy.app.background:
-            all_objs = export.create_sxcollection()
-            selected = [obj for obj in all_objs if obj.sx2.exportready]
+            selected = export.create_sxcollection()
+            groups = utils.find_groups(selected, exportready=True)
+            selected = []
+            for group in groups:
+                selected += utils.find_children(group, recursive=True, child_type='MESH')
+        # Export all, make sure objects are in groups
         elif (event is not None) and (event.shift):
             selected = export.create_sxcollection()
+            for obj in selected:
+                if obj.parent is None:
+                    obj.hide_viewport = False
+                    export.group_objects([obj, ])
+            groups = utils.find_groups(selected)
+        # Export selected
         else:
             selected = mesh_selection_validator(self, context)
-
-        if len(selected) > 0:
+            for obj in selected:
+                if obj.parent is None:
+                    obj.hide_viewport = False
+                    if obj.type == 'MESH':
+                        export.group_objects([obj, ])
             groups = utils.find_groups(selected)
 
+        if groups:
             if context.scene.sx2.exportquality == 'LO':
                 emission_objs = export.generate_emission_meshes(selected)
                 export.smart_separate(selected + emission_objs)
@@ -9646,29 +9660,9 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
 
                 hull_objs = []
                 for group in groups:
-                    all_children = utils.find_children(group, recursive=True)
-                    for child in all_children:
-                        if child.type == 'MESH':
-                            hull_objs.append(child)
+                    hull_objs += utils.find_children(group, recursive=True, child_type='MESH')
+
                 export.generate_hulls(hull_objs)
-
-            # Make sure objects are in groups
-            if ((event is not None) and (event.shift)) or bpy.app.background:
-                selected = bpy.data.collections['SXObjects'].all_objects
-
-            for obj in selected:
-                if obj.parent is None:
-                    obj.hide_viewport = False
-                    if obj.type == 'MESH':
-                        export.group_objects([obj, ])
-
-            # Batch export only those that are marked ready
-            if bpy.app.background:
-                exportready_groups = []
-                for group in groups:
-                    if (group is not None) and group.sx2.exportready:
-                        exportready_groups.append(group)
-                groups = exportready_groups
 
             files.export_files(groups)
 
@@ -9691,11 +9685,11 @@ class SXTOOLS2_OT_exportgroups(bpy.types.Operator):
     def invoke(self, context, event):
         prefs = context.preferences.addons['sxtools2'].preferences
         group = context.view_layer.objects.selected[0]
-        all_children = utils.find_children(group, recursive=True)
-        export.generate_emission_meshes(all_children)
-        export.smart_separate(all_children)
-        all_children = utils.find_children(group, recursive=True)
-        export.generate_hulls(all_children)
+        meshes = utils.find_children(group, recursive=True, child_type='MESH')
+        export.generate_emission_meshes(meshes)
+        export.smart_separate(meshes)
+        meshes = utils.find_children(group, recursive=True, child_type='MESH')
+        export.generate_hulls(meshes)
         files.export_files([group, ])
         if prefs.removelods:
             export.remove_exports()
@@ -9908,13 +9902,10 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
 
         if bpy.app.background:
             filtered_objs = []
-            groups = utils.find_groups(objs)
-            for group in groups:
-                if group is not None and group.sx2.exportready:
-                    all_children = utils.find_children(group, recursive=True)
-                    for child in all_children:
-                        if child.type == 'MESH':
-                            filtered_objs.append(child)
+            groups = utils.find_groups(objs, exportready=True)
+            if groups:
+                for group in groups:
+                    filtered_objs += utils.find_children(group, recursive=True, child_type='MESH')
 
             bpy.ops.object.select_all(action='DESELECT')
             for obj in filtered_objs:
@@ -10017,14 +10008,7 @@ class SXTOOLS2_OT_catalogue_add(bpy.types.Operator):
 
         asset_category = objs[0].sx2.category.lower()
         asset_tags = self.assetTags.split(' ')
-
-        groups = []
-        export_groups = utils.find_groups(objs, all_groups=True)
-        if len(export_groups) > 0:
-            for export_group in export_groups:
-                if export_group.sx2.exportready:
-                    groups.append(export_group.name)
-
+        groups = utils.find_groups(exportonly=True)
         cost = modifiers.calculate_triangles(objs)
 
         revision = 1
