@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 19),
+    'version': (1, 12, 20),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5400,12 +5400,9 @@ def mesh_selection_validator(self, context):
 def layer_validator(self, context):
     objs = mesh_selection_validator(self, context)
     if len(objs) > 1:
-        for obj in objs:
-            if obj.sx2layers.keys() != objs[0].sx2layers.keys():
-                return False
-        return True
-    else:
-        return True
+        ref_layers = objs[0].sx2layers.keys()
+        return all(obj.sx2layers.keys() == ref_layers for obj in objs)
+    return True
 
 
 def refresh_swatches(self, context):
