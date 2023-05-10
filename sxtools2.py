@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 14),
+    'version': (1, 12, 15),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -316,7 +316,8 @@ class SXTOOLS2_files(object):
                     object_types={'ARMATURE', 'EMPTY', 'MESH'},
                     use_custom_props=True,
                     use_metadata=False,
-                    colors_type=export_settings[8])
+                    colors_type=export_settings[8],
+                    bake_anim=False)
 
                 groupNames.append(group.name)
                 group.location = org_loc
