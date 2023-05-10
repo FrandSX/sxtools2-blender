@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 16),
+    'version': (1, 12, 17),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2551,15 +2551,9 @@ class SXTOOLS2_modifiers(object):
                 bm = bmesh.from_edit_mesh(mesh)
 
                 if setmode == 'CRS':
-                    if modename in bm.edges.layers.crease:
-                        bmlayer = bm.edges.layers.crease[modename]
-                    else:
-                        bmlayer = bm.edges.layers.crease.new(modename)
+                    bmlayer = bm.edges.layers.crease.verify()
                 else:
-                    if modename in bm.edges.layers.bevel_weight:
-                        bmlayer = bm.edges.layers.bevel_weight[modename]
-                    else:
-                        bmlayer = bm.edges.layers.bevel_weight.new(modename)
+                    bmlayer = bm.edges.layers.bevel_weight.verify()
 
                 for edge in bm.edges:
                     if math.isclose(edge[bmlayer], weight, abs_tol=0.1):
