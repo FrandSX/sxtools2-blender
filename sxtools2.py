@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 17),
+    'version': (1, 12, 18),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2529,26 +2529,26 @@ class SXTOOLS2_modifiers(object):
 
         bpy.context.view_layer.objects.active = objs[0]
 
-        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-        if bpy.context.tool_settings.mesh_select_mode[0]:
-            bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='VERT')
-        else:
-            bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='EDGE')
+        # if bpy.context.tool_settings.mesh_select_mode[0]:
+        #     bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='VERT')
+        # else:
+        #     bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='EDGE')
         if clearsel:
             utils.clear_component_selection(objs)
 
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
         for obj in objs:
             mesh = obj.data
 
             if bpy.context.tool_settings.mesh_select_mode[0]:
-                utils.mode_manager(objs, set_mode=True, mode_id='select_set')
-                for vert in mesh.vertices:
-                    creaseweight = mesh.vertex_creases[0].data[vert.index].value
-                    if math.isclose(creaseweight, weight, abs_tol=0.1):
-                        vert.select = True
-                utils.mode_manager(objs, set_mode=False, mode_id='select_set')
+                if mesh.vertex_creases:
+                    for vert in mesh.vertices:
+                        creaseweight = mesh.vertex_creases[0].data[vert.index].value
+                        if math.isclose(creaseweight, weight, abs_tol=0.1):
+                            vert.select = True
             else:
-                bm = bmesh.from_edit_mesh(mesh)
+                bm = bmesh.new()
+                bm.from_mesh(mesh)
 
                 if setmode == 'CRS':
                     bmlayer = bm.edges.layers.crease.verify()
@@ -2559,8 +2559,10 @@ class SXTOOLS2_modifiers(object):
                     if math.isclose(edge[bmlayer], weight, abs_tol=0.1):
                         edge.select = True
 
-                bmesh.update_edit_mesh(mesh)
+                bm.to_mesh(mesh)
                 bm.free()
+
+        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
 
 
     def add_modifiers(self, objs):
