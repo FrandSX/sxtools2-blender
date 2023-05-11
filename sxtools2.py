@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 20),
+    'version': (1, 12, 21),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -97,11 +97,11 @@ class SXTOOLS2_files(object):
     def load_file(self, mode):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         directory = prefs.libraryfolder
-        filePath = directory + mode + '.json'
+        file_path = directory + mode + '.json'
 
         if len(directory) > 0:
             try:
-                with open(filePath, 'r') as input:
+                with open(file_path, 'r') as input:
                     temp_dict = {}
                     temp_dict = json.load(input)
                     if mode == 'palettes':
@@ -120,7 +120,7 @@ class SXTOOLS2_files(object):
                         sxglobals.category_dict = temp_dict
 
                     input.close()
-                print(f'SX Tools: {mode} loaded from {filePath}')
+                print(f'SX Tools: {mode} loaded from {file_path}')
             except ValueError:
                 print(f'SX Tools Error: Invalid {mode} file.')
                 prefs.libraryfolder = ''
@@ -142,11 +142,11 @@ class SXTOOLS2_files(object):
     def save_file(self, mode):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         directory = prefs.libraryfolder
-        filePath = directory + mode + '.json'
+        file_path = directory + mode + '.json'
         # Palettes.json Materials.json
 
         if len(directory) > 0:
-            with open(filePath, 'w') as output:
+            with open(file_path, 'w') as output:
                 if mode == 'palettes':
                     temp_dict = {}
                     temp_dict['Palettes'] = sxglobals.master_palette_list
@@ -167,21 +167,21 @@ class SXTOOLS2_files(object):
             # print('SX Tools Warning: ' + mode + ' file location not set!')
 
 
-    def load_swatches(self, swatcharray):
-        if swatcharray == sxglobals.material_list:
-            swatchcount = 3
+    def load_swatches(self, swatch_list):
+        if swatch_list == sxglobals.material_list:
+            swatch_count = 3
             sxlist = bpy.context.scene.sx2materials
-        elif swatcharray == sxglobals.master_palette_list:
-            swatchcount = 5
+        elif swatch_list == sxglobals.master_palette_list:
+            swatch_count = 5
             sxlist = bpy.context.scene.sx2palettes
 
-        for category_dict in swatcharray:
+        for category_dict in swatch_list:
             for category in category_dict:
                 if len(category_dict[category]) == 0:
                     item = sxlist.add()
                     item.name = 'Empty'
                     item.category = category
-                    for i in range(swatchcount):
+                    for i in range(swatch_count):
                         incolor = [0.0, 0.0, 0.0, 1.0]
                         setattr(item, 'color'+str(i), incolor[:])
                 else:
@@ -189,9 +189,9 @@ class SXTOOLS2_files(object):
                         item = sxlist.add()
                         item.name = entry
                         item.category = category
-                        for i in range(swatchcount):
+                        for i in range(swatch_count):
                             incolor = category_dict[category][entry][i][:3] + [1.0]
-                            if (swatchcount == 5):
+                            if (swatch_count == 5):
                                 setattr(item, 'color'+str(i), convert.srgb_to_linear(incolor))
                             else:
                                 setattr(item, 'color'+str(i), incolor)
@@ -222,7 +222,7 @@ class SXTOOLS2_files(object):
             group.location = (0, 0, 0)
 
             # Check for mesh colliders
-            collider_array = []
+            collider_list = []
             if 'SXColliders' in bpy.data.collections:
                 colliders = bpy.data.collections['SXColliders'].objects
                 if group.name.endswith('_root'):
@@ -232,39 +232,39 @@ class SXTOOLS2_files(object):
 
                 for collider in colliders:
                     if collider_id in collider.name:
-                        collider_array.append(collider)
+                        collider_list.append(collider)
                         collider['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
 
-                child_array = utils.find_children(group, recursive=True)
-                sel_array = [child for child in child_array if child.name not in colliders.keys()]
+                child_list = utils.find_children(group, recursive=True)
+                sel_list = [child for child in child_list if child.name not in colliders.keys()]
             else:
-                sel_array = utils.find_children(group, recursive=True)
+                sel_list = utils.find_children(group, recursive=True)
 
-            for sel in sel_array:
+            for sel in sel_list:
                 sel.select_set(True)
             group.select_set(False)
 
             # Only groups with meshes and armatures as children are exported
-            obj_array = []
-            for sel in sel_array:
+            obj_list = []
+            for sel in sel_list:
                 if sel.type == 'MESH':
                     bg_layer = utils.find_color_layers(sel, 0)
-                    obj_array.append(sel)
+                    obj_list.append(sel)
                     sel['staticVertexColors'] = sel.sx2.staticvertexcolors
                     sel['transparent'] = '0' if bg_layer.opacity == 1.0 else '1'
                     sel['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
                     sel['colorSpace'] = export_dict[prefs.exportspace]
 
-            if obj_array:
+            if obj_list:
                 empty = False
 
                 # Create palette masks
-                export.reset_uv_layers(obj_array)
-                export.generate_palette_masks(obj_array)
-                export.generate_uv_channels(obj_array)
-                export.composite_color_layers(obj_array)
+                export.reset_uv_layers(obj_list)
+                export.generate_palette_masks(obj_list)
+                export.generate_uv_channels(obj_list)
+                export.composite_color_layers(obj_list)
 
-                for obj in obj_array:
+                for obj in obj_list:
                     bpy.context.view_layer.objects.active = obj
                     obj.data.attributes.active_color = obj.data.color_attributes['Composite']
                     bpy.ops.geometry.color_attribute_render_set(name='Composite')
@@ -277,13 +277,13 @@ class SXTOOLS2_files(object):
 
                 bpy.context.view_layer.objects.active = group
 
-                category_data = sxglobals.category_dict[sxglobals.preset_lookup[obj_array[0].sx2.category]]
+                category_data = sxglobals.category_dict[sxglobals.preset_lookup[obj_list[0].sx2.category]]
                 export_subfolder = category_data["export_subfolder"]
                 subfolder = None
                 if export_subfolder != "":
                     subfolder = export_subfolder.replace('//', os.path.sep)
 
-                category = obj_array[0].sx2.category.lower()
+                category = obj_list[0].sx2.category.lower()
                 print(f'Determining path: {group.name} {category}')
                 if subfolder is None:
                     path = scene.exportfolder + category + os.path.sep
@@ -291,15 +291,15 @@ class SXTOOLS2_files(object):
                     path = scene.exportfolder + subfolder + os.path.sep + category + os.path.sep
                 pathlib.Path(path).mkdir(exist_ok=True, parents=True)
 
-                if collider_array:
-                    for collider in collider_array:
+                if collider_list:
+                    for collider in collider_list:
                         collider.select_set(True)
 
-                exportPath = path + group.name + '.' + 'fbx'
+                export_path = path + group.name + '.' + 'fbx'
                 export_settings = ['FBX_SCALE_UNITS', False, False, False, 'Z', '-Y', '-Y', '-X', export_dict[prefs.exportspace]]
 
                 bpy.ops.export_scene.fbx(
-                    filepath=exportPath,
+                    filepath=export_path,
                     apply_scale_options=export_settings[0],
                     use_selection=True,
                     apply_unit_scale=export_settings[1],
@@ -322,8 +322,8 @@ class SXTOOLS2_files(object):
                 groupNames.append(group.name)
                 group.location = org_loc
 
-                modifiers.remove_modifiers(obj_array)
-                modifiers.add_modifiers(obj_array)
+                modifiers.remove_modifiers(obj_list)
+                modifiers.add_modifiers(obj_list)
 
                 bpy.context.view_layer.objects.active = group
 
@@ -366,11 +366,11 @@ class SXTOOLS2_files(object):
             path = scene.exportfolder + category + os.path.sep
             pathlib.Path(path).mkdir(exist_ok=True)
 
-            exportPath = path + obj.name + '.' + 'fbx'
+            export_path = path + obj.name + '.' + 'fbx'
             export_settings = ['FBX_SCALE_UNITS', False, False, False, 'Z', '-Y', '-Y', '-X', 'NONE']
 
             bpy.ops.export_scene.fbx(
-                filepath=exportPath,
+                filepath=export_path,
                 apply_scale_options=export_settings[0],
                 use_selection=True,
                 apply_unit_scale=export_settings[1],
@@ -523,7 +523,7 @@ class SXTOOLS2_utils(object):
 
     # obj_sel_override allows object-level mask evaluation even if the object is in edit mode
     def find_colors_by_frequency(self, objs, layer_name, numcolors=None, masklayer=None, maskcolor=None, obj_sel_override=False, alphavalues=False):
-        color_array = []
+        color_list = []
 
         for obj in objs:
             if obj_sel_override:
@@ -532,12 +532,12 @@ class SXTOOLS2_utils(object):
                 values = generate.mask_list(obj, layers.get_layer(obj, obj.sx2layers[layer_name]), masklayer=masklayer, maskcolor=maskcolor, as_tuple=True)
 
             if values is not None:
-                color_array += values
+                color_list += values
 
         if alphavalues:
-            colors = [convert.luminance_to_color(color[3]) for color in color_array if color[3] > 0.0]
+            colors = [convert.luminance_to_color(color[3]) for color in color_list if color[3] > 0.0]
         else:
-            colors = [color for color in color_array if color[3] > 0.0]
+            colors = [color for color in color_list if color[3] > 0.0]
 
         quantized_colors = [(self.round_stepped(color[0]), self.round_stepped(color[1]), self.round_stepped(color[2]), 1.0) for color in colors]
         sort_list = [color for color, count in Counter(quantized_colors).most_common(numcolors)]
@@ -1248,18 +1248,18 @@ class SXTOOLS2_generate(object):
 
     def ground_plane(self, size, pos):
         size *= 0.5
-        vert_array = [
+        vert_list = [
             (pos[0]-size,pos[1]-size, pos[2]),
             (pos[0]+size, pos[1]-size, pos[2]),
             (pos[0]-size, pos[1]+size, pos[2]),
             (pos[0]+size, pos[1]+size, pos[2])]
-        face_array = [(0, 1, 3, 2)]
+        face_list = [(0, 1, 3, 2)]
 
         mesh = bpy.data.meshes.new('groundPlane_mesh')
         groundPlane = bpy.data.objects.new('groundPlane', mesh)
         bpy.context.scene.collection.objects.link(groundPlane)
 
-        mesh.from_pydata(vert_array, [], face_array)
+        mesh.from_pydata(vert_list, [], face_list)
         mesh.update(calc_edges=True)
 
         # groundPlane.location = pos
@@ -2004,14 +2004,14 @@ class SXTOOLS2_layers(object):
                 clear_layer(obj, obj.sx2layers[targetlayer.name])
 
 
-    def blend_layers(self, objs, topLayerArray, baseLayer, resultLayer, single_as_alpha=False):
+    def blend_layers(self, objs, topLayerList, baseLayer, resultLayer, single_as_alpha=False):
         active = bpy.context.view_layer.objects.active
         bpy.context.view_layer.objects.active = objs[0]
 
         for obj in objs:
             basecolors = self.get_layer(obj, baseLayer, single_as_alpha=single_as_alpha)
 
-            for layer in topLayerArray:
+            for layer in topLayerList:
                 if getattr(obj.sx2layers[layer.name], 'visibility'):
                     blendmode = getattr(obj.sx2layers[layer.name], 'blend_mode')
                     layeralpha = getattr(obj.sx2layers[layer.name], 'opacity')
@@ -2391,14 +2391,14 @@ class SXTOOLS2_tools(object):
             scene.fillpalette6[:],
             scene.fillpalette7[:],
             scene.fillpalette8[:]]
-        colorArray = [
+        color_list = [
             color, palCols[0], palCols[1], palCols[2],
             palCols[3], palCols[4], palCols[5], palCols[6]]
 
         fillColor = color[:]
         if (fillColor not in palCols) and (fillColor[3] > 0.0):
             for i in range(8):
-                setattr(scene, 'fillpalette' + str(i + 1), colorArray[i])
+                setattr(scene, 'fillpalette' + str(i + 1), color_list[i])
 
 
     def __del__(self):
@@ -2781,17 +2781,17 @@ class SXTOOLS2_export(object):
                     bpy.ops.mesh.separate(type='LOOSE')
 
                     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                    new_obj_array = [view_layer.objects[orgname], ]
+                    new_obj_list = [view_layer.objects[orgname], ]
 
                     for vl_obj in view_layer.objects:
                         if vl_obj not in ref_objs:
-                            new_obj_array.append(vl_obj)
+                            new_obj_list.append(vl_obj)
                             export_objects.objects.link(vl_obj)
 
-                    if len(new_obj_array) > 1:
-                        export.set_pivots(new_obj_array)
+                    if len(new_obj_list) > 1:
+                        export.set_pivots(new_obj_list)
                         suffixDict = {}
-                        for new_obj in new_obj_array:
+                        for new_obj in new_obj_list:
                             view_layer.objects.active = new_obj
                             zstring = ystring = xstring = ''
                             xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([new_obj, ])
@@ -2806,7 +2806,7 @@ class SXTOOLS2_export(object):
                             if xmirror:
                                 xstring = mirror_pairs[2][int((xmax < ref_loc[0]) ^ prefs.flipsmartx)]
 
-                            if len(new_obj_array) > 2 ** (zmirror + ymirror + xmirror):
+                            if len(new_obj_list) > 2 ** (zmirror + ymirror + xmirror):
                                 if zstring+ystring+xstring not in suffixDict:
                                     suffixDict[zstring+ystring+xstring] = 0
                                 else:
@@ -2817,7 +2817,7 @@ class SXTOOLS2_export(object):
 
                             new_obj.data.name = new_obj.name + '_mesh'
 
-                    separated_objs.extend(new_obj_array)
+                    separated_objs.extend(new_obj_list)
 
                     # Parent new children to their matching parents
                     for obj in separated_objs:
@@ -2845,13 +2845,13 @@ class SXTOOLS2_export(object):
     #       Odd-numbered bevels often generate incorrect vertex colors
     def generate_lods(self, objs):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
-        org_obj_array = objs[:]
-        name_array = []
-        new_obj_array = []
+        org_obj_list = objs[:]
+        name_list = []
+        new_obj_list = []
         active_obj = bpy.context.view_layer.objects.active
         scene = bpy.context.scene.sx2
 
-        xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box(org_obj_array)
+        xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box(org_obj_list)
         bbxheight = zmax - zmin
 
         # Make sure source and export Collections exist
@@ -2859,8 +2859,8 @@ class SXTOOLS2_export(object):
         source_objects = utils.create_collection('SourceObjects')
 
         lodCount = 1
-        for obj in org_obj_array:
-            name_array.append((obj.name[:], obj.data.name[:]))
+        for obj in org_obj_list:
+            name_list.append((obj.name[:], obj.data.name[:]))
             if obj.sx2.subdivisionlevel >= 1:
                 lodCount = min(3, obj.sx2.subdivisionlevel + 1)
             elif (obj.sx2.subdivisionlevel == 0) and ((obj.sx2.bevelsegments) > 0):
@@ -2870,19 +2870,19 @@ class SXTOOLS2_export(object):
             for i in range(lodCount):
                 print(f'SX Tools: Generating LOD {i}')
                 if i == 0:
-                    for obj in org_obj_array:
+                    for obj in org_obj_list:
                         obj.data.name = obj.data.name + '_LOD' + str(i)
                         obj.name = obj.name + '_LOD' + str(i)
-                        new_obj_array.append(obj)
+                        new_obj_list.append(obj)
                         if scene.exportquality == 'LO':
                             source_objects.objects.link(obj)
                 else:
-                    for j, obj in enumerate(org_obj_array):
+                    for j, obj in enumerate(org_obj_list):
                         new_obj = obj.copy()
                         new_obj.data = obj.data.copy()
 
-                        new_obj.data.name = name_array[j][1] + '_LOD' + str(i)
-                        new_obj.name = name_array[j][0] + '_LOD' + str(i)
+                        new_obj.data.name = name_list[j][1] + '_LOD' + str(i)
+                        new_obj.name = name_list[j][0] + '_LOD' + str(i)
 
                         new_obj.location += Vector((0.0, 0.0, (bbxheight+prefs.lodoffset)*i))
 
@@ -2911,12 +2911,12 @@ class SXTOOLS2_export(object):
                             new_obj.sx2.bevelsegments = 0
                             new_obj.sx2.weldthreshold = 0
 
-                        new_obj_array.append(new_obj)
+                        new_obj_list.append(new_obj)
 
         # active_obj.select_set(True)
         bpy.context.view_layer.objects.active = active_obj
 
-        return new_obj_array
+        return new_obj_list
 
 
     # Multi-pass convex hull generator, latter convex hull generation
@@ -3020,7 +3020,7 @@ class SXTOOLS2_export(object):
         new_objs = []
         active_obj = bpy.context.view_layer.objects.active
         scene = bpy.context.scene.sx2
-        name_array = [(obj.name[:], obj.data.name[:]) for obj in org_objs]
+        name_list = [(obj.name[:], obj.data.name[:]) for obj in org_objs]
 
         export_objects = utils.create_collection('ExportObjects')
         colliders = utils.create_collection('SXColliders')
@@ -3033,8 +3033,8 @@ class SXTOOLS2_export(object):
             new_obj = obj.copy()
             new_obj.data = obj.data.copy()
 
-            new_obj.data.name = name_array[j][1] + '_collision'
-            new_obj.name = name_array[j][0] + '_collision'
+            new_obj.data.name = name_list[j][1] + '_collision'
+            new_obj.name = name_list[j][0] + '_collision'
 
             bpy.context.scene.collection.objects.link(new_obj)
             collision_source_objs.objects.link(new_obj)
@@ -3767,8 +3767,8 @@ class SXTOOLS2_magic(object):
                 obj.parent = viewlayer.objects[obj.parent.name + '_org']
 
             if lod_objs:
-                new_obj_array = export.generate_lods(lod_objs)
-                for new_obj in new_obj_array:
+                new_obj_list = export.generate_lods(lod_objs)
+                for new_obj in new_obj_list:
                     new_objs.append(new_obj)
 
             objs = new_objs
