@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 21),
+    'version': (1, 12, 23),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -25,6 +25,7 @@ from bpy.app.handlers import persistent
 from collections import Counter
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
+from contextlib import redirect_stdout
 
 
 # ------------------------------------------------------------------------
@@ -298,26 +299,27 @@ class SXTOOLS2_files(object):
                 export_path = path + group.name + '.' + 'fbx'
                 export_settings = ['FBX_SCALE_UNITS', False, False, False, 'Z', '-Y', '-Y', '-X', export_dict[prefs.exportspace]]
 
-                bpy.ops.export_scene.fbx(
-                    filepath=export_path,
-                    apply_scale_options=export_settings[0],
-                    use_selection=True,
-                    apply_unit_scale=export_settings[1],
-                    use_space_transform=export_settings[2],
-                    bake_space_transform=export_settings[3],
-                    use_mesh_modifiers=True,
-                    prioritize_active_color=True,
-                    axis_up=export_settings[4],
-                    axis_forward=export_settings[5],
-                    use_active_collection=False,
-                    add_leaf_bones=False,
-                    primary_bone_axis=export_settings[6],
-                    secondary_bone_axis=export_settings[7],
-                    object_types={'ARMATURE', 'EMPTY', 'MESH'},
-                    use_custom_props=True,
-                    use_metadata=False,
-                    colors_type=export_settings[8],
-                    bake_anim=False)
+                with redirect_stdout(open(os.devnull, 'w')):
+                    bpy.ops.export_scene.fbx(
+                        filepath=export_path,
+                        apply_scale_options=export_settings[0],
+                        use_selection=True,
+                        apply_unit_scale=export_settings[1],
+                        use_space_transform=export_settings[2],
+                        bake_space_transform=export_settings[3],
+                        use_mesh_modifiers=True,
+                        prioritize_active_color=True,
+                        axis_up=export_settings[4],
+                        axis_forward=export_settings[5],
+                        use_active_collection=False,
+                        add_leaf_bones=False,
+                        primary_bone_axis=export_settings[6],
+                        secondary_bone_axis=export_settings[7],
+                        object_types={'ARMATURE', 'EMPTY', 'MESH'},
+                        use_custom_props=True,
+                        use_metadata=False,
+                        colors_type=export_settings[8],
+                        bake_anim=False)
 
                 groupNames.append(group.name)
                 group.location = org_loc
@@ -369,24 +371,25 @@ class SXTOOLS2_files(object):
             export_path = path + obj.name + '.' + 'fbx'
             export_settings = ['FBX_SCALE_UNITS', False, False, False, 'Z', '-Y', '-Y', '-X', 'NONE']
 
-            bpy.ops.export_scene.fbx(
-                filepath=export_path,
-                apply_scale_options=export_settings[0],
-                use_selection=True,
-                apply_unit_scale=export_settings[1],
-                use_space_transform=export_settings[2],
-                bake_space_transform=export_settings[3],
-                use_mesh_modifiers=True,
-                axis_up=export_settings[4],
-                axis_forward=export_settings[5],
-                use_active_collection=False,
-                add_leaf_bones=False,
-                primary_bone_axis=export_settings[6],
-                secondary_bone_axis=export_settings[7],
-                object_types={'ARMATURE', 'EMPTY', 'MESH'},
-                use_custom_props=True,
-                use_metadata=False,
-                colors_type=export_settings[8])
+            with redirect_stdout(open(os.devnull, 'w')):
+                bpy.ops.export_scene.fbx(
+                    filepath=export_path,
+                    apply_scale_options=export_settings[0],
+                    use_selection=True,
+                    apply_unit_scale=export_settings[1],
+                    use_space_transform=export_settings[2],
+                    bake_space_transform=export_settings[3],
+                    use_mesh_modifiers=True,
+                    axis_up=export_settings[4],
+                    axis_forward=export_settings[5],
+                    use_active_collection=False,
+                    add_leaf_bones=False,
+                    primary_bone_axis=export_settings[6],
+                    secondary_bone_axis=export_settings[7],
+                    object_types={'ARMATURE', 'EMPTY', 'MESH'},
+                    use_custom_props=True,
+                    use_metadata=False,
+                    colors_type=export_settings[8])
 
             obj_names.append(obj.name)
             obj.location = org_loc
@@ -3810,8 +3813,8 @@ class SXTOOLS2_magic(object):
             category_objs = [obj for obj in objs if obj.sx2.category == category]
 
             if category_objs:
-                groupList = utils.find_groups(category_objs)
-                for group in groupList:
+                group_list = utils.find_groups(category_objs)
+                for group in group_list:
                     createLODs = False
                     group_objs = utils.find_children(group, category_objs, recursive=True, child_type='MESH')
                     viewlayer.objects.active = group_objs[0]
@@ -3884,7 +3887,7 @@ class SXTOOLS2_magic(object):
                         obj.hide_viewport = True
 
                 now = time.perf_counter()
-                print(f'SX Tools: {category} / {len(groupList)} groups duration: {now-then} seconds')
+                print(f'SX Tools: {category} / {len(group_list)} groups duration: {now-then} seconds')
 
         for obj in viewlayer.objects:
             if (scene.exportquality == 'HI') and ('_org' in obj.name):
@@ -4023,12 +4026,10 @@ class SXTOOLS2_magic(object):
 
 
     def process_default(self, objs):
-        print('SX Tools: Processing Default')
         self.apply_palette_overrides(objs)
 
 
     def process_static(self, objs):
-        print('SX Tools: Processing Static')
         obj = objs[0]
 
         self.apply_palette_overrides(objs, clear=True)
@@ -4040,7 +4041,6 @@ class SXTOOLS2_magic(object):
 
 
     def process_roadtiles(self, objs):
-        print('SX Tools: Processing Roadtiles')
         scene = bpy.context.scene.sx2
         self.apply_palette_overrides(objs, clear=False)
         self.apply_occlusion(objs, blend=0.0, groundplane=False, distance=50.0)
@@ -4066,7 +4066,6 @@ class SXTOOLS2_magic(object):
 
 
     def process_characters(self, objs):
-        print('SX Tools: Processing Characters')
         obj = objs[0]
 
         self.apply_palette_overrides(objs)
@@ -4078,7 +4077,6 @@ class SXTOOLS2_magic(object):
 
 
     def process_paletted(self, objs):
-        print('SX Tools: Processing Paletted')
         scene = bpy.context.scene.sx2
         obj = objs[0]
 
@@ -4136,7 +4134,6 @@ class SXTOOLS2_magic(object):
 
 
     def process_vehicles(self, objs):
-        print('SX Tools: Processing Vehicles')
         scene = bpy.context.scene.sx2
 
         self.apply_palette_overrides(objs, clear=True)
@@ -4198,7 +4195,6 @@ class SXTOOLS2_magic(object):
 
 
     def process_buildings(self, objs):
-        print('SX Tools: Processing Buildings')
         scene = bpy.context.scene.sx2
         obj = objs[0]
 
@@ -4289,7 +4285,6 @@ class SXTOOLS2_magic(object):
 
 
     def process_trees(self, objs):
-        print('SX Tools: Processing Trees')
         scene = bpy.context.scene.sx2
         obj = objs[0]
 
