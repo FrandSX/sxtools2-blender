@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 23),
+    'version': (1, 12, 24),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4352,6 +4352,11 @@ class SXTOOLS2_setup(object):
 
 
     def create_tiler(self):
+
+        def connect_nodes(output, input):
+            nodetree.links.new(output, input)
+
+
         nodetree = bpy.data.node_groups.new(type='GeometryNodeTree', name='sx_tiler')
         group_in = nodetree.nodes.new(type='NodeGroupInput')
         group_in.name = 'group_input'
@@ -4390,12 +4395,8 @@ class SXTOOLS2_setup(object):
         join.location = (1000, 0)
 
         # link base mesh to bbx and flip faces
-        output = group_in.outputs['Geometry']
-        input = nodetree.nodes['bbx'].inputs['Geometry']
-        nodetree.links.new(input, output)
-        output = group_in.outputs['Geometry']
-        input = nodetree.nodes['flip'].inputs[0]
-        nodetree.links.new(input, output)
+        connect_nodes(group_in.outputs['Geometry'], nodetree.nodes['bbx'].inputs['Geometry'])
+        connect_nodes(group_in.outputs['Geometry'], nodetree.nodes['flip'].inputs[0])
 
         for i in range(2): 
             # bbx offset multipliers for mirror objects
@@ -4410,14 +4411,10 @@ class SXTOOLS2_setup(object):
             separate.location = (0, 400-100*i)
 
             # link offset to multipliers
-            output = offset.outputs[0]
-            input = multiply.inputs[1]
-            nodetree.links.new(input, output)
+            connect_nodes(offset.outputs[0], multiply.inputs[1])
 
             # link bbx bounds to multipliers
-            output = bbx.outputs[i+1]
-            input = multiply.inputs[0]
-            nodetree.links.new(input, output)
+            connect_nodes(bbx.outputs[i+1], multiply.inputs[0])
 
         bbx_subtract = nodetree.nodes.new(type='ShaderNodeVectorMath')
         bbx_subtract.name = 'bbx_subtract'
@@ -4435,37 +4432,20 @@ class SXTOOLS2_setup(object):
         combine_offset.location = (-600, 100)
 
         # expose offset, connect to bbx offsets
-        output = group_in.outputs['Offset']
-        input = combine_offset.inputs[0]
-        nodetree.links.new(output, input)
-        output = group_in.outputs['Offset']
-        input = combine_offset.inputs[1]
-        nodetree.links.new(output, input)
-        output = group_in.outputs['Offset']
-        input = combine_offset.inputs[2]
-        nodetree.links.new(output, input)
+        connect_nodes(group_in.outputs['Offset'], combine_offset.inputs[0])
+        connect_nodes(group_in.outputs['Offset'], combine_offset.inputs[1])
+        connect_nodes(group_in.outputs['Offset'], combine_offset.inputs[2])
 
-        output = combine_offset.outputs[0]
-        input = bbx_subtract.inputs[1]
-        nodetree.links.new(output, input)
-        input = bbx_add.inputs[1]
-        nodetree.links.new(output, input)
+        connect_nodes(combine_offset.outputs[0], bbx_subtract.inputs[1])
+        connect_nodes(combine_offset.outputs[0], bbx_add.inputs[1])
 
         # link multipliers to bbx offsets
-        output = nodetree.nodes['multiply0'].outputs[0]
-        input = nodetree.nodes['bbx_subtract'].inputs[0]
-        nodetree.links.new(input, output)
-        output = nodetree.nodes['multiply1'].outputs[0]
-        input = nodetree.nodes['bbx_add'].inputs[0]
-        nodetree.links.new(input, output)
+        connect_nodes(nodetree.nodes['multiply0'].outputs[0], nodetree.nodes['bbx_subtract'].inputs[0])
+        connect_nodes(nodetree.nodes['multiply1'].outputs[0], nodetree.nodes['bbx_add'].inputs[0])
 
         # bbx to separate min and max
-        output = nodetree.nodes['bbx_subtract'].outputs[0]
-        input = nodetree.nodes['separate0'].inputs[0]
-        nodetree.links.new(input, output)
-        output = nodetree.nodes['bbx_add'].outputs[0]
-        input = nodetree.nodes['separate1'].inputs[0]
-        nodetree.links.new(input, output)
+        connect_nodes(nodetree.nodes['bbx_subtract'].outputs[0], nodetree.nodes['separate0'].inputs[0])
+        connect_nodes(nodetree.nodes['bbx_add'].outputs[0], nodetree.nodes['separate1'].inputs[0])
 
         for i in range(6):
             # combine nodes for mirror offsets
@@ -4484,61 +4464,33 @@ class SXTOOLS2_setup(object):
             transform.location = (800, -100*i)
 
             # link combine to translation
-            output = combine.outputs[0]
-            input = transform.inputs[1]
-            nodetree.links.new(input, output)
+            connect_nodes(combine.outputs[0], transform.inputs[1])
 
             # expose axis enable switches
-            output = group_in.outputs[axis_switches[i]]
-            input = switch.inputs[1]
-            nodetree.links.new(output, input)
+            connect_nodes(group_in.outputs[axis_switches[i]], switch.inputs[1])
 
             # link flipped mesh to switch input
-            output = flip.outputs[0]
-            input = switch.inputs[15]
-            nodetree.links.new(input, output)
+            connect_nodes(flip.outputs[0], switch.inputs[15])
 
             # link switch mesh output to transform
-            output = switch.outputs[6]
-            input = transform.inputs[0]
-            nodetree.links.new(input, output)
+            connect_nodes(switch.outputs[6], transform.inputs[0])
 
             # link mirror mesh output to join node
-            output = transform.outputs[0]
-            input = join.inputs[0]
-            nodetree.links.new(input, output)
+            connect_nodes(transform.outputs[0], join.inputs[0])
 
         # link group in as first in join node for working auto-smooth
-        output = group_in.outputs['Geometry']
-        input = join.inputs[0]
-        nodetree.links.new(input, output)
+        connect_nodes(group_in.outputs['Geometry'], join.inputs[0])
 
         # link combined geometry to group output
-        output = nodetree.nodes['join'].outputs['Geometry']
-        input = group_out.inputs['Geometry']
-        nodetree.links.new(input, output)
+        connect_nodes(nodetree.nodes['join'].outputs['Geometry'], group_out.inputs['Geometry'])
 
         # min max pairs to combiners in -x, x, -y, y, -z, z order
-        output = nodetree.nodes['separate0'].outputs[0]
-        input = nodetree.nodes['combine0'].inputs[0]
-        nodetree.links.new(input, output)
-        output = nodetree.nodes['separate1'].outputs[0]
-        input = nodetree.nodes['combine1'].inputs[0]
-        nodetree.links.new(input, output)
-
-        output = nodetree.nodes['separate0'].outputs[1]
-        input = nodetree.nodes['combine2'].inputs[1]
-        nodetree.links.new(input, output)
-        output = nodetree.nodes['separate1'].outputs[1]
-        input = nodetree.nodes['combine3'].inputs[1]
-        nodetree.links.new(input, output)
-
-        output = nodetree.nodes['separate0'].outputs[2]
-        input = nodetree.nodes['combine4'].inputs[2]
-        nodetree.links.new(input, output)
-        output = nodetree.nodes['separate1'].outputs[2]
-        input = nodetree.nodes['combine5'].inputs[2]
-        nodetree.links.new(input, output)
+        connect_nodes(nodetree.nodes['separate0'].outputs[0], nodetree.nodes['combine0'].inputs[0])
+        connect_nodes(nodetree.nodes['separate1'].outputs[0], nodetree.nodes['combine1'].inputs[0])
+        connect_nodes(nodetree.nodes['separate0'].outputs[1], nodetree.nodes['combine2'].inputs[1])
+        connect_nodes(nodetree.nodes['separate1'].outputs[1], nodetree.nodes['combine3'].inputs[1])
+        connect_nodes(nodetree.nodes['separate0'].outputs[2], nodetree.nodes['combine4'].inputs[2])
+        connect_nodes(nodetree.nodes['separate1'].outputs[2], nodetree.nodes['combine5'].inputs[2])
 
         nodetree.nodes['transform0'].inputs[3].default_value[0] = -3.0
         nodetree.nodes['transform1'].inputs[3].default_value[0] = -3.0
@@ -4797,6 +4749,11 @@ class SXTOOLS2_setup(object):
 
 
     def create_sx2material(self, objs):
+
+        def connect_nodes(output, input):
+            sxmaterial.node_tree.links.new(output, input)
+
+
         blend_mode_dict = {'ALPHA': 'MIX', 'OVR': 'OVERLAY', 'MUL': 'MULTIPLY', 'ADD': 'ADD'}
         scene = bpy.context.scene.sx2
 
@@ -4846,9 +4803,7 @@ class SXTOOLS2_setup(object):
                         input_splitter.label = 'Input Splitter ' + str(i)
                         input_splitter.location = (-1800, i*200+400)
 
-                        output = input_vector.outputs['Vector']
-                        input = input_splitter.inputs['Vector']
-                        sxmaterial.node_tree.links.new(input, output)   
+                        connect_nodes(input_vector.outputs['Vector'], input_splitter.inputs['Vector'])
 
                     # Set shader blend method
                     if (len(color_layers) > 0) and (obj.sx2layers[color_layers[0][0]].opacity < 1.0):
@@ -4882,18 +4837,11 @@ class SXTOOLS2_setup(object):
                             palette_blend.use_clamp = True
                             palette_blend.location = (-800, i*400+250)
 
-                            output = source_color.outputs['Color']
-                            input = palette_blend.inputs['Color1']
-                            sxmaterial.node_tree.links.new(input, output)
-
-                            output = layer_palette.outputs['Color']
-                            input = palette_blend.inputs['Color2']
-                            sxmaterial.node_tree.links.new(input, output)
+                            connect_nodes(source_color.outputs['Color'], palette_blend.inputs['Color1'])
+                            connect_nodes(layer_palette.outputs['Color'], palette_blend.inputs['Color2'])
 
                             if obj.sx2layers[color_layers[i][0]].paletted:
-                                output = paletted_shading.outputs[2]
-                                input = palette_blend.inputs[0]
-                                sxmaterial.node_tree.links.new(input, output)
+                                connect_nodes(paletted_shading.outputs[2], palette_blend.inputs[0])
 
                             opacity_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
                             opacity_and_alpha.name = 'Opacity ' + str(i)
@@ -4923,36 +4871,19 @@ class SXTOOLS2_setup(object):
                             alpha_accumulation.location = (-600, i*400+250)
 
                             # Group connections
-                            output = palette_blend.outputs['Color']
-                            input = layer_blend.inputs['Color2']
-                            sxmaterial.node_tree.links.new(input, output)
-
-                            output = sxmaterial.node_tree.nodes['Input Splitter ' + str(splitter_index)].outputs[(i) % 3]
-                            input = opacity_and_alpha.inputs[0]
-                            sxmaterial.node_tree.links.new(input, output)
-
-                            output = source_color.outputs['Alpha']
-                            input = opacity_and_alpha.inputs[1]
-                            sxmaterial.node_tree.links.new(input, output)
-
-                            output = opacity_and_alpha.outputs[0]
-                            input = layer_blend.inputs[0]
-                            sxmaterial.node_tree.links.new(input, output)
+                            connect_nodes(palette_blend.outputs['Color'], layer_blend.inputs['Color2'])
+                            connect_nodes(sxmaterial.node_tree.nodes['Input Splitter ' + str(splitter_index)].outputs[(i) % 3], opacity_and_alpha.inputs[0])
+                            connect_nodes(source_color.outputs['Alpha'], opacity_and_alpha.inputs[1])
+                            connect_nodes(opacity_and_alpha.outputs[0], layer_blend.inputs[0])
 
                             if (layer_blend.blend_type != 'MULTIPLY') and (layer_blend.blend_type != 'OVERLAY'):
-                                output = opacity_and_alpha.outputs[0]
-                                input = alpha_accumulation.inputs[1]
-                                sxmaterial.node_tree.links.new(input, output)
+                                connect_nodes(opacity_and_alpha.outputs[0], alpha_accumulation.inputs[1])
 
                             if prev_color is not None:
-                                output = prev_color
-                                input = layer_blend.inputs['Color1']
-                                sxmaterial.node_tree.links.new(input, output)
+                                connect_nodes(prev_color, layer_blend.inputs['Color1'])
 
                             if prev_alpha is not None:
-                                output = prev_alpha
-                                input = alpha_accumulation.inputs[0]
-                                sxmaterial.node_tree.links.new(input, output)
+                                connect_nodes(prev_alpha, alpha_accumulation.inputs[0])
 
                             prev_color = layer_blend.outputs['Color']
                             prev_alpha = alpha_accumulation.outputs[0]
@@ -4976,9 +4907,7 @@ class SXTOOLS2_setup(object):
                         input_splitter.label = 'Material Input Splitter ' + str(i)
                         input_splitter.location = (-1400, -i*200-400)
 
-                        output = input_vector.outputs['Vector']
-                        input = input_splitter.inputs['Vector']
-                        sxmaterial.node_tree.links.new(input, output)   
+                        connect_nodes(input_vector.outputs['Vector'], input_splitter.inputs['Vector'])
 
                     # Create material layers
                     # Single-channel material values are packed into 'Alpha Materials' color layer:
@@ -5001,9 +4930,7 @@ class SXTOOLS2_setup(object):
                                 source_alphas.label = 'Alpha Splitter'
                                 source_alphas.location = (0, -400)
 
-                                output = source_mats.outputs['Color']
-                                input = source_alphas.inputs['Vector']
-                                sxmaterial.node_tree.links.new(input, output)
+                                connect_nodes(source_mats.outputs['Color'], source_alphas.inputs['Vector'])
 
                             elif (material_layers[i][2] not in alpha_mats):
                                 name = material_layers[i][0]
@@ -5039,34 +4966,15 @@ class SXTOOLS2_setup(object):
                                 palette_blend.use_clamp = True
                                 palette_blend.location = (400, -i*400-800)
 
-                                output = source_color.outputs['Alpha']
-                                input = source_mask.inputs[0]
-                                sxmaterial.node_tree.links.new(input, output)
-
-                                output = source_color.outputs['Color']
-                                input = source_mask.inputs['Color2']
-                                sxmaterial.node_tree.links.new(input, output)
-
-                                output = source_color.outputs['Alpha']
-                                input = source_blend.inputs[0]
-                                sxmaterial.node_tree.links.new(input, output)
-
-                                output = material_palette.outputs['Color']
-                                input = source_blend.inputs['Color2']
-                                sxmaterial.node_tree.links.new(input, output)
-
-                                output = source_mask.outputs['Color']
-                                input = palette_blend.inputs['Color1']
-                                sxmaterial.node_tree.links.new(input, output)
-
-                                output = source_blend.outputs['Color']
-                                input = palette_blend.inputs['Color2']
-                                sxmaterial.node_tree.links.new(input, output)
+                                connect_nodes(source_color.outputs['Alpha'], source_mask.inputs[0])
+                                connect_nodes(source_color.outputs['Color'], source_mask.inputs['Color2'])
+                                connect_nodes(source_color.outputs['Alpha'], source_blend.inputs[0])
+                                connect_nodes(material_palette.outputs['Color'], source_blend.inputs['Color2'])
+                                connect_nodes(source_mask.outputs['Color'], palette_blend.inputs['Color1'])
+                                connect_nodes(source_blend.outputs['Color'], palette_blend.inputs['Color2'])
 
                                 if obj.sx2layers[material_layers[i][0]].paletted:
-                                    output = paletted_shading.outputs[2]
-                                    input = palette_blend.inputs[0]
-                                    sxmaterial.node_tree.links.new(input, output)   
+                                    connect_nodes(paletted_shading.outputs[2], palette_blend.inputs[0])
 
                             layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
                             layer_blend.name = material_layers[i][0] + ' Mix'
@@ -5079,9 +4987,7 @@ class SXTOOLS2_setup(object):
                             layer_blend.location = (400, -i*400-400)
 
                             # Group connections
-                            output = sxmaterial.node_tree.nodes['Material Input Splitter ' + str(splitter_index)].outputs[i % 3]
-                            input = layer_blend.inputs[0]   
-                            sxmaterial.node_tree.links.new(input, output)
+                            connect_nodes(sxmaterial.node_tree.nodes['Material Input Splitter ' + str(splitter_index)].outputs[i % 3], layer_blend.inputs[0])
 
                             count += 1
                             if count == 3:
@@ -5091,10 +4997,7 @@ class SXTOOLS2_setup(object):
                             if (material_layers[i][2] == 'OCC'):
                                 layer_blend.blend_type = 'MULTIPLY'
                                 if prev_color is not None:
-                                    output = prev_color
-                                    input = layer_blend.inputs['Color1']
-                                    sxmaterial.node_tree.links.new(input, output)
-
+                                    connect_nodes(prev_color, layer_blend.inputs['Color1'])
                                     prev_color = layer_blend.outputs['Color']
 
                                 output = source_alphas.outputs['X']
@@ -5110,45 +5013,33 @@ class SXTOOLS2_setup(object):
 
                             else:
                                 output = palette_blend.outputs['Color']
-                            input = layer_blend.inputs[2]
-                            sxmaterial.node_tree.links.new(input, output)
+
+                            connect_nodes(output, layer_blend.inputs[2])
 
                             output = layer_blend.outputs[0]
                             if material_layers[i][2] == 'MET':
-                                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Metallic']
-                                sxmaterial.node_tree.links.new(input, output)
+                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Metallic'])
 
                             if material_layers[i][2] == 'RGH':
-                                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Roughness']
-                                sxmaterial.node_tree.links.new(input, output)
+                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Roughness'])
 
                             if material_layers[i][2] == 'TRN':
-                                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission']
-                                sxmaterial.node_tree.links.new(input, output)
+                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission'])
 
                             if material_layers[i][2] == 'SSS':
-                                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface']
-                                sxmaterial.node_tree.links.new(input, output)
-
-                                output = palette_blend.outputs['Color']
-                                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface Color']
-                                sxmaterial.node_tree.links.new(input, output)
+                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface'])
+                                connect_nodes(palette_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface Color'])
 
                             if material_layers[i][2] == 'EMI':
                                 sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 10
-                                input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission']
-                                sxmaterial.node_tree.links.new(input, output)
+                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'])
                                 bpy.context.scene.eevee.use_bloom = True
 
                     if prev_color is not None:
-                        output = prev_color
-                        input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color']
-                        sxmaterial.node_tree.links.new(input, output)
+                        connect_nodes(prev_color,  sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color'])
 
                     if prev_alpha is not None:
-                        output = prev_alpha
-                        input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Alpha']
-                        sxmaterial.node_tree.links.new(input, output)
+                        connect_nodes(prev_alpha, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Alpha'])
 
                 elif (obj.sx2.shadingmode == 'DEBUG') or (obj.sx2.shadingmode == 'ALPHA'):
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = 0.0
@@ -5184,9 +5075,7 @@ class SXTOOLS2_setup(object):
                         source_alphas = sxmaterial.node_tree.nodes.new(type='ShaderNodeSeparateXYZ')
                         source_alphas.location = (-800, 0)
 
-                        output = base_color.outputs['Color']
-                        input = source_alphas.inputs['Vector']
-                        sxmaterial.node_tree.links.new(input, output)
+                        connect_nodes(base_color.outputs['Color'], source_alphas.inputs['Vector'])
 
                     if layer.layer_type not in alpha_mats:
                         opacity_and_alpha = sxmaterial.node_tree.nodes.new(type='ShaderNodeMath')
@@ -5198,21 +5087,12 @@ class SXTOOLS2_setup(object):
                         opacity_and_alpha.inputs[1].default_value = 1
                         opacity_and_alpha.location = (-800, -400)
 
-                        output = layer_opacity.outputs[2]
-                        input = opacity_and_alpha.inputs[0]
-                        sxmaterial.node_tree.links.new(input, output)
+                        connect_nodes(layer_opacity.outputs[2], opacity_and_alpha.inputs[0])
+                        connect_nodes(base_color.outputs['Alpha'], opacity_and_alpha.inputs[1])
+                        connect_nodes(opacity_and_alpha.outputs[0], debug_blend.inputs[0])
 
-                        output = base_color.outputs['Alpha']
-                        input = opacity_and_alpha.inputs[1]
-                        sxmaterial.node_tree.links.new(input, output)
-
-                        output = opacity_and_alpha.outputs[0]
-                        input = debug_blend.inputs[0]
-                        sxmaterial.node_tree.links.new(input, output)
                     else:
-                        output = layer_opacity.outputs[2]
-                        input = debug_blend.inputs[0]
-                        sxmaterial.node_tree.links.new(input, output)
+                        connect_nodes(layer_opacity.outputs[2], debug_blend.inputs[0])
 
                     if layer.layer_type not in alpha_mats:
                         if obj.sx2.shadingmode == 'DEBUG':
@@ -5227,12 +5107,9 @@ class SXTOOLS2_setup(object):
                         output = source_alphas.outputs['Z']
                     elif layer.layer_type == 'TRN':
                         output = base_color.outputs['Alpha']
-                    input = debug_blend.inputs['Color2']
-                    sxmaterial.node_tree.links.new(input, output)
 
-                    output = debug_blend.outputs['Color']
-                    input = sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission']
-                    sxmaterial.node_tree.links.new(input, output)
+                    connect_nodes(output, debug_blend.inputs['Color2'])
+                    connect_nodes(debug_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'])
 
 
     def update_sx2material(self, context):
@@ -10558,5 +10435,6 @@ if __name__ == '__main__':
 # TODO:
 # BUG: Grouping of objs with armatures
 # BUG: Check decimation angle changes with hull and emission mesh generation
+# BUG: Multi-selection in debug shading mode does not always update properly
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
