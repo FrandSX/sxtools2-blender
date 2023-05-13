@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 13, 0),
+    'version': (1, 13, 1),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1484,22 +1484,25 @@ class SXTOOLS2_generate(object):
 
             return face_colors
 
-
-        hemisphere = self.ray_randomizer(raycount)
-        hemi_up = Vector((0.0, 0.0, 1.0))
-
+        _, empty = layers.get_layer_mask(obj, obj.sx2layers['Emission'])
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=False)
-        vert_emission_dict = {vert_id: None for vert_id in vert_dict}
 
-        if vert_dict:
+        if vert_dict and not empty:
             mod_vis = obj.sx2.modifiervisibility
             obj.sx2.modifiervisibility = False
+            obj.modifiers.update()
+            bpy.context.view_layer.update()
+
+            hemisphere = self.ray_randomizer(raycount)
+            hemi_up = Vector((0.0, 0.0, 1.0))
+            vert_dict = self.vertex_data_dict(obj, masklayer, dots=False)
+            vert_emission_dict = {vert_id: None for vert_id in vert_dict}
             face_colors = calculate_face_colors(obj)
             dist = max(utils.get_object_bounding_box([obj, ], local=True)) * 5
             contribution = 1.0 / float(raycount)
-            bias = 0.1
+            bias = 0.001
 
-            # Pass 0: Propagate emission to face colors according to number of bounces
+            # Pass 1: Propagate emission to face colors according to number of bounces
             if bouncecount > 0:
                 for i in range(bouncecount):
                     for j, face in enumerate(obj.data.polygons):
@@ -1512,7 +1515,10 @@ class SXTOOLS2_generate(object):
                             sample_ray = rotQuat @ sample
                             hit, hit_loc, hit_normal, hit_face_index = obj.ray_cast(face_center, sample_ray, distance=dist)
                             if hit and (hit_normal.dot(sample_ray) < 0):
-                                attenuation_factor = 1.0 / ((hit_loc - face_center).length ** 2)
+                                denominator = (hit_loc - face_center).length ** 2
+                                if denominator == 0:
+                                    denominator = 1.0
+                                attenuation_factor = 1.0 / denominator
                                 face_color = face_colors[hit_face_index].copy()
                                 addition = face_color * contribution * attenuation_factor * dot
                                 face_emission += addition
@@ -1520,10 +1526,17 @@ class SXTOOLS2_generate(object):
                         if face_emission.length > face_colors[j].length:
                             face_colors[j] = face_emission.copy()
 
-            # Pass 1: Sample emission colors to vertices
+            # Pass 2: Sample emission colors to vertices
             for vert_id in vert_dict:
                 emission_value = Vector((0.0, 0.0, 0.0, 0.0))
                 vertLoc, vertNormal, _, _, _ = vert_dict[vert_id]
+
+                # Pass 0: Raycast for bias
+                hit, loc, normal, _ = obj.ray_cast(vertLoc, vertNormal, distance=dist)
+                if hit and (normal.dot(vertNormal) > 0):
+                    hit_dist = (loc - vertLoc).length
+                    if hit_dist < 0.5:
+                        bias += hit_dist
 
                 # Local space emission for individual object
                 rotQuat = hemi_up.rotation_difference(vertNormal)
@@ -1534,10 +1547,14 @@ class SXTOOLS2_generate(object):
                     sample_ray = rotQuat @ sample
                     hit, hit_loc, hit_normal, hit_face_index = obj.ray_cast(vertPos, sample_ray, distance=dist)
                     if hit and (hit_normal.dot(sample_ray) < 0):
+                        denominator = (hit_loc - vertPos).length ** 2
+                        if denominator == 0:
+                            denominator = 1.0
+                        attenuation_factor = 1.0 / denominator
                         face_color = face_colors[hit_face_index]
-                        attenuation_factor = 1.0 / ((hit_loc - vertPos).length ** 2)
                         emission_value += face_color * contribution * attenuation_factor * dot
 
+                emission_value = Vector((min(1.0, emission_value[0]), min(1.0, emission_value[1]), min(1.0, emission_value[2]), min(1.0, emission_value[3])))
                 vert_emission_dict[vert_id] = list(emission_value)
 
             vert_emission_list = generate.vert_dict_to_loop_list(obj, vert_emission_dict, 4, 4)
@@ -5514,145 +5531,150 @@ def update_selected_layer(self, context):
 
 def update_modifiers(self, context, prop):
     update_obj_props(self, context, prop)
-    objs = mesh_selection_validator(self, context)
-    if objs:
-        if prop == 'modifiervisibility':
-            for obj in objs:
-                if 'sxMirror' in obj.modifiers:
-                    obj.modifiers['sxMirror'].show_viewport = obj.sx2.modifiervisibility
-                if 'sxSubdivision' in obj.modifiers:
-                    if (obj.sx2.subdivisionlevel == 0):
-                        obj.modifiers['sxSubdivision'].show_viewport = False
-                    else:
-                        obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
-                if 'sxDecimate' in obj.modifiers:
-                    if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
-                        obj.modifiers['sxDecimate'].show_viewport = False
-                    else:
-                        obj.modifiers['sxDecimate'].show_viewport = obj.sx2.modifiervisibility
-                if 'sxDecimate2' in obj.modifiers:
-                    if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
-                        obj.modifiers['sxDecimate2'].show_viewport = False
-                    else:
-                        obj.modifiers['sxDecimate2'].show_viewport = obj.sx2.modifiervisibility
-                if 'sxBevel' in obj.modifiers:
-                    if obj.sx2.bevelsegments == 0:
-                        obj.modifiers['sxBevel'].show_viewport = False
-                    else:
-                        obj.modifiers['sxBevel'].show_viewport = obj.sx2.modifiervisibility
-                if 'sxWeld' in obj.modifiers:
-                    if (obj.sx2.weldthreshold == 0.0):
-                        obj.modifiers['sxWeld'].show_viewport = False
-                    else:
-                        obj.modifiers['sxWeld'].show_viewport = obj.sx2.modifiervisibility
-                if 'sxWeightedNormal' in obj.modifiers:
-                    if not obj.sx2.weightednormals:
-                        obj.modifiers['sxWeightedNormal'].show_viewport = False
-                    else:
-                        obj.modifiers['sxWeightedNormal'].show_viewport = obj.sx2.modifiervisibility
+    if not sxglobals.refresh_in_progress:
+        sxglobals.refresh_in_progress = True
 
-        elif (prop == 'xmirror') or (prop == 'ymirror') or (prop == 'zmirror') or (prop == 'mirrorobject'):
-            for obj in objs:
-                if 'sxMirror' in obj.modifiers:
-                    obj.modifiers['sxMirror'].use_axis[0] = obj.sx2.xmirror
-                    obj.modifiers['sxMirror'].use_axis[1] = obj.sx2.ymirror
-                    obj.modifiers['sxMirror'].use_axis[2] = obj.sx2.zmirror
+        objs = mesh_selection_validator(self, context)
+        if objs:
+            if prop == 'modifiervisibility':
+                for obj in objs:
+                    if 'sxMirror' in obj.modifiers:
+                        obj.modifiers['sxMirror'].show_viewport = obj.sx2.modifiervisibility
+                    if 'sxSubdivision' in obj.modifiers:
+                        if (obj.sx2.subdivisionlevel == 0):
+                            obj.modifiers['sxSubdivision'].show_viewport = False
+                        else:
+                            obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
+                    if 'sxDecimate' in obj.modifiers:
+                        if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
+                            obj.modifiers['sxDecimate'].show_viewport = False
+                        else:
+                            obj.modifiers['sxDecimate'].show_viewport = obj.sx2.modifiervisibility
+                    if 'sxDecimate2' in obj.modifiers:
+                        if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
+                            obj.modifiers['sxDecimate2'].show_viewport = False
+                        else:
+                            obj.modifiers['sxDecimate2'].show_viewport = obj.sx2.modifiervisibility
+                    if 'sxBevel' in obj.modifiers:
+                        if obj.sx2.bevelsegments == 0:
+                            obj.modifiers['sxBevel'].show_viewport = False
+                        else:
+                            obj.modifiers['sxBevel'].show_viewport = obj.sx2.modifiervisibility
+                    if 'sxWeld' in obj.modifiers:
+                        if (obj.sx2.weldthreshold == 0.0):
+                            obj.modifiers['sxWeld'].show_viewport = False
+                        else:
+                            obj.modifiers['sxWeld'].show_viewport = obj.sx2.modifiervisibility
+                    if 'sxWeightedNormal' in obj.modifiers:
+                        if not obj.sx2.weightednormals:
+                            obj.modifiers['sxWeightedNormal'].show_viewport = False
+                        else:
+                            obj.modifiers['sxWeightedNormal'].show_viewport = obj.sx2.modifiervisibility
 
-                    if obj.sx2.mirrorobject is not None:
-                        obj.modifiers['sxMirror'].mirror_object = obj.sx2.mirrorobject
-                    else:
-                        obj.modifiers['sxMirror'].mirror_object = None
+            elif (prop == 'xmirror') or (prop == 'ymirror') or (prop == 'zmirror') or (prop == 'mirrorobject'):
+                for obj in objs:
+                    if 'sxMirror' in obj.modifiers:
+                        obj.modifiers['sxMirror'].use_axis[0] = obj.sx2.xmirror
+                        obj.modifiers['sxMirror'].use_axis[1] = obj.sx2.ymirror
+                        obj.modifiers['sxMirror'].use_axis[2] = obj.sx2.zmirror
 
-                    if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror or (obj.sx2.mirrorobject is not None):
-                        obj.modifiers['sxMirror'].show_viewport = True
-                    else:
-                        obj.modifiers['sxMirror'].show_viewport = False
+                        if obj.sx2.mirrorobject is not None:
+                            obj.modifiers['sxMirror'].mirror_object = obj.sx2.mirrorobject
+                        else:
+                            obj.modifiers['sxMirror'].mirror_object = None
 
-        elif (prop == 'tiling') or ('tile_' in prop):
-            for obj in objs:
-                if 'sxTiler' not in obj.modifiers:
-                    modifiers.remove_modifiers([obj, ])
-                    modifiers.add_modifiers([obj, ])
-                elif obj.modifiers['sxTiler'].node_group != bpy.data.node_groups['sx_tiler']:
-                    obj.modifiers['sxTiler'].node_group = bpy.data.node_groups['sx_tiler']
+                        if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror or (obj.sx2.mirrorobject is not None):
+                            obj.modifiers['sxMirror'].show_viewport = True
+                        else:
+                            obj.modifiers['sxMirror'].show_viewport = False
 
-                obj.modifiers['sxTiler'].show_viewport = obj.sx2.tile_preview
+            elif (prop == 'tiling') or ('tile_' in prop):
+                for obj in objs:
+                    if 'sxTiler' not in obj.modifiers:
+                        modifiers.remove_modifiers([obj, ])
+                        modifiers.add_modifiers([obj, ])
+                    elif obj.modifiers['sxTiler'].node_group != bpy.data.node_groups['sx_tiler']:
+                        obj.modifiers['sxTiler'].node_group = bpy.data.node_groups['sx_tiler']
 
-                if obj.sx2.tiling:
-                    utils.round_tiling_verts([obj, ])
+                    obj.modifiers['sxTiler'].show_viewport = obj.sx2.tile_preview
 
-                    tiler = obj.modifiers['sxTiler']
-                    tiler['Input_1'] = obj.sx2.tile_offset
-                    tiler['Input_3'] = obj.sx2.tile_neg_x
-                    tiler['Input_4'] = obj.sx2.tile_pos_x
-                    tiler['Input_5'] = obj.sx2.tile_neg_y
-                    tiler['Input_6'] = obj.sx2.tile_pos_y
-                    tiler['Input_7'] = obj.sx2.tile_neg_z
-                    tiler['Input_8'] = obj.sx2.tile_pos_z
+                    if obj.sx2.tiling:
+                        utils.round_tiling_verts([obj, ])
 
-        elif prop == 'hardmode':
-            for obj in objs:
-                if 'sxWeightedNormal' in obj.modifiers:
-                    if obj.sx2.hardmode == 'SMOOTH':
-                        obj.modifiers['sxWeightedNormal'].keep_sharp = False
-                    else:
-                        obj.modifiers['sxWeightedNormal'].keep_sharp = True
+                        tiler = obj.modifiers['sxTiler']
+                        tiler['Input_1'] = obj.sx2.tile_offset
+                        tiler['Input_3'] = obj.sx2.tile_neg_x
+                        tiler['Input_4'] = obj.sx2.tile_pos_x
+                        tiler['Input_5'] = obj.sx2.tile_neg_y
+                        tiler['Input_6'] = obj.sx2.tile_pos_y
+                        tiler['Input_7'] = obj.sx2.tile_neg_z
+                        tiler['Input_8'] = obj.sx2.tile_pos_z
 
-        elif prop == 'subdivisionlevel':
-            for obj in objs:
-                if 'sxSubdivision' in obj.modifiers:
-                    obj.modifiers['sxSubdivision'].levels = obj.sx2.subdivisionlevel
-                    if obj.sx2.subdivisionlevel == 0:
-                        obj.modifiers['sxSubdivision'].show_viewport = False
-                    else:
-                        obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
-                if 'sxDecimate' in obj.modifiers:
-                    if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
-                        obj.modifiers['sxDecimate'].show_viewport = False
-                    else:
-                        obj.modifiers['sxDecimate'].show_viewport = obj.sx2.modifiervisibility
-                if 'sxDecimate2' in obj.modifiers:
-                    if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
-                        obj.modifiers['sxDecimate2'].show_viewport = False
-                    else:
-                        obj.modifiers['sxDecimate2'].show_viewport = obj.sx2.modifiervisibility
+            elif prop == 'hardmode':
+                for obj in objs:
+                    if 'sxWeightedNormal' in obj.modifiers:
+                        if obj.sx2.hardmode == 'SMOOTH':
+                            obj.modifiers['sxWeightedNormal'].keep_sharp = False
+                        else:
+                            obj.modifiers['sxWeightedNormal'].keep_sharp = True
 
-        elif (prop == 'bevelwidth') or (prop == 'bevelsegments') or (prop == 'beveltype'):
-            for obj in objs:
-                if 'sxBevel' in obj.modifiers:
-                    if obj.sx2.bevelsegments == 0:
-                        obj.modifiers['sxBevel'].show_viewport = False
-                    else:
-                        obj.modifiers['sxBevel'].show_viewport = obj.sx2.modifiervisibility
-                    obj.modifiers['sxBevel'].width = obj.sx2.bevelwidth
-                    obj.modifiers['sxBevel'].width_pct = obj.sx2.bevelwidth
-                    obj.modifiers['sxBevel'].segments = obj.sx2.bevelsegments
-                    obj.modifiers['sxBevel'].offset_type = obj.sx2.beveltype
+            elif prop == 'subdivisionlevel':
+                for obj in objs:
+                    if 'sxSubdivision' in obj.modifiers:
+                        obj.modifiers['sxSubdivision'].levels = obj.sx2.subdivisionlevel
+                        if obj.sx2.subdivisionlevel == 0:
+                            obj.modifiers['sxSubdivision'].show_viewport = False
+                        else:
+                            obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
+                    if 'sxDecimate' in obj.modifiers:
+                        if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
+                            obj.modifiers['sxDecimate'].show_viewport = False
+                        else:
+                            obj.modifiers['sxDecimate'].show_viewport = obj.sx2.modifiervisibility
+                    if 'sxDecimate2' in obj.modifiers:
+                        if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
+                            obj.modifiers['sxDecimate2'].show_viewport = False
+                        else:
+                            obj.modifiers['sxDecimate2'].show_viewport = obj.sx2.modifiervisibility
 
-        elif prop == 'weldthreshold':
-            for obj in objs:
-                if 'sxWeld' in obj.modifiers:
-                    obj.modifiers['sxWeld'].merge_threshold = obj.sx2.weldthreshold
-                    if obj.sx2.weldthreshold == 0:
-                        obj.modifiers['sxWeld'].show_viewport = False
-                    elif (obj.sx2.weldthreshold > 0) and obj.sx2.modifiervisibility:
-                        obj.modifiers['sxWeld'].show_viewport = True
+            elif (prop == 'bevelwidth') or (prop == 'bevelsegments') or (prop == 'beveltype'):
+                for obj in objs:
+                    if 'sxBevel' in obj.modifiers:
+                        if obj.sx2.bevelsegments == 0:
+                            obj.modifiers['sxBevel'].show_viewport = False
+                        else:
+                            obj.modifiers['sxBevel'].show_viewport = obj.sx2.modifiervisibility
+                        obj.modifiers['sxBevel'].width = obj.sx2.bevelwidth
+                        obj.modifiers['sxBevel'].width_pct = obj.sx2.bevelwidth
+                        obj.modifiers['sxBevel'].segments = obj.sx2.bevelsegments
+                        obj.modifiers['sxBevel'].offset_type = obj.sx2.beveltype
 
-        elif prop == 'decimation':
-            for obj in objs:
-                if 'sxDecimate' in obj.modifiers:
-                    obj.modifiers['sxDecimate'].angle_limit = math.radians(obj.sx2.decimation)
-                    if obj.sx2.decimation == 0.0:
-                        obj.modifiers['sxDecimate'].show_viewport = False
-                        obj.modifiers['sxDecimate2'].show_viewport = False
-                    elif (obj.sx2.decimation > 0) and obj.sx2.modifiervisibility:
-                        obj.modifiers['sxDecimate'].show_viewport = True
-                        obj.modifiers['sxDecimate2'].show_viewport = True
+            elif prop == 'weldthreshold':
+                for obj in objs:
+                    if 'sxWeld' in obj.modifiers:
+                        obj.modifiers['sxWeld'].merge_threshold = obj.sx2.weldthreshold
+                        if obj.sx2.weldthreshold == 0:
+                            obj.modifiers['sxWeld'].show_viewport = False
+                        elif (obj.sx2.weldthreshold > 0) and obj.sx2.modifiervisibility:
+                            obj.modifiers['sxWeld'].show_viewport = True
 
-        elif prop == 'weightednormals':
-            for obj in objs:
-                if 'sxWeightedNormal' in obj.modifiers:
-                    obj.modifiers['sxWeightedNormal'].show_viewport = obj.sx2.weightednormals
+            elif prop == 'decimation':
+                for obj in objs:
+                    if 'sxDecimate' in obj.modifiers:
+                        obj.modifiers['sxDecimate'].angle_limit = math.radians(obj.sx2.decimation)
+                        if obj.sx2.decimation == 0.0:
+                            obj.modifiers['sxDecimate'].show_viewport = False
+                            obj.modifiers['sxDecimate2'].show_viewport = False
+                        elif (obj.sx2.decimation > 0) and obj.sx2.modifiervisibility:
+                            obj.modifiers['sxDecimate'].show_viewport = True
+                            obj.modifiers['sxDecimate2'].show_viewport = True
+
+            elif prop == 'weightednormals':
+                for obj in objs:
+                    if 'sxWeightedNormal' in obj.modifiers:
+                        obj.modifiers['sxWeightedNormal'].show_viewport = obj.sx2.weightednormals
+
+        sxglobals.refresh_in_progress = False
 
 
 def adjust_hsl(self, context, hslmode):
@@ -6815,7 +6837,7 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         description='Increase bounces for higher quality',
         min=0,
         max=10,
-        default=2)
+        default=0)
 
     dirInclination: bpy.props.FloatProperty(
         name='Inclination',
