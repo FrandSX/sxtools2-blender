@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 12, 24),
+    'version': (1, 13, 0),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1226,7 +1226,7 @@ class SXTOOLS2_generate(object):
 
 
     def ray_randomizer(self, count):
-        hemiSphere = [None] * count
+        hemisphere = [None] * count
         random.seed(sxglobals.randomseed)
 
         for i in range(count):
@@ -1243,10 +1243,10 @@ class SXTOOLS2_generate(object):
             up_vector = Vector((0, 0, 1))
             
             dot_product = ray.dot(up_vector)
-            hemiSphere[i] = (ray, dot_product)
+            hemisphere[i] = (ray, dot_product)
 
-        sorted_hemiSphere = sorted(hemiSphere, key=lambda x: x[1], reverse=True)
-        return sorted_hemiSphere
+        sorted_hemisphere = sorted(hemisphere, key=lambda x: x[1], reverse=True)
+        return sorted_hemisphere
 
 
     def ground_plane(self, size, pos):
@@ -1339,7 +1339,7 @@ class SXTOOLS2_generate(object):
 
         scene = bpy.context.scene
         contribution = 1.0/float(raycount)
-        hemiSphere = self.ray_randomizer(raycount)
+        hemisphere = self.ray_randomizer(raycount)
         mix = max(min(blend, 1.0), 0.0)
         forward = Vector((0.0, 0.0, 1.0))
 
@@ -1407,12 +1407,12 @@ class SXTOOLS2_generate(object):
 
                 # Pass 1: Mark hits for rays that are inside the mesh
                 first_hit_index = raycount
-                for i, (_, dot) in enumerate(hemiSphere):
+                for i, (_, dot) in enumerate(hemisphere):
                     if dot < min_dot:
                         first_hit_index = i
                         break
 
-                valid_rays = [ray for ray, _ in hemiSphere[:first_hit_index]]
+                valid_rays = [ray for ray, _ in hemisphere[:first_hit_index]]
                 occValue -= contribution * (raycount - first_hit_index)
 
                 # Store Pass 2 valid ray hits
@@ -1466,6 +1466,85 @@ class SXTOOLS2_generate(object):
 
             return result
 
+        else:
+            return None
+
+
+    def emission_list(self, obj, raycount=250, bouncecount=2, masklayer=None):
+
+        def calculate_face_colors(obj):
+            colors = layers.get_layer(obj, obj.sx2layers['Emission'], as_tuple=True)
+            face_colors = [None] * len(obj.data.polygons)
+
+            for face in obj.data.polygons:
+                face_color = Vector((0.0, 0.0, 0.0, 0.0))
+                for loop_index in face.loop_indices:
+                    face_color += Vector(colors[loop_index])
+                face_colors[face.index] = face_color / len(face.loop_indices)
+
+            return face_colors
+
+
+        hemisphere = self.ray_randomizer(raycount)
+        hemi_up = Vector((0.0, 0.0, 1.0))
+
+        vert_dict = self.vertex_data_dict(obj, masklayer, dots=False)
+        vert_emission_dict = {vert_id: None for vert_id in vert_dict}
+
+        if vert_dict:
+            mod_vis = obj.sx2.modifiervisibility
+            obj.sx2.modifiervisibility = False
+            face_colors = calculate_face_colors(obj)
+            dist = max(utils.get_object_bounding_box([obj, ], local=True)) * 5
+            contribution = 1.0 / float(raycount)
+            bias = 0.1
+
+            # Pass 0: Propagate emission to face colors according to number of bounces
+            if bouncecount > 0:
+                for i in range(bouncecount):
+                    for j, face in enumerate(obj.data.polygons):
+                        face_emission = Vector((0.0, 0.0, 0.0, 0.0))
+                        vertices = [obj.data.vertices[face_vert_id].co for face_vert_id in face.vertices]
+                        face_center = (sum(vertices, Vector()) / len(vertices)) + (bias * face.normal)
+                        rotQuat = hemi_up.rotation_difference(face.normal)
+
+                        for sample, dot in hemisphere:
+                            sample_ray = rotQuat @ sample
+                            hit, hit_loc, hit_normal, hit_face_index = obj.ray_cast(face_center, sample_ray, distance=dist)
+                            if hit and (hit_normal.dot(sample_ray) < 0):
+                                attenuation_factor = 1.0 / ((hit_loc - face_center).length ** 2)
+                                face_color = face_colors[hit_face_index].copy()
+                                addition = face_color * contribution * attenuation_factor * dot
+                                face_emission += addition
+
+                        if face_emission.length > face_colors[j].length:
+                            face_colors[j] = face_emission.copy()
+
+            # Pass 1: Sample emission colors to vertices
+            for vert_id in vert_dict:
+                emission_value = Vector((0.0, 0.0, 0.0, 0.0))
+                vertLoc, vertNormal, _, _, _ = vert_dict[vert_id]
+
+                # Local space emission for individual object
+                rotQuat = hemi_up.rotation_difference(vertNormal)
+                vertPos = vertLoc + (bias * vertNormal)
+
+                # for every object ray hit, accumulate hit samples
+                for sample, dot in hemisphere:
+                    sample_ray = rotQuat @ sample
+                    hit, hit_loc, hit_normal, hit_face_index = obj.ray_cast(vertPos, sample_ray, distance=dist)
+                    if hit and (hit_normal.dot(sample_ray) < 0):
+                        face_color = face_colors[hit_face_index]
+                        attenuation_factor = 1.0 / ((hit_loc - vertPos).length ** 2)
+                        emission_value += face_color * contribution * attenuation_factor * dot
+
+                vert_emission_dict[vert_id] = list(emission_value)
+
+            vert_emission_list = generate.vert_dict_to_loop_list(obj, vert_emission_dict, 4, 4)
+            result = self.mask_list(obj, vert_emission_list, masklayer)
+            obj.sx2.modifiervisibility = mod_vis
+
+            return result
         else:
             return None
 
@@ -2216,6 +2295,8 @@ class SXTOOLS2_tools(object):
                 colors = generate.luminance_remap_list(obj, targetlayer, masklayer)
             elif scene.toolmode == 'BLR':
                 colors = generate.blur_list(obj, targetlayer, masklayer)
+            elif scene.toolmode == 'EMI':
+                colors = generate.emission_list(obj, scene.occlusionrays, scene.bouncecount, masklayer)
 
             if colors is not None:
                 mask = None
@@ -4502,16 +4583,16 @@ class SXTOOLS2_setup(object):
 
     def create_occlusion_network(self, raycount):
         def ray_randomizer(count):
-            hemiSphere = [None] * count
+            hemisphere = [None] * count
             random.seed(sxglobals.randomseed)
 
             for i in range(count):
                 r = math.sqrt(random.random())
                 theta = 2 * math.pi * random.random()
-                hemiSphere[i] = (r, theta, 0)
+                hemisphere[i] = (r, theta, 0)
 
-            sorted_hemiSphere = sorted(hemiSphere, key=lambda x: x[1], reverse=True)
-            return sorted_hemiSphere
+            sorted_hemisphere = sorted(hemisphere, key=lambda x: x[1], reverse=True)
+            return sorted_hemisphere
 
 
         def connect_nodes(output, input):
@@ -6524,7 +6605,8 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
             ('THK', 'Mesh Thickness', ''),
             ('DIR', 'Directional', ''),
             ('LUM', 'Luminance Remap', ''),
-            ('BLR', 'Blur', '')],
+            ('BLR', 'Blur', ''),
+            ('EMI', 'Emission', '')],
         default='COL')
         # update=lambda self, context: expand_element(self, context, 'expandfill'))
 
@@ -6727,6 +6809,13 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         name='Ground Plane Height',
         description='Ground Z coordinate in world space',
         default=-0.5)
+
+    bouncecount: bpy.props.IntProperty(
+        name='Bounce Count',
+        description='Increase bounces for higher quality',
+        min=0,
+        max=10,
+        default=2)
 
     dirInclination: bpy.props.FloatProperty(
         name='Inclination',
@@ -7449,6 +7538,14 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         row3_fill.operator('sx2.addramp', text='', icon='ADD')
                         row3_fill.operator('sx2.delramp', text='', icon='REMOVE')
                         box_fill.template_color_ramp(bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'], 'color_ramp', expand=True)
+
+                # Emission Tool -----------------------------------------------
+                elif scene.toolmode == 'EMI':
+                    if scene.expandfill:
+                        col_fill = box_fill.column(align=True)
+                        col_fill.prop(scene, 'occlusionrays', slider=True, text='Ray Count')
+                        col_fill.prop(scene, 'bouncecount', slider=True, text='Bounce Count')
+
 
                 # Master Palettes -----------------------------------------------
                 elif scene.toolmode == 'PAL':
@@ -10438,3 +10535,4 @@ if __name__ == '__main__':
 # BUG: Multi-selection in debug shading mode does not always update properly
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
+# Check BVH raycast normals (worldspace?)
