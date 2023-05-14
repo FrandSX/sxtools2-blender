@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 13, 1),
+    'version': (1, 13, 2),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1488,10 +1488,9 @@ class SXTOOLS2_generate(object):
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=False)
 
         if vert_dict and not empty:
-            mod_vis = obj.sx2.modifiervisibility
-            obj.sx2.modifiervisibility = False
-            obj.modifiers.update()
-            bpy.context.view_layer.update()
+            mod_vis = [modifier.show_viewport for modifier in obj.modifiers]
+            for modifier in obj.modifiers:
+                modifier.show_viewport = False
 
             hemisphere = self.ray_randomizer(raycount)
             hemi_up = Vector((0.0, 0.0, 1.0))
@@ -1559,7 +1558,9 @@ class SXTOOLS2_generate(object):
 
             vert_emission_list = generate.vert_dict_to_loop_list(obj, vert_emission_dict, 4, 4)
             result = self.mask_list(obj, vert_emission_list, masklayer)
-            obj.sx2.modifiervisibility = mod_vis
+
+            for i, modifier in enumerate(obj.modifiers):
+                modifier.show_viewport = mod_vis[i]
 
             return result
         else:
