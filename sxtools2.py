@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 13, 5),
+    'version': (1, 13, 6),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4383,9 +4383,13 @@ class SXTOOLS2_magic(object):
             colors = tools.blend_values(colors, base, 'ALPHA', 1.0)
             if colors is not None:
                 layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
-            emission = generate.color_list(obj, color=(0.1, 0.1, 0.1, 0.1), masklayer=utils.find_color_layers(obj, 6))
-            if emission is not None:
+            emission_base = generate.color_list(obj, color=(1.0, 1.0, 1.0, 1.0), masklayer=utils.find_color_layers(obj, 6))
+            if emission_base is not None:
+                layers.set_layer(obj, emission_base, obj.sx2layers['Emission'])
+                emission = generate.emission_list(obj, 200)
                 layers.set_layer(obj, emission, obj.sx2layers['Emission'])
+
+
 
         for obj in objs_windows:
             obj.hide_viewport = False
