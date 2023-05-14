@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 13, 3),
+    'version': (1, 13, 5),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1479,7 +1479,9 @@ class SXTOOLS2_generate(object):
             for face in obj.data.polygons:
                 face_color = Vector((0.0, 0.0, 0.0, 0.0))
                 for loop_index in face.loop_indices:
-                    face_color += Vector(colors[loop_index])
+                    loop_color = Vector(colors[loop_index])
+                    if loop_color[3] > 0.0:
+                        face_color += Vector(colors[loop_index])
                 face_colors[face.index] = face_color / len(face.loop_indices)
 
             return face_colors
@@ -1503,17 +1505,25 @@ class SXTOOLS2_generate(object):
             for modifier in obj.modifiers:
                 modifier.show_viewport = False
 
-
             hemi_up = Vector((0.0, 0.0, 1.0))
             vert_dict = self.vertex_data_dict(obj, masklayer, dots=False)
-            vert_emission_dict = {vert_id: None for vert_id in vert_dict}
             face_colors = calculate_face_colors(obj)
+            original_emissive_vertex_colors = {}
+            original_emissive_vertex_face_count = [0 for _ in obj.data.vertices]
             dist = max(utils.get_object_bounding_box([obj, ], local=True)) * 5
             bias = 0.001
 
+            for face in obj.data.polygons:
+                color = face_colors[face.index]
+                if color.length > 0:
+                    for vert_idx in face.vertices:
+                        vert_color = original_emissive_vertex_colors.get(vert_idx, Vector((0.0, 0.0, 0.0, 0.0)))
+                        original_emissive_vertex_colors[vert_idx] = vert_color + color
+                        original_emissive_vertex_face_count[vert_idx] += 1
+
             # Pass 1: Propagate emission to face colors
-            face_hemisphere = self.ray_randomizer(10)
-            contribution = 0.1
+            hemisphere = self.ray_randomizer(raycount)
+            contribution = 1.0 / float(raycount)
             for i in range(10):
                 for j, face in enumerate(obj.data.polygons):
                     face_emission = Vector((0.0, 0.0, 0.0, 0.0))
@@ -1521,51 +1531,39 @@ class SXTOOLS2_generate(object):
                     face_center = (sum(vertices, Vector()) / len(vertices)) + (bias * face.normal)
                     rotQuat = hemi_up.rotation_difference(face.normal)
 
-                    for sample, incidence in face_hemisphere:
+                    for sample, _ in hemisphere:
                         sample_ray = rotQuat @ sample
-                        hit, hit_loc, hit_normal, hit_face_index = obj.ray_cast(face_center, sample_ray, distance=dist)
+                        hit, _, hit_normal, hit_face_index = obj.ray_cast(face_center, sample_ray, distance=dist)
                         if hit and (hit_normal.dot(sample_ray) < 0):
-                            denominator = max(1, (hit_loc - face_center).length ** 2)
-                            attenuation_factor = 1.0 / denominator
                             face_color = face_colors[hit_face_index].copy()
-                            addition = face_color * contribution * attenuation_factor * incidence
+                            addition = face_color * contribution
                             face_emission += addition
 
                     if face_emission.length > face_colors[j].length:
                         face_colors[j] = face_emission.copy()
 
-            # Pass 2: Sample emission colors to vertices
-            hemisphere = self.ray_randomizer(raycount)
-            contribution = 1.0 / float(raycount)
-            for vert_id in vert_dict:
-                emission_value = Vector((0.0, 0.0, 0.0, 0.0))
-                vertLoc, vertNormal, _, _, _ = vert_dict[vert_id]
+            # Pass 2: Average face colors to vertices
+            vertex_colors = [Vector((0, 0, 0, 0)) for _ in obj.data.vertices]
+            vertex_faces = [[] for _ in obj.data.vertices]
+            vert_emission_list = self.empty_list(obj, 4)
 
-                # Pass 0: Raycast for bias
-                hit, loc, normal, _ = obj.ray_cast(vertLoc, vertNormal, distance=dist)
-                if hit and (normal.dot(vertNormal) > 0):
-                    hit_dist = (loc - vertLoc).length
-                    if hit_dist < 0.5:
-                        bias += hit_dist
+            for face in obj.data.polygons:
+                color = face_colors[face.index]
+                if color.length > 0:
+                    for vert_idx in face.vertices:
+                        vertex_colors[vert_idx] += color
+                        vertex_faces[vert_idx].append(face.index)
 
-                # Local space emission for individual object
-                rotQuat = hemi_up.rotation_difference(vertNormal)
-                vertPos = vertLoc + (bias * vertNormal)
+            for vert_idx, color_sum in enumerate(vertex_colors):
+                if vert_idx in original_emissive_vertex_colors:
+                    vertex_colors[vert_idx] = original_emissive_vertex_colors[vert_idx] / original_emissive_vertex_face_count[vert_idx]
+                else:
+                    if len(vertex_faces[vert_idx]) > 0:
+                        vertex_colors[vert_idx] = color_sum / len(vertex_faces[vert_idx])
 
-                # for every object ray hit, accumulate hit samples
-                for sample, incidence in hemisphere:
-                    sample_ray = rotQuat @ sample
-                    hit, hit_loc, hit_normal, hit_face_index = obj.ray_cast(vertPos, sample_ray, distance=dist)
-                    if hit and (hit_normal.dot(sample_ray) < 0):
-                        denominator = max(1, (hit_loc - vertPos).length ** 2)
-                        attenuation_factor = 1.0 / denominator
-                        face_color = face_colors[hit_face_index]
-                        emission_value += face_color * contribution * attenuation_factor * incidence
+            for loop in obj.data.loops:
+                vert_emission_list[(0+loop.index*4):(4+loop.index*4)] = vertex_colors[loop.vertex_index]
 
-                emission_value = Vector((min(1.0, emission_value[0]), min(1.0, emission_value[1]), min(1.0, emission_value[2]), min(1.0, emission_value[3])))
-                vert_emission_dict[vert_id] = list(emission_value)
-
-            vert_emission_list = generate.vert_dict_to_loop_list(obj, vert_emission_dict, 4, 4)
             # vert_emission_list = face_colors_to_loop_list(obj, face_colors)
             result = self.mask_list(obj, vert_emission_list, masklayer)
 
