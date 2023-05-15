@@ -7534,8 +7534,9 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 elif scene.toolmode == 'CRV':
                     if scene.expandfill:
                         col_fill = box_fill.column(align=True)
-                        col_fill.prop(scene, 'normalizeconvex', text='Normalize Convex')
-                        col_fill.prop(scene, 'normalizeconcave', text='Normalize Concave')
+                        row_normalize = col_fill.row(align=True)
+                        row_normalize.prop(scene, 'normalizeconvex', text='Normalize Convex', toggle=True)
+                        row_normalize.prop(scene, 'normalizeconcave', text='Normalize Concave', toggle=True)
                         col_fill.prop(scene, 'toolinvert', text='Invert')
                         row_tiling = col_fill.row(align=False)
                         row_tiling.prop(sx2, 'tiling', text='Seamless Tiling')
