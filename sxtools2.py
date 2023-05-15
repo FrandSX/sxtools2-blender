@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 14, 2),
+    'version': (1, 14, 3),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -9907,7 +9907,7 @@ class SXTOOLS2_OT_catalogue_add(bpy.types.Operator):
 
         asset_category = objs[0].sx2.category.lower()
         asset_tags = self.assetTags.split(' ')
-        groups = utils.find_groups(exportonly=True)
+        groups = utils.find_groups(exportready=True)
         cost = modifiers.calculate_triangles(objs)
 
         revision = 1
