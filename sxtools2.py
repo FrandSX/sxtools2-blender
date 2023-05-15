@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 14, 3),
+    'version': (1, 14, 5),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -9940,7 +9940,7 @@ class SXTOOLS2_OT_catalogue_add(bpy.types.Operator):
 
         # Save entry with a platform-independent path separator
         asset_dict['tags'] = asset_tags
-        asset_dict['objects'] = groups
+        asset_dict['objects'] = [group.name for group in groups]
         asset_dict['cost'] = cost
         asset_dict['revision'] = revision
 
