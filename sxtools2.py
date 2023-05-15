@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 14, 5),
+    'version': (1, 14, 6),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -489,13 +489,14 @@ class SXTOOLS2_utils(object):
 
     # SX2Materials are generated according to differentiators combined in per-object mat_ids
     def get_mat_id(self, obj):
+        sel_layer = obj.sx2.selectedlayer
         mat_opaque = True if (self.find_color_layers(obj, 0) is not None) and (self.find_color_layers(obj, 0).opacity == 1.0) else False
         mat_culling = obj.sx2.backfaceculling
         layer_keys = tuple(obj.sx2layers.keys())
         layer_vis = tuple([layer.visibility for layer in obj.sx2layers])
         layer_paletted = tuple([layer.paletted for layer in obj.sx2layers])
         layer_palette_ids = tuple([layer.palette_index for layer in obj.sx2layers])
-        return (obj.sx2.shadingmode, mat_opaque, mat_culling, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
+        return (obj.sx2.shadingmode, sel_layer, mat_opaque, mat_culling, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
 
 
     def find_layer_by_stack_index(self, obj, index):
@@ -10559,7 +10560,5 @@ if __name__ == '__main__':
 # TODO:
 # BUG: Grouping of objs with armatures
 # BUG: Check decimation angle changes with hull and emission mesh generation
-# BUG: Multi-selection in debug shading mode does not always update properly
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
-# Check BVH raycast normals (worldspace?)
