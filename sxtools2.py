@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 13, 6),
+    'version': (1, 14, 0),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1139,11 +1139,12 @@ class SXTOOLS2_generate(object):
 
 
         scene = bpy.context.scene.sx2
-        normalize = scene.curvaturenormalize
+        normalizeconvex = scene.normalizeconvex
+        normalizeconcave = scene.normalizeconcave
         invert = scene.toolinvert
 
         # Generate curvature dictionary of all objects in a multi-selection
-        if normalize:
+        if normalizeconvex or normalizeconcave:
             norm_obj_curvature_dict = {norm_obj: generate_curvature_dict(norm_obj) for norm_obj in norm_objs}
             min_curv = min(min(curv_dict.values()) for curv_dict in norm_obj_curvature_dict.values())
             max_curv = max(max(curv_dict.values()) for curv_dict in norm_obj_curvature_dict.values())
@@ -1152,12 +1153,12 @@ class SXTOOLS2_generate(object):
             # Normalize convex and concave separately
             # to maximize artist ability to crease
             for vert, vtxCurvature in vert_curv_dict.items():
-                if vtxCurvature < 0.0:
+                if (vtxCurvature < 0.0) and normalizeconcave:
                     vert_curv_dict[vert] = (vtxCurvature / float(min_curv)) * -0.5 + 0.5
-                elif vtxCurvature == 0.0:
-                    vert_curv_dict[vert] = 0.5
-                else:
+                elif (vtxCurvature > 0.0) and normalizeconvex:
                     vert_curv_dict[vert] = (vtxCurvature / float(max_curv)) * 0.5 + 0.5
+                else:
+                    vert_curv_dict[vert] = (vtxCurvature + 0.5)
         else:
             vert_curv_dict = generate_curvature_dict(obj)
             for vert, vtxCurvature in vert_curv_dict.items():
@@ -4110,12 +4111,13 @@ class SXTOOLS2_magic(object):
             layers.set_layer(obj, colors, layer)
     
 
-    def apply_curvature_overlay(self, objs, opacity=1.0, normalize=True):
+    def apply_curvature_overlay(self, objs, opacity=1.0, convex=True, concave=True):
         scene = bpy.context.scene.sx2
         layer = objs[0].sx2layers['Overlay']
         scene.toolmode = 'CRV'
         scene.toolopacity = 1.0
-        scene.curvaturenormalize = normalize
+        scene.normalizeconvex = convex
+        scene.normalizeconcave = concave
 
         tools.apply_tool(objs, layer)
 
@@ -4209,7 +4211,8 @@ class SXTOOLS2_magic(object):
             colors1 = generate.noise_list(obj, 0.01, True)
             colors = tools.blend_values(colors1, colors, 'OVR', 1.0)
             # Combine roughness base mask with custom curvature gradient
-            scene.curvaturenormalize = True
+            scene.normalizeconvex = True
+            scene.normalizeconcave = True
             scene.ramplist = 'CURVATUREROUGHNESS'
             colors1 = generate.curvature_list(obj, objs)
             values = layers.get_luminances(obj, colors=colors1)
@@ -4265,7 +4268,8 @@ class SXTOOLS2_magic(object):
             colors1 = generate.noise_list(obj, 0.01, True)
             colors = tools.blend_values(colors1, colors, 'OVR', 1.0)
             # Combine roughness base mask with custom curvature gradient
-            scene.curvaturenormalize = True
+            scene.normalizeconvex = True
+            scene.normalizeconcave = False
             scene.ramplist = 'CURVATUREROUGHNESS'
             colors1 = generate.curvature_list(obj, objs)
             values = layers.get_luminances(obj, colors=colors1)
@@ -4320,7 +4324,8 @@ class SXTOOLS2_magic(object):
         self.apply_occlusion(objs, masklayername=utils.find_color_layers(obj, 6).name, blend=0.0, groundplane=False, distance=0.5)
 
         # Apply curvature with luma remapping to overlay, clear windows
-        scene.curvaturenormalize = False
+        scene.normalizeconvex = False
+        scene.normalizeconcave = False
         scene.ramplist = 'WEARANDTEAR'
         for obj in objs:
             colors = generate.curvature_list(obj, objs)
@@ -4349,7 +4354,8 @@ class SXTOOLS2_magic(object):
             colors1 = generate.color_list(obj, palette[2], utils.find_color_layers(obj, 6))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             # Combine roughness base mask with custom curvature gradient
-            scene.curvaturenormalize = False
+            scene.normalizeconvex = False
+            scene.normalizeconcave = False
             scene.ramplist = 'CURVATUREROUGHNESS'
             colors1 = generate.curvature_list(obj, objs)
             values = layers.get_luminances(obj, colors=colors1)
@@ -4403,7 +4409,8 @@ class SXTOOLS2_magic(object):
         self.apply_occlusion(objs)
 
         # Apply overlay
-        scene.curvaturenormalize = True
+        scene.normalizeconvex = True
+        scene.normalizeconcave = False
         for obj in objs:
             layer = obj.sx2layers['Overlay']
             colors = generate.curvature_list(obj, objs)
@@ -5848,8 +5855,10 @@ def update_curvature_selection(self, context):
         limitvalue = context.scene.sx2.curvaturelimit
         tolerance = context.scene.sx2.curvaturetolerance
         scene = context.scene.sx2
-        normalize = scene.curvaturenormalize
-        scene.curvaturenormalize = True
+        normalize_convex = scene.normalizeconvex
+        normalize_concave = scene.normalizeconcave
+        scene.normalizeconvex = True
+        scene.normalizeconcave = True
         context.tool_settings.mesh_select_mode = (True, False, False)
 
         utils.clear_component_selection(objs)
@@ -5863,7 +5872,8 @@ def update_curvature_selection(self, context):
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
         context.tool_settings.mesh_select_mode = sel_mode
-        scene.curvaturenormalize = normalize
+        scene.normalizeconvex = normalize_convex
+        scene.normalizeconcave = normalize_concave
         sxglobals.curvature_update = False
 
 
@@ -6864,9 +6874,14 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         max=360,
         default=0)
 
-    curvaturenormalize: bpy.props.BoolProperty(
+    normalizeconvex: bpy.props.BoolProperty(
         name='Normalize Curvature',
-        description='Normalize convex and concave ranges\nfor improved artistic control',
+        description='Normalize convex values',
+        default=False)
+
+    normalizeconcave: bpy.props.BoolProperty(
+        name='Normalize Curvature',
+        description='Normalize concave values',
         default=False)
 
     curvaturelimit: bpy.props.FloatProperty(
@@ -7519,7 +7534,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 elif scene.toolmode == 'CRV':
                     if scene.expandfill:
                         col_fill = box_fill.column(align=True)
-                        col_fill.prop(scene, 'curvaturenormalize', text='Normalize')
+                        col_fill.prop(scene, 'normalizeconvex', text='Normalize Convex')
+                        col_fill.prop(scene, 'normalizeconcave', text='Normalize Concave')
                         col_fill.prop(scene, 'toolinvert', text='Invert')
                         row_tiling = col_fill.row(align=False)
                         row_tiling.prop(sx2, 'tiling', text='Seamless Tiling')
