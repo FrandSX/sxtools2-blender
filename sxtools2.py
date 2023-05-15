@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 14, 0),
+    'version': (1, 14, 1),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4111,7 +4111,7 @@ class SXTOOLS2_magic(object):
             layers.set_layer(obj, colors, layer)
     
 
-    def apply_curvature_overlay(self, objs, opacity=1.0, convex=True, concave=True):
+    def apply_curvature_overlay(self, objs, opacity=1.0, convex=True, concave=True, noise=0.0):
         scene = bpy.context.scene.sx2
         layer = objs[0].sx2layers['Overlay']
         scene.toolmode = 'CRV'
@@ -4121,12 +4121,14 @@ class SXTOOLS2_magic(object):
 
         tools.apply_tool(objs, layer)
 
-        scene.noisemono = False
-        scene.toolmode = 'NSE'
-        scene.toolopacity = 0.01
-        scene.toolblend = 'MUL'
+        if noise > 0.0:
+            scene.noisemono = False
+            scene.toolmode = 'NSE'
+            scene.toolopacity = noise
+            scene.toolblend = 'MUL'
 
-        tools.apply_tool(objs, layer)
+            tools.apply_tool(objs, layer)
+
         for obj in objs:
             obj.sx2layers['Overlay'].blend_mode = 'OVR'
             obj.sx2layers['Overlay'].opacity = opacity
@@ -4143,7 +4145,7 @@ class SXTOOLS2_magic(object):
 
         self.apply_palette_overrides(objs, clear=True)
         self.apply_occlusion(objs)
-        self.apply_curvature_overlay(objs)
+        self.apply_curvature_overlay(objs, opacity=1.0, convex=True, concave=True, noise=0.01)
 
         # Emissives are smooth
         tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Emission'], color=(0.0, 0.0, 0.0, 1.0))
@@ -4191,7 +4193,7 @@ class SXTOOLS2_magic(object):
 
         self.apply_palette_overrides(objs, clear=True)
         self.apply_occlusion(objs, masklayername='Emission')
-        self.apply_curvature_overlay(objs)
+        self.apply_curvature_overlay(objs, opacity=1.0, convex=True, concave=True, noise=0.01)
 
         material = 'Iron'
         palette = [
@@ -4248,7 +4250,7 @@ class SXTOOLS2_magic(object):
 
         self.apply_palette_overrides(objs, clear=True)
         self.apply_occlusion(objs, masklayername='Emission')
-        self.apply_curvature_overlay(objs, opacity=0.6)
+        self.apply_curvature_overlay(objs, opacity=0.6, convex=True, concave=False, noise=0.01)
 
         material = 'Iron'
         palette = [
@@ -4395,8 +4397,6 @@ class SXTOOLS2_magic(object):
                 emission = generate.emission_list(obj, 200)
                 layers.set_layer(obj, emission, obj.sx2layers['Emission'])
 
-
-
         for obj in objs_windows:
             obj.hide_viewport = False
 
@@ -4407,19 +4407,7 @@ class SXTOOLS2_magic(object):
 
         self.apply_palette_overrides(objs, clear=True)
         self.apply_occlusion(objs)
-
-        # Apply overlay
-        scene.normalizeconvex = True
-        scene.normalizeconcave = False
-        for obj in objs:
-            layer = obj.sx2layers['Overlay']
-            colors = generate.curvature_list(obj, objs)
-            # Noise for variance
-            colors1 = generate.noise_list(obj, 0.03, False)
-            colors = tools.blend_values(colors1, colors, 'OVR', 1.0)
-            layers.set_layer(obj, colors, layer)
-            obj.sx2layers['Overlay'].blend_mode = 'OVR'
-            obj.sx2layers['Overlay'].opacity = 1.0
+        self.apply_curvature_overlay(objs, opacity=1.0, convex=True, concave=False, noise=0.03)
 
         # Apply thickness to transmission
         layers.clear_layers(objs, obj.sx2layers['Transmission'])
