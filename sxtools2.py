@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 14, 1),
+    'version': (1, 14, 2),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4412,12 +4412,13 @@ class SXTOOLS2_magic(object):
         # Apply thickness to transmission
         layers.clear_layers(objs, obj.sx2layers['Transmission'])
         scene.ramplist = 'FOLIAGERAMP'
-        color = (1.0, 1.0, 1.0, 1.0)
+        color = (0.0, 0.0, 0.0, 1.0)
 
         for obj in objs:
-            colors = generate.thickness_list(obj, 500, masklayer=None)
+            colors = generate.thickness_list(obj, 250, masklayer=None)
             values = layers.get_luminances(obj, colors=colors)
             colors = generate.luminance_remap_list(obj, values=values)
+            # Mask trunks out
             colors1 = generate.color_list(obj, color=color, masklayer=utils.find_color_layers(obj, 3))
             colors2 = generate.color_list(obj, color=color, masklayer=utils.find_color_layers(obj, 4))
             colors1 = tools.blend_values(colors2, colors1, 'ALPHA', 1.0)
