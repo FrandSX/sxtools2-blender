@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 14, 7),
+    'version': (1, 14, 8),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1833,10 +1833,7 @@ class SXTOOLS2_generate(object):
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
                         mask[loop_idx] = float(utils.color_compare(colors[(0+loop_idx*4):(4+loop_idx*4)], selected_color, 0.01))
 
-            if 1.0 not in mask:
-                empty = True
-            else:
-                empty = False
+            empty = 1.0 not in mask
 
         return mask, empty
 
@@ -2577,10 +2574,7 @@ class SXTOOLS2_modifiers(object):
                         if sel:
                             weight_values[i] = weight
                             if setmode == 'CRS':
-                                if weight == 1.0:
-                                    sharp_values[i] = True
-                                else:
-                                    sharp_values[i] = False
+                                sharp_values[i] = (weight == 1.0)
 
                     mesh.edges.foreach_set(mode_dict[setmode], weight_values)
                     mesh.edges.foreach_set('use_edge_sharp', sharp_values)
@@ -2611,11 +2605,7 @@ class SXTOOLS2_modifiers(object):
 
 
     def select_set(self, objs, setvalue, setmode, clearsel=False):
-        modeDict = {
-            'CRS': 'SubSurfCrease',
-            'BEV': 'BevelWeight'}
         weight = setvalue
-
         bpy.context.view_layer.objects.active = objs[0]
 
         # if bpy.context.tool_settings.mesh_select_mode[0]:
@@ -7398,8 +7388,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         row_hue.enabled = False
                         row_sat.enabled = False
 
-                    if obj.sx2.shadingmode == 'ALPHA':
-                        col_hsl.enabled = False
+                    col_hsl.enabled = not (obj.sx2.shadingmode == 'ALPHA')
 
                 row_palette = layout.row(align=True)
                 for i in range(8):
@@ -7947,13 +7936,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
                                     col_cataloguebuttons.operator('sx2.catalogue_add', text='Add to Catalogue', icon='ADD')
                                     col_cataloguebuttons.operator('sx2.catalogue_remove', text='Remove from Catalogue', icon='REMOVE')
-                                    export_ready_groups = False
-                                    for group in groups:
-                                        if group.sx2.exportready:
-                                            export_ready_groups = True
-
-                                    if not export_ready_groups:
-                                        col_cataloguebuttons.enabled = False
+                                    col_cataloguebuttons.enabled = any(group.sx2.exportready for group in groups)
 
                             col2_export = box_export.column(align=True)
                             col2_export.label(text='Export Folder:')
@@ -8760,10 +8743,7 @@ class SXTOOLS2_OT_applytool(bpy.types.Operator):
             if objs[0].mode == 'EDIT':
                 context.scene.sx2.rampalpha = True
 
-            if objs[0].sx2.shadingmode == 'ALPHA':
-                apply_alpha = True
-            else:
-                apply_alpha = False
+            apply_alpha = (objs[0].sx2.shadingmode == 'ALPHA')
 
             if context.scene.sx2.toolmode == 'COL':
                 tools.apply_tool(objs, layer, color=fillcolor, apply_to_alpha=apply_alpha)
@@ -9293,11 +9273,7 @@ class SXTOOLS2_OT_selmask(bpy.types.Operator):
         objs = mesh_selection_validator(self, context)
         if objs:
             context.view_layer.objects.active = objs[0]
-
-            if event.shift:
-                inverse = True
-            else:
-                inverse = False
+            inverse = event.shift
 
             if event.ctrl:
                 color = convert.srgb_to_linear(context.scene.sx2.fillcolor)
