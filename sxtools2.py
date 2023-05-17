@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 14, 6),
+    'version': (1, 14, 7),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -779,7 +779,7 @@ class SXTOOLS2_utils(object):
 
 
     def get_ramp(self):
-        ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'].color_ramp
+        ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['Color Ramp'].color_ramp
         ramp_dict = {
             'mode': ramp.color_mode,
             'interpolation': ramp.interpolation,
@@ -1643,7 +1643,7 @@ class SXTOOLS2_generate(object):
 
 
     def ramp_list(self, obj, objs, rampmode, masklayer=None, mergebbx=True):
-        ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp']
+        ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['Color Ramp']
 
         # For OBJECT mode selections
         if sxglobals.mode == 'OBJECT':
@@ -1684,7 +1684,8 @@ class SXTOOLS2_generate(object):
 
 
     def luminance_remap_list(self, obj, layer=None, masklayer=None, values=None):
-        ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp']
+        ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['Color Ramp']
+
         if values is None:
             values = layers.get_luminances(obj, layer, as_rgba=False)
         colors = generate.empty_list(obj, 4)
@@ -4852,8 +4853,10 @@ class SXTOOLS2_setup(object):
         sxmaterial.node_tree.nodes['Material Output'].location = (-200, 0)
 
         # Gradient tool color ramp
-        sxmaterial.node_tree.nodes.new(type='ShaderNodeValToRGB')
-        sxmaterial.node_tree.nodes['ColorRamp'].location = (-1000, 0)
+        ramp = sxmaterial.node_tree.nodes.new(type='ShaderNodeValToRGB')
+        ramp.name = 'Color Ramp'
+        ramp.label = 'Color Ramp'
+        ramp.location = (-1000, 0)
 
 
     def create_sx2material(self, objs):
@@ -5786,7 +5789,7 @@ def load_ramp(self, context, ramp_dict=None):
         rampName = sxglobals.preset_lookup[bpy.context.scene.sx2.ramplist]
         ramp_dict = sxglobals.ramp_dict[rampName]
 
-    ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'].color_ramp
+    ramp = bpy.data.materials['SXToolMaterial'].node_tree.nodes['Color Ramp'].color_ramp
     ramp.color_mode = ramp_dict['mode']
     ramp.interpolation = ramp_dict['interpolation']
     ramp.hue_interpolation = ramp_dict['hue_interpolation']
@@ -7561,7 +7564,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         row3_fill.prop(scene, 'ramplist', text='')
                         row3_fill.operator('sx2.addramp', text='', icon='ADD')
                         row3_fill.operator('sx2.delramp', text='', icon='REMOVE')
-                        box_fill.template_color_ramp(bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'], 'color_ramp', expand=True)
+                        box_fill.template_color_ramp(bpy.data.materials['SXToolMaterial'].node_tree.nodes['Color Ramp'], 'color_ramp', expand=True)
                         if mode == 'OBJECT':
                             box_fill.prop(scene, 'rampbbox', text='Use Combined Bounding Box')
 
@@ -7572,7 +7575,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         row3_fill.prop(scene, 'ramplist', text='')
                         row3_fill.operator('sx2.addramp', text='', icon='ADD')
                         row3_fill.operator('sx2.delramp', text='', icon='REMOVE')
-                        box_fill.template_color_ramp(bpy.data.materials['SXToolMaterial'].node_tree.nodes['ColorRamp'], 'color_ramp', expand=True)
+                        box_fill.template_color_ramp(bpy.data.materials['SXToolMaterial'].node_tree.nodes['Color Ramp'], 'color_ramp', expand=True)
 
 
                 # Master Palettes -----------------------------------------------
