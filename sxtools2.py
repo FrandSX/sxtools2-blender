@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 14, 8),
+    'version': (1, 14, 9),
     'blender': (3, 5, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4147,7 +4147,7 @@ class SXTOOLS2_magic(object):
         scene = bpy.context.scene.sx2
         self.apply_palette_overrides(objs, clear=False)
         self.apply_occlusion(objs, blend=0.0, groundplane=False, distance=50.0)
-        self.apply_curvature_overlay(objs, normalize=False)
+        self.apply_curvature_overlay(objs, convex=False, concave=False)
 
         # Apply Gradient1 to roughness and metallic
         for obj in objs:
