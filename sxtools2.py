@@ -1,8 +1,8 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 14, 9),
-    'blender': (3, 5, 0),
+    'version': (1, 15, 0),
+    'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
     'doc_url': 'https://secretexit.notion.site/SX-Tools-2-for-Blender-Documentation-1681c68851fb4d018d1f9ec762e5aec9',
@@ -296,30 +296,50 @@ class SXTOOLS2_files(object):
                     for collider in collider_list:
                         collider.select_set(True)
 
-                export_path = path + group.name + '.' + 'fbx'
-                export_settings = ['FBX_SCALE_UNITS', False, False, False, 'Z', '-Y', '-Y', '-X', export_dict[prefs.exportspace]]
+                if (prefs.exportformat == 'FBX'):
+                    export_path = path + group.name + '.' + 'fbx'
+                    export_settings = ['FBX_SCALE_UNITS', False, False, False, 'Z', '-Y', '-Y', '-X', export_dict[prefs.exportspace]]
 
-                with redirect_stdout(open(os.devnull, 'w')):
-                    bpy.ops.export_scene.fbx(
-                        filepath=export_path,
-                        apply_scale_options=export_settings[0],
-                        use_selection=True,
-                        apply_unit_scale=export_settings[1],
-                        use_space_transform=export_settings[2],
-                        bake_space_transform=export_settings[3],
-                        use_mesh_modifiers=True,
-                        prioritize_active_color=True,
-                        axis_up=export_settings[4],
-                        axis_forward=export_settings[5],
-                        use_active_collection=False,
-                        add_leaf_bones=False,
-                        primary_bone_axis=export_settings[6],
-                        secondary_bone_axis=export_settings[7],
-                        object_types={'ARMATURE', 'EMPTY', 'MESH'},
-                        use_custom_props=True,
-                        use_metadata=False,
-                        colors_type=export_settings[8],
-                        bake_anim=False)
+                    with redirect_stdout(open(os.devnull, 'w')):
+                        bpy.ops.export_scene.fbx(
+                            filepath=export_path,
+                            apply_scale_options=export_settings[0],
+                            use_selection=True,
+                            apply_unit_scale=export_settings[1],
+                            use_space_transform=export_settings[2],
+                            bake_space_transform=export_settings[3],
+                            use_mesh_modifiers=True,
+                            prioritize_active_color=True,
+                            axis_up=export_settings[4],
+                            axis_forward=export_settings[5],
+                            use_active_collection=False,
+                            add_leaf_bones=False,
+                            primary_bone_axis=export_settings[6],
+                            secondary_bone_axis=export_settings[7],
+                            object_types={'ARMATURE', 'EMPTY', 'MESH'},
+                            use_custom_props=True,
+                            use_metadata=False,
+                            colors_type=export_settings[8],
+                            bake_anim=False)
+
+                elif (prefs.exportformat == 'GLTF'):
+                    export_path = path + group.name + '.' + 'glb'
+                    with redirect_stdout(open(os.devnull, 'w')):
+                        bpy.ops.export_scene.gltf(
+                            filepath=export_path,
+                            check_existing=False,
+                            export_format='GLB',
+                            export_texcoords=True,
+                            export_normals=True,
+                            export_materials='NONE',
+                            export_colors=True,
+                            export_cameras=False,
+                            use_selection=True,
+                            export_extras=True,
+                            export_yup=True,
+                            export_apply=True,
+                            export_animations=False,
+                            export_lights=False)
 
                 groupNames.append(group.name)
                 group.location = org_loc
@@ -8038,6 +8058,14 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
         description='Enable export module',
         default=False)
 
+    exportformat: bpy.props.EnumProperty(
+        name='Export Format',
+        description='Select the export file format',
+        items=[
+            ('FBX', 'FBX', ''),
+            ('GLTF', 'glTF', '')],
+            default='FBX')
+
     exportspace: bpy.props.EnumProperty(
         name='Color Space for Exports',
         description='Color space for exported vertex colors',
@@ -8064,7 +8092,7 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
 
     removelods: bpy.props.BoolProperty(
         name='Remove LOD Meshes After Export',
-        description='Remove LOD meshes from the scene after exporting to FBX',
+        description='Remove LOD meshes from the scene after exporting',
         default=True)
 
     lodoffset: bpy.props.FloatProperty(
@@ -8107,10 +8135,13 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
         layout_split_datatype.label(text='Layer Color Data Type:')
         layout_split_datatype.prop(self, 'layerdatatype', text='')
         layout_split_colorspace = layout.split()
-        layout_split_colorspace.label(text='FBX Export Color Space:')
+        layout_split_colorspace.label(text='Export Color Space:')
         layout_split_colorspace.prop(self, 'exportspace', text='')
+        layout_split_format = layout.split()
+        layout_split_format.label(text='Export File Format:')
+        layout_split_format.prop(self, 'exportformat', text='')
         layout_split_roughness = layout.split()
-        layout_split_roughness.label(text='Export roughness as:')
+        layout_split_roughness.label(text='Export Roughness as:')
         layout_split_roughness.prop(self, 'exportroughness', text='')
         layout_split5 = layout.split()
         layout_split5.label(text='LOD Mesh Preview Z-Offset')
