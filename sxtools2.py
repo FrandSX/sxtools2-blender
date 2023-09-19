@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 15, 0),
+    'version': (1, 15, 10),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -329,6 +329,7 @@ class SXTOOLS2_files(object):
                             filepath=export_path,
                             check_existing=False,
                             export_format='GLB',
+                            export_apply=True,
                             export_texcoords=True,
                             export_normals=True,
                             export_materials='NONE',
@@ -337,17 +338,17 @@ class SXTOOLS2_files(object):
                             use_selection=True,
                             export_extras=True,
                             export_yup=True,
-                            export_apply=True,
                             export_animations=False,
                             export_lights=False)
 
-                groupNames.append(group.name)
-                group.location = org_loc
+                if not bpy.app.background:
+                    groupNames.append(group.name)
+                    group.location = org_loc
 
-                modifiers.remove_modifiers(obj_list)
-                modifiers.add_modifiers(obj_list)
+                    modifiers.remove_modifiers(obj_list)
+                    modifiers.add_modifiers(obj_list)
 
-                bpy.context.view_layer.objects.active = group
+                    bpy.context.view_layer.objects.active = group
 
         if empty:
             message_box('No objects exported!')
@@ -3566,7 +3567,7 @@ class SXTOOLS2_export(object):
     def bytes_to_floats(self, objs):
         active = bpy.context.view_layer.objects.active
         for obj in objs:
-            if obj.sx2layers:
+            if (obj.sx2layers) and (obj.type == 'MESH'):
                 bpy.context.view_layer.objects.active = obj
                 byte_colors = []
                 for color_attribute in obj.data.color_attributes:
@@ -3580,7 +3581,7 @@ class SXTOOLS2_export(object):
                             obj.data.color_attributes.remove(obj.data.color_attributes[byte_color])
                         else:
                             obj.data.color_attributes.active_color = obj.data.color_attributes[byte_color]
-                            bpy.ops.geometry.attribute_convert(domain='CORNER', data_type='FLOAT_COLOR')
+                            bpy.ops.geometry.color_attribute_convert(domain='CORNER', data_type='FLOAT_COLOR')
 
         bpy.context.view_layer.objects.active = active
 
@@ -3835,7 +3836,10 @@ class SXTOOLS2_magic(object):
             if sel.type != 'MESH':
                 sel.select_set(False)
 
-        # Create modifiers
+        # Prepare modifiers
+        modifiers.remove_modifiers(objs)
+        for obj in objs:
+            obj.sx2.modifiervisibility = True
         modifiers.add_modifiers(objs)
 
         # Create high-poly bake meshes
@@ -3916,7 +3920,6 @@ class SXTOOLS2_magic(object):
         # Begin category-specific compositing operations
         # Hide modifiers for performance
         for obj in objs:
-            obj.sx2.modifiervisibility = False
             if obj.sx2.category == '':
                 obj.sx2.category == 'DEFAULT'
 
@@ -4064,8 +4067,8 @@ class SXTOOLS2_magic(object):
         scene.dirCone = org_dircone
 
         # Enable modifier stack for LODs
-        for obj in objs:
-            obj.sx2.modifiervisibility = True
+        # for obj in objs:
+        #     obj.sx2.modifiervisibility = True
 
         now = time.perf_counter()
         print(f'SX Tools: Modifier stack duration: {now-then} seconds')
@@ -5883,11 +5886,13 @@ def update_curvature_selection(self, context):
 def update_obj_props(self, context, prop):
     if not sxglobals.refresh_in_progress:
         sxglobals.refresh_in_progress = True
+
         objs = mesh_selection_validator(self, context)
-        value = getattr(objs[0].sx2, prop)
-        for obj in objs:
-            if getattr(obj.sx2, prop) != value:
-                setattr(obj.sx2, prop, value)
+        if objs:
+            value = getattr(objs[0].sx2, prop)
+            for obj in objs:
+                if getattr(obj.sx2, prop) != value:
+                    setattr(obj.sx2, prop, value)
 
         mat_upd_props = ['shadingmode', 'backfaceculling']
         if prop in mat_upd_props:
@@ -9581,7 +9586,7 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
 
             files.export_files(groups)
 
-            if prefs.removelods:
+            if (prefs.removelods) and (not bpy.app.background):
                 export.remove_exports()
                 setup.update_sx2material(context)
         return {'FINISHED'}
