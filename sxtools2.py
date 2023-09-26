@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 15, 10),
+    'version': (1, 15, 11),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -339,6 +339,7 @@ class SXTOOLS2_files(object):
                             export_extras=True,
                             export_yup=True,
                             export_animations=False,
+                            export_rest_position_armature=True,
                             export_lights=False)
 
                 if not bpy.app.background:
