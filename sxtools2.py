@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 16, 0),
+    'version': (1, 16, 1),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5900,7 +5900,7 @@ def update_obj_props(self, context, prop):
                 if getattr(obj.sx2, prop) != value:
                     setattr(obj.sx2, prop, value)
 
-        mat_upd_props = ['shadingmode', 'backfaceculling']
+        mat_upd_props = ['shadingmode', 'backfaceculling', 'mat_specular', 'mat_anisotropic', 'mat_clearcoat']
         if prop in mat_upd_props:
             setup.update_sx2material(context)
             refresh_swatches(self, context)
