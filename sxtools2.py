@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 16, 1),
+    'version': (1, 16, 2),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -253,6 +253,9 @@ class SXTOOLS2_files(object):
                     obj_list.append(sel)
                     sel['staticVertexColors'] = sel.sx2.staticvertexcolors
                     sel['transparent'] = '0' if bg_layer.opacity == 1.0 else '1'
+                    sel['specular'] = sel.sx2.mat_specular
+                    sel['anisotropic'] = sel.sx2.mat_anisotropic
+                    sel['clearcoat'] = sel.sx2.mat_clearcoat
                     sel['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
                     sel['colorSpace'] = export_dict[prefs.exportspace]
 
@@ -375,6 +378,9 @@ class SXTOOLS2_files(object):
 
             bg_layer = utils.find_color_layers(obj, 0)
             obj['transparent'] = '0' if bg_layer.opacity == 1.0 else '1'
+            obj['specular'] = obj.sx2.mat_specular
+            obj['anisotropic'] = obj.sx2.mat_anisotropic
+            obj['clearcoat'] = obj.sx2.mat_clearcoat
             obj['staticVertexColors'] = obj.sx2.staticvertexcolors
             obj['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
             obj['colorSpace'] = export_dict[prefs.exportspace]
