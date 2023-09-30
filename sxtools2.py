@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 15, 11),
+    'version': (1, 16, 0),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -514,11 +514,14 @@ class SXTOOLS2_utils(object):
         sel_layer = obj.sx2.selectedlayer
         mat_opaque = True if (self.find_color_layers(obj, 0) is not None) and (self.find_color_layers(obj, 0).opacity == 1.0) else False
         mat_culling = obj.sx2.backfaceculling
+        mat_specular = obj.sx2.mat_specular
+        mat_anisotropic = obj.sx2.mat_anisotropic
+        mat_clearcoat = obj.sx2.mat_clearcoat
         layer_keys = tuple(obj.sx2layers.keys())
         layer_vis = tuple([layer.visibility for layer in obj.sx2layers])
         layer_paletted = tuple([layer.paletted for layer in obj.sx2layers])
         layer_palette_ids = tuple([layer.palette_index for layer in obj.sx2layers])
-        return (obj.sx2.shadingmode, sel_layer, mat_opaque, mat_culling, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
+        return (obj.sx2.shadingmode, sel_layer, mat_opaque, mat_culling, mat_specular, mat_anisotropic, mat_clearcoat, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
 
 
     def find_layer_by_stack_index(self, obj, index):
@@ -4892,7 +4895,9 @@ class SXTOOLS2_setup(object):
                 sxmaterial.node_tree.nodes['Material Output'].location = (1300, 0)
 
                 if obj.sx2.shadingmode == 'FULL':
-                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = 0.5
+                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = obj.sx2.mat_specular
+                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Anisotropic'].default_value = obj.sx2.mat_anisotropic
+                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Clearcoat'].default_value = obj.sx2.mat_clearcoat
                     prev_color = None
                     prev_alpha = None
                     rgba_mats = ['SSS', 'EMI']
@@ -6438,6 +6443,36 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         default=0.0,
         update=lambda self, context: update_obj_props(self, context, 'roughness4'))
 
+    materialoverride: bpy.props.BoolProperty(
+        name='Material Property Override',
+        description='Apply custom material properties\nNOTE: These are only exported as custom properties!',
+        default=False,
+        update=lambda self, context: update_obj_props(self, context, 'materialoverride'))
+
+    mat_specular: bpy.props.FloatProperty(
+        name='Material Specular',
+        min=0.0,
+        max=1.0,
+        precision=2,
+        default=0.5,
+        update=lambda self, context: update_obj_props(self, context, 'mat_specular'))
+
+    mat_anisotropic: bpy.props.FloatProperty(
+        name='Material Anisotropic',
+        min=0.0,
+        max=1.0,
+        precision=2,
+        default=0.0,
+        update=lambda self, context: update_obj_props(self, context, 'mat_anisotropic'))
+
+    mat_clearcoat: bpy.props.FloatProperty(
+        name='Material Clearcoat',
+        min=0.0,
+        max=1.0,
+        precision=2,
+        default=0.0,
+        update=lambda self, context: update_obj_props(self, context, 'mat_clearcoat'))
+
     lodmeshes: bpy.props.BoolProperty(
         name='Generate LOD Meshes',
         description='NOTE: Subdivision and Bevel settings affect the end result',
@@ -7822,6 +7857,19 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 row_override.prop(sx2, 'roughness2', text='Palette Color 2 Roughness')
                                 row_override.prop(sx2, 'roughness3', text='Palette Color 3 Roughness')
                                 row_override.prop(sx2, 'roughness4', text='Palette Color 4 Roughness')
+
+                            col_export.separator()
+                            col_export.prop(sx2, 'materialoverride', text='Override Material Properties', toggle=True)
+                            if obj.sx2.materialoverride:
+                                row_specular = col_export.row(align=True)
+                                row_specular.label(text='Specular:')
+                                row_specular.prop(sx2, 'mat_specular', text='')
+                                row_anisotropic = col_export.row(align=True)
+                                row_anisotropic.label(text='Anisotropic:')
+                                row_anisotropic.prop(sx2, 'mat_anisotropic', text='')
+                                row_clearcoat = col_export.row(align=True)
+                                row_clearcoat.label(text='Clearcoat:')
+                                row_clearcoat.prop(sx2, 'mat_clearcoat', text='')
 
                             col_export.separator()
                             row_static = col_export.row(align=True)
