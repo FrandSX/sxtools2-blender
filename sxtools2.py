@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 16, 3),
+    'version': (1, 16, 4),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3602,7 +3602,11 @@ class SXTOOLS2_export(object):
 
         for obj in objs:
             if obj.sx2.category != 'DEFAULT':
-                clr_layers = ['Overlay', 'Occlusion', 'Metallic', 'Roughness', 'Transmission', 'Subsurface']
+                if obj.sx2.transmissionoverride:
+                    clr_layers = ['Overlay', 'Occlusion', 'Metallic', 'Roughness']
+                else:
+                    clr_layers = ['Overlay', 'Occlusion', 'Metallic', 'Roughness', 'Transmission', 'Subsurface']
+                    
                 for layer_name in clr_layers:
                     if layer_name in obj.sx2layers.keys():
                         layers.clear_layers([obj, ], obj.sx2layers[layer_name])
@@ -6483,6 +6487,12 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         default=0.0,
         update=lambda self, context: update_obj_props(self, context, 'mat_clearcoat'))
 
+    transmissionoverride: bpy.props.BoolProperty(
+        name='Override Transmission',
+        description='Retain manually applied Transmission / SSS',
+        default=False,
+        update=lambda self, context: update_obj_props(self, context, 'transmissionoverride'))
+
     lodmeshes: bpy.props.BoolProperty(
         name='Generate LOD Meshes',
         description='NOTE: Subdivision and Bevel settings affect the end result',
@@ -7867,6 +7877,9 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 row_override.prop(sx2, 'roughness2', text='Palette Color 2 Roughness')
                                 row_override.prop(sx2, 'roughness3', text='Palette Color 3 Roughness')
                                 row_override.prop(sx2, 'roughness4', text='Palette Color 4 Roughness')
+
+                            col_export.separator()
+                            col_export.prop(sx2, 'transmissionoverride', text='Override Transmission / SSS', toggle=True)
 
                             col_export.separator()
                             col_export.prop(sx2, 'materialoverride', text='Override Material Properties', toggle=True)
