@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 16, 2),
+    'version': (1, 16, 3),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3726,7 +3726,11 @@ class SXTOOLS2_export(object):
                             for loop_idx in poly.loop_indices:
                                 colors.append(vertex_colors[loop_idx].color[:])
 
-                        quantized_colors = [(utils.round_stepped(color[0]), utils.round_stepped(color[1]), utils.round_stepped(color[2]), utils.round_stepped(color[3])) for color in colors]
+                        # if object is transparent, ignore alpha
+                        if layers[0].opacity < 1.0:
+                            quantized_colors = [(utils.round_stepped(color[0]), utils.round_stepped(color[1]), utils.round_stepped(color[2])) for color in colors]
+                        else:
+                            quantized_colors = [(utils.round_stepped(color[0]), utils.round_stepped(color[1]), utils.round_stepped(color[2]), utils.round_stepped(color[3])) for color in colors]
                         color_set = set(quantized_colors)
 
                         if layer == layers[0]:
