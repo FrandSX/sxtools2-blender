@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 17, 0),
+    'version': (1, 17, 1),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -9080,6 +9080,11 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
         objs = mesh_selection_validator(self, context)
         for obj in objs:
             layer = obj.sx2layers[obj.sx2.selectedlayer]
+
+            for sx2layer in obj.sx2layers:
+                if (self.layer_name == sx2layer.name):
+                    message_box('Layer name already in use!')
+                    return {'FINISHED'}
 
             for sx2layer in obj.sx2layers:
                 if (self.layer_type == sx2layer.layer_type) and (self.layer_type != 'COLOR'):
