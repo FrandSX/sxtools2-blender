@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 16, 4),
+    'version': (1, 17, 0),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2278,6 +2278,10 @@ class SXTOOLS2_tools(object):
 
                 elif blendmode == 'ADD':
                     base += top * a
+                    base[3] = min(base[3]+a, 1.0)
+
+                elif blendmode == 'SUB':
+                    base -= top * a
                     base[3] = min(base[3]+a, 1.0)
 
                 elif blendmode == 'MUL':
@@ -4896,7 +4900,7 @@ class SXTOOLS2_setup(object):
             sxmaterial.node_tree.links.new(output, input)
 
 
-        blend_mode_dict = {'ALPHA': 'MIX', 'OVR': 'OVERLAY', 'MUL': 'MULTIPLY', 'ADD': 'ADD'}
+        blend_mode_dict = {'ALPHA': 'MIX', 'OVR': 'OVERLAY', 'MUL': 'MULTIPLY', 'ADD': 'ADD', 'SUB': 'SUBTRACT'}
         scene = bpy.context.scene.sx2
 
         for obj in objs:
@@ -6731,8 +6735,9 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         description='Fill blend mode',
         items=[
             ('ALPHA', 'Alpha', ''),
-            ('ADD', 'Additive', ''),
+            ('ADD', 'Add', ''),
             ('MUL', 'Multiply', ''),
+            ('SUB', 'Subtract', ''),
             ('OVR', 'Overlay', ''),
             ('REP', 'Replace', '')],
         default='ALPHA')
@@ -7251,8 +7256,9 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
         name='Layer Blend Mode',
         items=[
             ('ALPHA', 'Alpha', ''),
-            ('ADD', 'Additive', ''),
+            ('ADD', 'Add', ''),
             ('MUL', 'Multiply', ''),
+            ('SUB', 'Subtract', ''),
             ('OVR', 'Overlay', '')],
         default='ALPHA',
         update=lambda self, context: update_layer_props(self, context, 'blend_mode'))
