@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 17, 1),
+    'version': (1, 17, 2),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -9082,11 +9082,6 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
             layer = obj.sx2layers[obj.sx2.selectedlayer]
 
             for sx2layer in obj.sx2layers:
-                if (self.layer_name == sx2layer.name):
-                    message_box('Layer name already in use!')
-                    return {'FINISHED'}
-
-            for sx2layer in obj.sx2layers:
                 if (self.layer_type == sx2layer.layer_type) and (self.layer_type != 'COLOR'):
                     message_box('Material channel already exists!')
                     return {'FINISHED'}
@@ -9112,6 +9107,11 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     name = 'Composite'
                 else:
                     name = self.layer_name
+
+                for sx2layer in obj.sx2layers:
+                    if (name == sx2layer.name):
+                        message_box(f'Layer name {name} already in use!')
+                        return {'FINISHED'}
 
                 if layer.layer_type == 'COLOR':
                     layer.name = name
