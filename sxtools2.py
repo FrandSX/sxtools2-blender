@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 18, 0),
+    'version': (1, 18, 1),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -22,7 +22,7 @@ import statistics
 import sys
 import os
 from bpy.app.handlers import persistent
-from collections import Counter
+from collections import Counter, defaultdict
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 from contextlib import redirect_stdout
@@ -3060,7 +3060,7 @@ class SXTOOLS2_export(object):
 
     # Multi-pass convex hull generator, latter convex hull generation
     # necessary to guarantee convex shape after shrink and weld
-    def generate_hulls(self, objs):
+    def generate_hulls(self, objs, use_cids=False):
         if objs:
             hull_objs = [obj for obj in objs if obj.sx2.generatehulls]
             if hull_objs:
@@ -3073,26 +3073,82 @@ class SXTOOLS2_export(object):
                 if colliders.name not in bpy.context.scene.collection.children:
                     bpy.context.scene.collection.children.link(colliders)
 
-                # Create hull meshes
-                for obj in org_objs:
-                    new_obj = obj.copy()
-                    new_obj.data = obj.data.copy()
+                # Create hull meshes via object copies or Collider IDs
+                if use_cids:
+                    # Map color regions to mesh islands
+                    color_to_faces = defaultdict(list)
+                    for obj in objs:
+                        if obj.type == 'MESH':
+                            id_layer = obj.sx2layers['Collider IDs'].color_attribute
+                            edg = bpy.context.evaluated_depsgraph_get()
+                            temp_mesh = obj.evaluated_get(edg).to_mesh()
+                            bm = bmesh.new()
+                            bm.from_mesh(temp_mesh)
+                            color_layer = bm.loops.layers.float_color[id_layer]
+                            
+                            for face in bm.faces:
+                                color = face.loops[0][color_layer]
+                                color = tuple(round(c, 2) for c in color)                    
+                                color_to_faces[color].append([tuple(vert.co) for vert in face.verts])
+                            
+                            bm.free()
+                            obj.evaluated_get(edg).to_mesh_clear()
 
-                    new_obj.data.name = obj.name[:] + '_hull_mesh'
-                    new_obj.name = obj.name[:] + '_hull'
+                    # Create a new bmesh and mesh for each color group
+                    for i, (color, faces) in enumerate(color_to_faces.items()):
+                        new_bm = bmesh.new()
+                        vert_map = {}  # Map old verts to new verts
+                        
+                        for face_verts in faces:
+                            new_verts = []
+                            
+                            for vert_co in face_verts:
+                                if vert_co not in vert_map:
+                                    new_vert = new_bm.verts.new(vert_co)
+                                    vert_map[vert_co] = new_vert
+                                    
+                                new_verts.append(vert_map[vert_co])
+                            
+                            new_bm.faces.new(new_verts)
+                        
+                        new_bm.verts.index_update()
+                        new_bm.edges.index_update()
+                        new_bm.faces.index_update()
 
-                    new_obj.sx2.weldthreshold = 0.0
-                    new_obj.sx2.decimation = 0.0
+                        name = 'Combined_hull'
+                        mesh_data = bpy.data.meshes.new(name+f'_mesh_{i}')
+                        new_bm.to_mesh(mesh_data)
+                        new_obj = bpy.data.objects.new(name+f'_{i}', mesh_data)
+                        bpy.context.scene.collection.objects.link(new_obj)
+                        colliders.objects.link(new_obj)
+                        new_obj.sx2.smartseparate = False
+                        new_obj.sx2.lodmeshes = False
+                        new_obj.sx2.generateemissionmeshes = False
 
-                    bpy.context.scene.collection.objects.link(new_obj)
-                    bpy.context.view_layer.objects.active = new_obj
-                    colliders.objects.link(new_obj)
+                        new_objs.append(new_obj)
+                        new_bm.free()
 
-                    new_obj.parent = bpy.context.view_layer.objects[obj.parent.name]
-                    new_objs.append(new_obj)
+                else:
+                    for obj in org_objs:
+                        new_obj = obj.copy()
+                        new_obj.data = obj.data.copy()
 
-                # Clear existing modifier stacks
-                modifiers.apply_modifiers(new_objs)
+                        new_obj.data.name = obj.name[:] + '_hull_mesh'
+                        new_obj.name = obj.name[:] + '_hull'
+
+                        new_obj.sx2.weldthreshold = 0.0
+                        new_obj.sx2.decimation = 0.0
+
+                        bpy.context.scene.collection.objects.link(new_obj)
+                        bpy.context.view_layer.objects.active = new_obj
+                        colliders.objects.link(new_obj)
+
+                        new_obj.parent = bpy.context.view_layer.objects[obj.parent.name]
+                        new_objs.append(new_obj)
+
+                        # Clear existing modifier stacks
+                        modifiers.apply_modifiers(new_objs)
+
                 bpy.ops.object.select_all(action='DESELECT')
 
                 for new_obj in new_objs:
@@ -3294,61 +3350,6 @@ class SXTOOLS2_export(object):
         sxglobals.refresh_in_progress = False
 
         return emission_objs
-
-
-    def generate_collider_submeshes(self, objs):
-        export_objects = utils.create_collection('ExportObjects')
-        sxglobals.refresh_in_progress = True
-        offset = 0.001
-        active_obj = bpy.context.view_layer.objects.active
-        bpy.context.tool_settings.mesh_select_mode = (False, False, True)
-
-        collider_objs = []
-        for obj in objs:
-            if obj.type == 'MESH':
-                # Check if emission layer is empty
-                if not layers.get_layer_mask(obj, obj.sx2layers['Collision IDs'])[1]:
-                    bpy.context.view_layer.objects.active = obj
-                    collider_obj = obj.copy()
-                    collider_obj.data = obj.data.copy()
-                    bpy.context.collection.objects.link(collider_obj)
-                    export_objects.objects.link(collider_obj)
-                    collider_obj.name = obj.name + "_emission"
-                    collider_obj.sx2.smartseparate = True
-                    collider_obj.sx2.generatehulls = False
-                    collider_obj.sx2.lodmeshes = False
-                    collider_obj.sx2.generateemissionmeshes = False
-                    collider_objs.append(collider_obj)
-
-                    modifiers.apply_modifiers([emission_obj, ])
-                    tools.select_mask([emission_obj, ], emission_obj.sx2layers['Collision IDs'])
-                    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-
-                    mesh = emission_obj.data
-                    bm = bmesh.new()
-                    bm.from_mesh(mesh)
-
-                    to_delete = []
-                    # Offset selected faces along their normals
-                    for face in bm.faces:
-                        if face.select:
-                            normal_offset = face.normal * offset
-                            for vert in face.verts:
-                                vert.co += normal_offset
-                        else:
-                            to_delete.append(face)
-
-                    # Delete unselected faces
-                    bmesh.ops.delete(bm, geom=to_delete, context='FACES')     
-
-                    bm.to_mesh(mesh)
-                    bm.free()
-
-        bpy.context.view_layer.objects.active = active_obj
-        sxglobals.refresh_in_progress = False
-
-        return collider_objs
-
 
 
     def remove_exports(self):
@@ -8069,6 +8070,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 col_debug.operator('sx2.bytestofloats', text='Debug: Convert to Float Colors')
                                 col_debug.operator('sx2.generatelods', text='Debug: Create LOD Meshes')
                                 col_debug.operator('sx2.resetscene', text='Debug: Reset scene (warning!)')
+                                col_debug.operator('sx2.testbutton', text='Debug: Test button')
 
                     elif scene.exportmode == 'EXPORT':
                         if scene.expandexport:
@@ -9141,10 +9143,21 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
 
             for sx2layer in obj.sx2layers:
                 if (self.layer_type == sx2layer.layer_type) and (self.layer_type != 'COLOR'):
-                    message_box('Material channel already exists!')
+                    message_box('Layer already exists!')
                     return {'FINISHED'}
 
-            if (len(obj.data.color_attributes) == 14) and (layer.layer_type in alpha_mats) and (self.layer_type not in alpha_mats):
+            # max layer count needs to account for layers not used in compositing
+            cmp_exists = False
+            cid_exists = False
+            for sx2layer in obj.sx2layers:
+                if sx2layer.layer_type == 'CMP':
+                    cmp_exists = True
+                if sx2layer.layer_type == 'CID':
+                    cid_exists = True
+
+            layermax = 14 + cmp_exists + cid_exists
+
+            if (self.layer_type != 'CMP') and (self.layer_type != 'CID') and (len(obj.data.color_attributes) == layermax) and (layer.layer_type in alpha_mats) and (self.layer_type not in alpha_mats):
                 message_box('Layer stack at max, delete a color layer and try again.')
                 return {'FINISHED'}
 
@@ -10551,6 +10564,20 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class SXTOOLS2_OT_testbutton(bpy.types.Operator):
+    bl_idname = 'sx2.testbutton'
+    bl_label = 'Test Button'
+    bl_description = 'Test button for features in development'
+    bl_options = {'UNDO'}
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        export.generate_hulls(objs, use_cids=True)
+        return {'FINISHED'}
+
+
+
 # ------------------------------------------------------------------------
 #    Registration and initialization
 # ------------------------------------------------------------------------
@@ -10638,6 +10665,7 @@ export_classes = (
     SXTOOLS2_OT_generate_emission_meshes,
     SXTOOLS2_OT_generatemasks,
     SXTOOLS2_OT_resetscene,
+    SXTOOLS2_OT_testbutton,
     SXTOOLS2_OT_sxtosx2,
     SXTOOLS2_OT_exportatlases)
 
