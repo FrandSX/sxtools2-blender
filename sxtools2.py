@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 17, 2),
+    'version': (1, 18, 0),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -65,7 +65,8 @@ class SXTOOLS2_sxglobals(object):
             'TRN': (0.0, 0.0, 0.0, 0.0),
             'SSS': (0.0, 0.0, 0.0, 0.0),
             'EMI': (0.0, 0.0, 0.0, 0.0),
-            'CMP': (0.0, 0.0, 0.0, 0.0)
+            'CMP': (0.0, 0.0, 0.0, 0.0),
+            'CID': (0.0, 0.0, 0.0, 0.0),
             }
 
         # {layer_keys: (index, obj)}
@@ -1951,7 +1952,7 @@ class SXTOOLS2_layers(object):
 
     # wrapper for low-level functions, always returns layerdata in RGBA
     def get_layer(self, obj, sourcelayer, as_tuple=False, single_as_alpha=False, apply_layer_opacity=False):
-        rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP']
+        rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP', 'CID']
         alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
         dv = [1.0, 1.0, 1.0, 1.0]
 
@@ -1990,7 +1991,7 @@ class SXTOOLS2_layers(object):
 
     # takes RGBA buffers, converts and writes to appropriate channels
     def set_layer(self, obj, colors, targetlayer):
-        rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP']
+        rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP', 'CID']
         alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
         target_type = targetlayer.layer_type
 
@@ -2006,7 +2007,7 @@ class SXTOOLS2_layers(object):
 
 
     def get_layer_mask(self, obj, sourcelayer):
-        rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP']
+        rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP', 'CID']
         alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
         layer_type = sourcelayer.layer_type
 
@@ -3293,6 +3294,61 @@ class SXTOOLS2_export(object):
         sxglobals.refresh_in_progress = False
 
         return emission_objs
+
+
+    def generate_collider_submeshes(self, objs):
+        export_objects = utils.create_collection('ExportObjects')
+        sxglobals.refresh_in_progress = True
+        offset = 0.001
+        active_obj = bpy.context.view_layer.objects.active
+        bpy.context.tool_settings.mesh_select_mode = (False, False, True)
+
+        collider_objs = []
+        for obj in objs:
+            if obj.type == 'MESH':
+                # Check if emission layer is empty
+                if not layers.get_layer_mask(obj, obj.sx2layers['Collision IDs'])[1]:
+                    bpy.context.view_layer.objects.active = obj
+                    collider_obj = obj.copy()
+                    collider_obj.data = obj.data.copy()
+                    bpy.context.collection.objects.link(collider_obj)
+                    export_objects.objects.link(collider_obj)
+                    collider_obj.name = obj.name + "_emission"
+                    collider_obj.sx2.smartseparate = True
+                    collider_obj.sx2.generatehulls = False
+                    collider_obj.sx2.lodmeshes = False
+                    collider_obj.sx2.generateemissionmeshes = False
+                    collider_objs.append(collider_obj)
+
+                    modifiers.apply_modifiers([emission_obj, ])
+                    tools.select_mask([emission_obj, ], emission_obj.sx2layers['Collision IDs'])
+                    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+
+                    mesh = emission_obj.data
+                    bm = bmesh.new()
+                    bm.from_mesh(mesh)
+
+                    to_delete = []
+                    # Offset selected faces along their normals
+                    for face in bm.faces:
+                        if face.select:
+                            normal_offset = face.normal * offset
+                            for vert in face.verts:
+                                vert.co += normal_offset
+                        else:
+                            to_delete.append(face)
+
+                    # Delete unselected faces
+                    bmesh.ops.delete(bm, geom=to_delete, context='FACES')     
+
+                    bm.to_mesh(mesh)
+                    bm.free()
+
+        bpy.context.view_layer.objects.active = active_obj
+        sxglobals.refresh_in_progress = False
+
+        return collider_objs
+
 
 
     def remove_exports(self):
@@ -7229,7 +7285,8 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
             ('TRN', 'Transmission', ''),
             ('SSS', 'Subsurface', ''),
             ('EMI', 'Emission', ''),
-            ('CMP', 'Composite', '')],
+            ('CMP', 'Composite', ''),
+            ('CID', 'Collider IDs', '')],
         default='COLOR')
 
     default_color: bpy.props.FloatVectorProperty(
@@ -9034,7 +9091,8 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
             ('TRN', 'Transmission', ''),
             ('SSS', 'Subsurface', ''),
             ('EMI', 'Emission', ''),
-            ('CMP', 'Composite', '')],
+            ('CMP', 'Composite', ''),
+            ('CID', 'Collider IDs', '')],
         default = 'COLOR')
 
 
@@ -9105,6 +9163,8 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     name = 'Emission'
                 elif self.layer_type == 'CMP':
                     name = 'Composite'
+                elif self.layer_type == 'CID':
+                    name = 'Collider IDs'
                 else:
                     name = self.layer_name
 
@@ -9126,7 +9186,7 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     layers.clear_layers([obj, ], layer)
 
                 layer.layer_type = self.layer_type
-                if layer.layer_type in ['OCC', 'MET', 'RGH', 'TRN', 'CMP']:
+                if layer.layer_type in ['OCC', 'MET', 'RGH', 'TRN', 'CMP', 'CID']:
                     layer.paletted = False
                 else:
                     layer.paletted = True
