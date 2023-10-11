@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 18, 6),
+    'version': (1, 18, 7),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3062,6 +3062,7 @@ class SXTOOLS2_export(object):
     # latter convex hull generation necessary to guarantee convex shape after shrink and weld
     def generate_hulls(self, objs, group=None):
         if objs:
+            org_objs = []
             hull_objs = [obj for obj in objs if (obj.sx2.generatehulls and not obj.sx2.use_cids)]
             cid_objs = [obj for obj in objs if (obj.sx2.generatehulls and obj.sx2.use_cids)]
             if (hull_objs or cid_objs):
@@ -3073,6 +3074,7 @@ class SXTOOLS2_export(object):
 
                 # Create hull meshes via object copies or Collider IDs
                 if cid_objs:
+                    org_objs += cid_objs[:]
                     # Map color regions to mesh islands
                     color_to_faces = defaultdict(list)
                     color_ref_obj = {}
@@ -3226,6 +3228,7 @@ class SXTOOLS2_export(object):
 
                 for obj in org_objs:
                     obj.select_set(True)
+
                 bpy.context.view_layer.objects.active = active_obj
                 setup.update_sx2material(bpy.context)
 
