@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 18, 3),
+    'version': (1, 18, 6),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3075,7 +3075,8 @@ class SXTOOLS2_export(object):
                 if cid_objs:
                     # Map color regions to mesh islands
                     color_to_faces = defaultdict(list)
-                    color_to_pivot = {}
+                    color_ref_obj = {}
+
                     for obj in cid_objs:
                         if obj.type == 'MESH':
                             id_layer = obj.sx2layers['Collider IDs'].color_attribute
@@ -3084,13 +3085,23 @@ class SXTOOLS2_export(object):
                             bm = bmesh.new()
                             bm.from_mesh(temp_mesh)
                             color_layer = bm.loops.layers.float_color[id_layer]
-                            pivot = obj.location
                             
                             for face in bm.faces:
                                 color = face.loops[0][color_layer]
-                                color = tuple(round(c, 2) for c in color)                    
-                                color_to_faces[color].append([tuple(vert.co) for vert in face.verts])
-                                color_to_pivot[color] = pivot
+                                color = tuple(round(c, 2) for c in color)
+
+                                if color not in color_ref_obj:
+                                    color_ref_obj[color] = (obj.location.copy(), obj.matrix_world.inverted())
+
+                                transformed_face_verts = []
+                                first_obj_matrix_world_inv = color_ref_obj[color][1]
+
+                                for vert in face.verts:
+                                    world_coord = obj.matrix_world @ vert.co
+                                    local_coord_first_obj = first_obj_matrix_world_inv @ world_coord
+                                    transformed_face_verts.append(tuple(local_coord_first_obj))
+
+                                color_to_faces[color].append(transformed_face_verts)
                             
                             bm.free()
                             obj.evaluated_get(edg).to_mesh_clear()
@@ -3131,7 +3142,7 @@ class SXTOOLS2_export(object):
                         new_obj.sx2.lodmeshes = False
                         new_obj.sx2.generateemissionmeshes = False
                         new_obj.parent = group
-                        new_obj.location = color_to_pivot[color]
+                        new_obj.location = color_ref_obj[color][0]
 
                         new_objs.append(new_obj)
 
@@ -3445,7 +3456,7 @@ class SXTOOLS2_export(object):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         for obj in objs:
             for layer in obj.sx2layers:
-                if layer.layer_type == 'CMP':
+                if (layer.layer_type == 'CMP') or (layer.layer_type == 'CID'):
                     pass
                 elif layer.layer_type != 'COLOR':
                     channel_name = 'uv_' + layer.name.lower()
@@ -3846,8 +3857,12 @@ class SXTOOLS2_export(object):
         for obj in objs:
             if obj.sx2.category != 'DEFAULT':
                 category_data = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]
-                if len(category_data['layers']) == len(obj.sx2layers):
-                    for cat_layer, layer in zip(category_data['layers'], obj.sx2layers):
+                cat_layers = category_data['layers']
+                obj_layers = obj.sx2layers[:]
+                if ('Collider IDs' in obj_layers):
+                    obj_layers.remove('Collider IDs')
+                if len(cat_layers) == len(obj_layers):
+                    for cat_layer, layer in zip(cat_layers, obj_layers):
                         if (cat_layer[0] != layer.name) or (cat_layer[1] !=layer.layer_type):
                             print(f'SX Tools Error: {obj.name} {layer.name} does not match the selected category')
                             message_box(obj.name + ' ' + layer.name + ' does not match the selected category')
