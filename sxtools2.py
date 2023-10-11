@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 18, 1),
+    'version': (1, 18, 3),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3058,26 +3058,25 @@ class SXTOOLS2_export(object):
         return new_obj_list
 
 
-    # Multi-pass convex hull generator, latter convex hull generation
-    # necessary to guarantee convex shape after shrink and weld
-    def generate_hulls(self, objs, use_cids=False):
+    # Multi-pass convex hull generator
+    # latter convex hull generation necessary to guarantee convex shape after shrink and weld
+    def generate_hulls(self, objs, group=None):
         if objs:
-            hull_objs = [obj for obj in objs if obj.sx2.generatehulls]
-            if hull_objs:
-                org_objs = hull_objs[:]
+            hull_objs = [obj for obj in objs if (obj.sx2.generatehulls and not obj.sx2.use_cids)]
+            cid_objs = [obj for obj in objs if (obj.sx2.generatehulls and obj.sx2.use_cids)]
+            if (hull_objs or cid_objs):
                 new_objs = []
                 active_obj = bpy.context.view_layer.objects.active
-
                 colliders = utils.create_collection('SXColliders')
-
                 if colliders.name not in bpy.context.scene.collection.children:
                     bpy.context.scene.collection.children.link(colliders)
 
                 # Create hull meshes via object copies or Collider IDs
-                if use_cids:
+                if cid_objs:
                     # Map color regions to mesh islands
                     color_to_faces = defaultdict(list)
-                    for obj in objs:
+                    color_to_pivot = {}
+                    for obj in cid_objs:
                         if obj.type == 'MESH':
                             id_layer = obj.sx2layers['Collider IDs'].color_attribute
                             edg = bpy.context.evaluated_depsgraph_get()
@@ -3085,11 +3084,13 @@ class SXTOOLS2_export(object):
                             bm = bmesh.new()
                             bm.from_mesh(temp_mesh)
                             color_layer = bm.loops.layers.float_color[id_layer]
+                            pivot = obj.location
                             
                             for face in bm.faces:
                                 color = face.loops[0][color_layer]
                                 color = tuple(round(c, 2) for c in color)                    
                                 color_to_faces[color].append([tuple(vert.co) for vert in face.verts])
+                                color_to_pivot[color] = pivot
                             
                             bm.free()
                             obj.evaluated_get(edg).to_mesh_clear()
@@ -3115,20 +3116,28 @@ class SXTOOLS2_export(object):
                         new_bm.edges.index_update()
                         new_bm.faces.index_update()
 
-                        name = 'Combined_hull'
-                        mesh_data = bpy.data.meshes.new(name+f'_mesh_{i}')
+                        groupname = group.name[:-5] if group.name.endswith("_root") else group.name
+                        name = f'{groupname}_combined_hull_{i}'
+                        mesh_data = bpy.data.meshes.new(name+f'_mesh')
                         new_bm.to_mesh(mesh_data)
-                        new_obj = bpy.data.objects.new(name+f'_{i}', mesh_data)
+                        new_bm.free()
+
+                        new_obj = bpy.data.objects.new(name, mesh_data)
                         bpy.context.scene.collection.objects.link(new_obj)
                         colliders.objects.link(new_obj)
+                        new_obj.sx2.weldthreshold = 0.0
+                        new_obj.sx2.decimation = 0.0
                         new_obj.sx2.smartseparate = False
                         new_obj.sx2.lodmeshes = False
                         new_obj.sx2.generateemissionmeshes = False
+                        new_obj.parent = group
+                        new_obj.location = color_to_pivot[color]
 
                         new_objs.append(new_obj)
-                        new_bm.free()
 
-                else:
+
+                if hull_objs:
+                    org_objs = hull_objs[:]
                     for obj in org_objs:
                         new_obj = obj.copy()
                         new_obj.data = obj.data.copy()
@@ -6578,6 +6587,11 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         default=False,
         update=lambda self, context: update_obj_props(self, context, 'generatehulls'))
 
+    use_cids: bpy.props.BoolProperty(
+        name='Use Collision IDs',
+        default=False,
+        update=lambda self, context: update_obj_props(self, context, 'use_cids'))
+
     hullfacemax: bpy.props.IntProperty(
         name='Max Hull Faces',
         description='Max number of faces allowed in the convex hull',
@@ -7988,6 +8002,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_hulls.prop(sx2, 'generatehulls', text='', toggle=False)
 
                             if obj.sx2.generatehulls:
+                                col_export.prop(sx2, 'use_cids', text='Use Collider IDs')
                                 col_export.prop(sx2, 'hullfacemax', text='Hull Face Count Limit')
                                 col_export.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Factor', slider=True)
 
@@ -9734,11 +9749,9 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
                 export.smart_separate(selected + emission_objs)
                 export.create_sxcollection()
 
-                hull_objs = []
                 for group in groups:
-                    hull_objs += utils.find_children(group, recursive=True, child_type='MESH')
-
-                export.generate_hulls(hull_objs)
+                    hull_objs = utils.find_children(group, recursive=True, child_type='MESH')
+                    export.generate_hulls(hull_objs, group)
 
             files.export_files(groups)
 
@@ -9765,7 +9778,7 @@ class SXTOOLS2_OT_exportgroups(bpy.types.Operator):
         export.generate_emission_meshes(meshes)
         export.smart_separate(meshes)
         meshes = utils.find_children(group, recursive=True, child_type='MESH')
-        export.generate_hulls(meshes)
+        export.generate_hulls(meshes, group)
         files.export_files([group, ])
         if prefs.removelods:
             export.remove_exports()
@@ -10234,10 +10247,23 @@ class SXTOOLS2_OT_generate_hulls(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        hull_objs = [obj for obj in objs if obj.sx2.generatehulls]
+        source_objs = [obj for obj in objs if obj.sx2.generatehulls]
 
-        if hull_objs:
-            export.generate_hulls(hull_objs)
+        if source_objs:
+            if not sxglobals.refresh_in_progress:
+                sxglobals.refresh_in_progress = True
+                sxglobals.magic_in_progress = True
+
+            groups = utils.find_groups(source_objs)
+            if not groups:
+                message_box('Hull generation requires source objects to be in groups.')
+            else:
+                for group in groups:
+                    hull_objs = utils.find_children(group, recursive=True, child_type='MESH')
+                    export.generate_hulls(hull_objs, group)
+
+            sxglobals.refresh_in_progress = False
+            sxglobals.magic_in_progress = False
         else:
             message_box('No objects selected with Generate Convex Hulls enabled!')
 
@@ -10572,8 +10598,6 @@ class SXTOOLS2_OT_testbutton(bpy.types.Operator):
 
 
     def invoke(self, context, event):
-        objs = mesh_selection_validator(self, context)
-        export.generate_hulls(objs, use_cids=True)
         return {'FINISHED'}
 
 
