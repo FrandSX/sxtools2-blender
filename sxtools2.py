@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 18, 7),
+    'version': (1, 18, 8),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1495,8 +1495,9 @@ class SXTOOLS2_generate(object):
             vert_occ_list = generate.vert_dict_to_loop_list(obj, vert_occ_dict, 1, 4)
             result = self.mask_list(obj, vert_occ_list, masklayer)
 
-            # end_time = time.time()  # Stop the timer
-            # print("SX Tools: AO rendered in {:.4f} seconds".format(end_time - start_time)) 
+            # end_time = time.time()
+            # duration = round(end_time - start_time, 4)
+            # print(f'SX Tools: {obj.name} AO rendered in {duration} seconds') 
 
             return result
 
@@ -3948,6 +3949,9 @@ class SXTOOLS2_magic(object):
             obj.sx2.modifiervisibility = True
         modifiers.add_modifiers(objs)
 
+        # now = time.perf_counter()
+        # print(f'SX Tools: Modifier stack added: {now-then} seconds')
+
         # Create high-poly bake meshes
         if scene.exportquality == 'HI':
             new_objs = []
@@ -4035,6 +4039,9 @@ class SXTOOLS2_magic(object):
 
         # Mandatory to update visibility?
         viewlayer.update()
+
+        # now = time.perf_counter()
+        # print(f'SX Tools: Misc and viewlayer update: {now-then} seconds')
 
         category_list = list(sxglobals.category_dict.keys())
         categories = [category.replace(" ", "_").upper() for category in category_list]
@@ -4584,7 +4591,7 @@ class SXTOOLS2_setup(object):
         def connect_nodes(output, input):
             nodetree.links.new(output, input)
 
-
+        version, _, _ = bpy.app.version
         nodetree = bpy.data.node_groups.new(type='GeometryNodeTree', name='sx_tiler')
         group_in = nodetree.nodes.new(type='NodeGroupInput')
         group_in.name = 'group_input'
@@ -4596,12 +4603,19 @@ class SXTOOLS2_setup(object):
         # create tiler inputs and outputs
         axis_switches = ['-X', '+X', '-Y', '+Y', '-Z', '+Z']
 
-        nodetree.inputs.new('NodeSocketGeometry', 'Geometry')
-        nodetree.inputs.new('NodeSocketFloat', 'Offset')
-        nodetree.outputs.new('NodeSocketGeometry', 'Geometry')
 
-        for axis in axis_switches:
-            nodetree.inputs.new('NodeSocketBool', axis)
+        if version == 4:
+            nodetree.interface.new_socket(in_out='INPUT', name='Geometry', socket_type='NodeSocketGeometry')
+            nodetree.interface.new_socket(in_out='INPUT', name='Offset', socket_type='NodeSocketFloat')
+            nodetree.interface.new_socket(in_out='OUTPUT', name='Geometry', socket_type='NodeSocketGeometry')
+            for axis in axis_switches:
+                nodetree.interface.new_socket(in_out='INPUT', name=axis, socket_type='NodeSocketBool')
+        else:
+            nodetree.inputs.new('NodeSocketGeometry', 'Geometry')
+            nodetree.inputs.new('NodeSocketFloat', 'Offset')
+            nodetree.outputs.new('NodeSocketGeometry', 'Geometry')
+            for axis in axis_switches:
+                nodetree.inputs.new('NodeSocketBool', axis)
 
         bbx = nodetree.nodes.new(type='GeometryNodeBoundBox')
         bbx.name = 'bbx'
@@ -4983,7 +4997,7 @@ class SXTOOLS2_setup(object):
         def connect_nodes(output, input):
             sxmaterial.node_tree.links.new(output, input)
 
-
+        version, _, _ = bpy.app.version
         blend_mode_dict = {'ALPHA': 'MIX', 'OVR': 'OVERLAY', 'MUL': 'MULTIPLY', 'ADD': 'ADD', 'SUB': 'SUBTRACT'}
         scene = bpy.context.scene.sx2
 
@@ -4991,15 +5005,22 @@ class SXTOOLS2_setup(object):
             if obj.sx2layers:
                 sxmaterial = bpy.data.materials.new(name='SX2Material_'+obj.name)
                 sxmaterial.use_nodes = True
-                sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'].default_value = [0.0, 0.0, 0.0, 1.0]
+                if version == 3:
+                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'].default_value = [0.0, 0.0, 0.0, 1.0]
+                else:
+                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26].default_value = [0.0, 0.0, 0.0, 1.0]
                 sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = [0.0, 0.0, 0.0, 1.0]
                 sxmaterial.node_tree.nodes['Principled BSDF'].location = (1000, 0)
                 sxmaterial.node_tree.nodes['Material Output'].location = (1300, 0)
 
                 if obj.sx2.shadingmode == 'FULL':
-                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = obj.sx2.mat_specular
+                    if version == 3:
+                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = obj.sx2.mat_specular
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Anisotropic'].default_value = obj.sx2.mat_anisotropic
-                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Clearcoat'].default_value = obj.sx2.mat_clearcoat
+                    if version == 4:
+                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs[18].default_value = obj.sx2.mat_clearcoat
+                    else:
+                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Clearcoat'].default_value = obj.sx2.mat_clearcoat
                     prev_color = None
                     prev_alpha = None
                     rgba_mats = ['SSS', 'EMI']
@@ -5256,15 +5277,22 @@ class SXTOOLS2_setup(object):
                                 connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Roughness'])
 
                             if material_layers[i][2] == 'TRN':
-                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission'])
+                                if version == 4:
+                                    connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs[17])
+                                else:
+                                    connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission'])
 
                             if material_layers[i][2] == 'SSS':
                                 connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface'])
                                 connect_nodes(palette_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface Color'])
 
                             if material_layers[i][2] == 'EMI':
-                                sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 10
-                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'])
+                                if version == 4:
+                                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs[27].default_value = 10
+                                    connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26])
+                                else:
+                                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 10
+                                    connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'])
                                 bpy.context.scene.eevee.use_bloom = True
 
                     if prev_color is not None:
@@ -5274,7 +5302,13 @@ class SXTOOLS2_setup(object):
                         connect_nodes(prev_alpha, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Alpha'])
 
                 elif (obj.sx2.shadingmode == 'DEBUG') or (obj.sx2.shadingmode == 'ALPHA'):
-                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = 0.0
+                    if version == 4:
+                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs[12].default_value = 0.0
+                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs[27].default_value = 1
+                    else:
+                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = 0.0
+                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 1
+                    
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 1
                     alpha_mats = ['OCC', 'MET', 'RGH', 'TRN']
                     layer = obj.sx2layers[obj.sx2.selectedlayer]
@@ -5341,7 +5375,10 @@ class SXTOOLS2_setup(object):
                         output = base_color.outputs['Alpha']
 
                     connect_nodes(output, debug_blend.inputs['Color2'])
-                    connect_nodes(debug_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'])
+                    if version == 4:
+                        connect_nodes(debug_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26])
+                    else:
+                        connect_nodes(debug_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'])
 
 
     def update_sx2material(self, context):
