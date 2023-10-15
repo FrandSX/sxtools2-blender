@@ -3862,14 +3862,12 @@ class SXTOOLS2_export(object):
             if obj.sx2.category != 'DEFAULT':
                 category_data = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]
                 cat_layers = category_data['layers']
-                obj_layers = obj.sx2layers[:]
-                if ('Collider IDs' in obj_layers):
-                    obj_layers.remove('Collider IDs')
+                obj_layers = [layer for layer in obj.sx2layers if layer.name != 'Collider IDs']
                 if len(cat_layers) == len(obj_layers):
                     for cat_layer, layer in zip(cat_layers, obj_layers):
                         if (cat_layer[0] != layer.name) or (cat_layer[1] !=layer.layer_type):
                             print(f'SX Tools Error: {obj.name} {layer.name} does not match the selected category')
-                            message_box(obj.name + ' ' + layer.name + ' does not match the selected category')
+                            message_box(f'{obj.name}: {layer.name} and {cat_layer[0]} do not match the selected category')
                             return False
                 else:
                     print(f'SX Tools Error: {obj.name} layers do not match the selected category')
