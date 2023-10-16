@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 19, 5),
+    'version': (1, 19, 6),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3627,13 +3627,12 @@ class SXTOOLS2_export(object):
             sel.select_set(False)
 
         for obj in objs:
-            if pivotmode is None:
-                mode = modedict[obj.sx2.pivotmode]
-            else:
-                mode = pivotmode
-
+            mode = modedict[obj.sx2.pivotmode] if pivotmode is None else pivotmode
             viewlayer.objects.active = obj
             obj.select_set(True)
+
+            if sxglobals.benchmark_magic:
+                then = time.perf_counter()
 
             if mode == 0:
                 pivot_loc = obj.matrix_world.to_translation()
@@ -3690,6 +3689,10 @@ class SXTOOLS2_export(object):
                 bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
             else:
                 pass
+
+            if sxglobals.benchmark_magic:
+                now = time.perf_counter()
+                print(f'SX Tools: {obj.name} pivot set: {round(now-then, 4)} seconds')
 
             obj.select_set(False)
 
@@ -4097,11 +4100,26 @@ class SXTOOLS2_magic(object):
             if ('sxSubdivision' in obj.modifiers) and (obj.sx2.subdivisionlevel > 1):
                     obj.modifiers['sxSubdivision'].levels = 1
 
+        if sxglobals.benchmark_magic:
+            now = time.perf_counter()
+            print(f'SX Tools: Setup 1: {round(now-then2, 4)} seconds')
+            then2 = now
+
         # Place pivots
         export.set_pivots(objs, force=True)
 
+        if sxglobals.benchmark_magic:
+            now = time.perf_counter()
+            print(f'SX Tools: Setup 2: {round(now-then2, 4)} seconds')
+            then2 = now
+
         # Fix transforms
         utils.clear_parent_inverse_matrix(objs)
+
+        if sxglobals.benchmark_magic:
+            now = time.perf_counter()
+            print(f'SX Tools: Setup 3: {round(now-then2, 4)} seconds')
+            then2 = now
 
         for obj in objs:
             obj.select_set(False)
