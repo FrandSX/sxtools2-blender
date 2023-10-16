@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 19, 2),
+    'version': (1, 19, 4),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -37,6 +37,7 @@ class SXTOOLS2_sxglobals(object):
         self.benchmark_tool = False
         self.benchmark_ao = False
         self.benchmark_magic = False
+        self.benchmark_cvx = False
 
         self.libraries_status = False
         self.refresh_in_progress = False
@@ -774,9 +775,8 @@ class SXTOOLS2_utils(object):
         for obj in objs:
             if obj.sx2.tiling:
                 vert_dict = generate.vertex_data_dict(obj)
-                xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box([obj, ], local=True)
-
                 if vert_dict:
+                    xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box([obj, ], local=True)
                     for vert_id in vert_dict:
                         vertLoc = Vector(vert_dict[vert_id][0])
 
@@ -791,7 +791,7 @@ class SXTOOLS2_utils(object):
                             obj.data.vertices[vert_id].co = vertLoc
                             obj.data.vertices[vert_id].select = True
 
-                obj.data.update()
+                    obj.data.update()
 
 
     def clear_parent_inverse_matrix(self, objs):
@@ -3154,7 +3154,7 @@ class SXTOOLS2_export(object):
                                 color = tuple(round(c, 2) for c in color)
 
                                 if color not in color_ref_obj:
-                                    color_ref_obj[color] = (obj.location.copy(), obj.matrix_world.inverted())
+                                    color_ref_obj[color] = (obj.location.copy(), obj.matrix_world.inverted(), obj.sx2.hulltrimax)
 
                                 transformed_face_verts = []
                                 first_obj_matrix_world_inv = color_ref_obj[color][1]
@@ -3206,6 +3206,7 @@ class SXTOOLS2_export(object):
                         new_obj.sx2.generateemissionmeshes = False
                         new_obj.parent = group
                         new_obj.location = color_ref_obj[color][0]
+                        new_obj.sx2.hulltrimax = color_ref_obj[color][2]
 
                         new_objs.append(new_obj)
 
@@ -3249,16 +3250,27 @@ class SXTOOLS2_export(object):
                     new_obj.modifiers['hullDecimate'].angle_limit = math.radians(0.0)
                     new_obj.modifiers['hullDecimate'].use_dissolve_boundaries = False
 
-                    new_obj.modifiers.update()
-                    bpy.context.view_layer.update()
+                    # new_obj.modifiers.update()
+                    # bpy.context.view_layer.update()
 
-                    # Decimate until below face count limit
+                    # Decimate until below tri count limit
                     angle = 0.0
-                    while (new_obj.modifiers['hullDecimate'].face_count > new_obj.sx2.hullfacemax) and (angle < 180.0):
-                        angle += 0.1
+                    if sxglobals.benchmark_cvx:
+                        then = time.perf_counter()
+
+                    while (int(modifiers.calculate_triangles([new_obj, ])) > new_obj.sx2.hulltrimax) and (angle < 180.0):
+                        angle += 0.5
                         new_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
-                        new_obj.modifiers.update()
-                        bpy.context.view_layer.update()
+
+                    # while (new_obj.modifiers['hullDecimate'].face_count > new_obj.sx2.hulltrimax) and (angle < 180.0):
+                    #     angle += 0.1
+                    #     new_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
+                    #     new_obj.modifiers.update()
+                    #     bpy.context.view_layer.update()
+
+                    if sxglobals.benchmark_cvx:
+                        now = time.perf_counter()
+                        print(f'SX Tools: {new_obj.name} Tris/limit: {modifiers.calculate_triangles([new_obj, ])}/{new_obj.sx2.hulltrimax} Angle: {angle} Iteration Time: {now-then}')
 
                     bpy.ops.object.modifier_apply(modifier='hullDecimate')
 
@@ -3278,10 +3290,11 @@ class SXTOOLS2_export(object):
                     # Final convex conversion
                     bpy.ops.object.mode_set(mode='EDIT', toggle=False)
                     bpy.ops.mesh.select_all(action='SELECT')
-                    bpy.ops.mesh.convex_hull(use_existing_faces=True, face_threshold=math.radians(15.0), shape_threshold=math.radians(15.0))
+                    bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(15.0), shape_threshold=math.radians(15.0))
                     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
-                    print(f'SX Tools: {new_obj.name} face count {len(new_obj.data.polygons)}')
+                    if sxglobals.benchmark_cvx:
+                        print(f'SX Tools: {new_obj.name} Tri Count {modifiers.calculate_triangles([new_obj, ])}')
 
                     # Clear sx2layers
                     new_obj.sx2layers.clear()
@@ -4207,7 +4220,7 @@ class SXTOOLS2_magic(object):
         for i, obj in enumerate(objs):
             if 'sxSubdivision' in obj.modifiers:
                 obj.modifiers['sxSubdivision'].levels = subdivision_list[i]
-        viewlayer.update()
+        # viewlayer.update()
 
         # LOD mesh generation for low-detail
         if scene.exportquality == 'LO':
@@ -5483,7 +5496,7 @@ class SXTOOLS2_setup(object):
                 for mat in sx_mats:
                     bpy.data.materials.remove(mat, do_unlink=True)
 
-            bpy.context.view_layer.update()
+            # bpy.context.view_layer.update()
 
             # Get reference objects for material update
             ref_objs = []
@@ -6714,13 +6727,13 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         default=False,
         update=lambda self, context: update_obj_props(self, context, 'use_cids'))
 
-    hullfacemax: bpy.props.IntProperty(
-        name='Max Hull Faces',
-        description='Max number of faces allowed in the convex hull',
+    hulltrimax: bpy.props.IntProperty(
+        name='Max Hull Triangles',
+        description='Max number of triangles allowed in the convex hull',
         min=4,
         max=1000,
         default=250,
-        update=lambda self, context: update_obj_props(self, context, 'hullfacemax'))
+        update=lambda self, context: update_obj_props(self, context, 'hulltrimax'))
 
     collideroffset: bpy.props.BoolProperty(
         name='Collision Mesh Auto-Offset',
@@ -8125,7 +8138,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
                             if obj.sx2.generatehulls:
                                 col_export.prop(sx2, 'use_cids', text='Use Collider IDs')
-                                col_export.prop(sx2, 'hullfacemax', text='Hull Face Count Limit')
+                                col_export.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
                                 col_export.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Factor', slider=True)
 
                             if hasattr(bpy.types, bpy.ops.object.vhacd.idname()):
