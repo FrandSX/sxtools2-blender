@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 19, 1),
+    'version': (1, 19, 2),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -35,8 +35,8 @@ class SXTOOLS2_sxglobals(object):
     def __init__(self):
         self.benchmark_modifiers = False
         self.benchmark_tool = False
-        self.benchmark_ao = True
-        self.benchmark_magic = True
+        self.benchmark_ao = False
+        self.benchmark_magic = False
 
         self.libraries_status = False
         self.refresh_in_progress = False
@@ -2683,6 +2683,7 @@ class SXTOOLS2_modifiers(object):
 
 
     def add_modifiers(self, objs):
+        version, _, _ = bpy.app.version
         for obj in objs:
             if sxglobals.benchmark_modifiers:
                 then = time.perf_counter()
@@ -2708,13 +2709,22 @@ class SXTOOLS2_modifiers(object):
                     setup.create_tiler()
                 tiler = obj.modifiers.new(type='NODES', name='sxTiler')
                 tiler.node_group = bpy.data.node_groups['sx_tiler']
-                tiler['Input_1'] = obj.sx2.tile_offset
-                tiler['Input_3'] = obj.sx2.tile_neg_x
-                tiler['Input_4'] = obj.sx2.tile_pos_x
-                tiler['Input_5'] = obj.sx2.tile_neg_y
-                tiler['Input_6'] = obj.sx2.tile_pos_y
-                tiler['Input_7'] = obj.sx2.tile_neg_z
-                tiler['Input_8'] = obj.sx2.tile_pos_z
+                if version == 4:
+                    tiler['Socket_1'] = obj.sx2.tile_offset
+                    tiler['Socket_3'] = obj.sx2.tile_neg_x
+                    tiler['Socket_4'] = obj.sx2.tile_pos_x
+                    tiler['Socket_5'] = obj.sx2.tile_neg_y
+                    tiler['Socket_6'] = obj.sx2.tile_pos_y
+                    tiler['Socket_7'] = obj.sx2.tile_neg_z
+                    tiler['Socket_8'] = obj.sx2.tile_pos_z
+                else:
+                    tiler['Input_1'] = obj.sx2.tile_offset
+                    tiler['Input_3'] = obj.sx2.tile_neg_x
+                    tiler['Input_4'] = obj.sx2.tile_pos_x
+                    tiler['Input_5'] = obj.sx2.tile_neg_y
+                    tiler['Input_6'] = obj.sx2.tile_pos_y
+                    tiler['Input_7'] = obj.sx2.tile_neg_z
+                    tiler['Input_8'] = obj.sx2.tile_pos_z
                 tiler.show_viewport = False
                 tiler.show_expanded = False
 
@@ -5765,6 +5775,7 @@ def update_modifiers(self, context, prop):
     if not sxglobals.refresh_in_progress:
         sxglobals.refresh_in_progress = True
 
+        version, _, _ = bpy.app.version
         objs = mesh_selection_validator(self, context)
         if objs:
             if prop == 'modifiervisibility':
@@ -5831,15 +5842,24 @@ def update_modifiers(self, context, prop):
 
                     if obj.sx2.tiling:
                         utils.round_tiling_verts([obj, ])
-
                         tiler = obj.modifiers['sxTiler']
-                        tiler['Input_1'] = obj.sx2.tile_offset
-                        tiler['Input_3'] = obj.sx2.tile_neg_x
-                        tiler['Input_4'] = obj.sx2.tile_pos_x
-                        tiler['Input_5'] = obj.sx2.tile_neg_y
-                        tiler['Input_6'] = obj.sx2.tile_pos_y
-                        tiler['Input_7'] = obj.sx2.tile_neg_z
-                        tiler['Input_8'] = obj.sx2.tile_pos_z
+
+                        if version == 4:
+                            tiler['Socket_1'] = obj.sx2.tile_offset
+                            tiler['Socket_3'] = obj.sx2.tile_neg_x
+                            tiler['Socket_4'] = obj.sx2.tile_pos_x
+                            tiler['Socket_5'] = obj.sx2.tile_neg_y
+                            tiler['Socket_6'] = obj.sx2.tile_pos_y
+                            tiler['Socket_7'] = obj.sx2.tile_neg_z
+                            tiler['Socket_8'] = obj.sx2.tile_pos_z
+                        else:
+                            tiler['Input_1'] = obj.sx2.tile_offset
+                            tiler['Input_3'] = obj.sx2.tile_neg_x
+                            tiler['Input_4'] = obj.sx2.tile_pos_x
+                            tiler['Input_5'] = obj.sx2.tile_neg_y
+                            tiler['Input_6'] = obj.sx2.tile_pos_y
+                            tiler['Input_7'] = obj.sx2.tile_neg_z
+                            tiler['Input_8'] = obj.sx2.tile_pos_z
 
             elif prop == 'hardmode':
                 for obj in objs:
