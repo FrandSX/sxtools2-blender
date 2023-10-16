@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 18, 8),
+    'version': (1, 19, 1),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -33,6 +33,11 @@ from contextlib import redirect_stdout
 # ------------------------------------------------------------------------
 class SXTOOLS2_sxglobals(object):
     def __init__(self):
+        self.benchmark_modifiers = False
+        self.benchmark_tool = False
+        self.benchmark_ao = True
+        self.benchmark_magic = True
+
         self.libraries_status = False
         self.refresh_in_progress = False
         self.layer_update_in_progress = False
@@ -1369,7 +1374,8 @@ class SXTOOLS2_generate(object):
 
 
     def occlusion_list(self, obj, raycount=250, blend=0.5, dist=10.0, groundplane=False, groundheight=-0.5, masklayer=None):
-        # start_time = time.time()
+        if sxglobals.benchmark_ao:
+            then = time.perf_counter()
 
         scene = bpy.context.scene
         contribution = 1.0/float(raycount)
@@ -1380,20 +1386,16 @@ class SXTOOLS2_generate(object):
         if obj.sx2.tiling:
             blend = 0.0
             groundplane = False
-            if not 'sxTiler' in obj.modifiers:
-                modifiers.add_modifiers([obj, ])
-            obj.modifiers['sxTiler'].show_viewport = False
-            bpy.context.view_layer.update()
             xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], local=True)
             dist = 2.0 * min(xmax-xmin, ymax-ymin, zmax-zmin)
+            if not 'sxTiler' in obj.modifiers:
+                modifiers.add_modifiers([obj, ])
             obj.modifiers['sxTiler'].show_viewport = True
-            bpy.context.view_layer.update()
 
         vert_occ_dict = {}
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=True)
 
         if vert_dict:
-
             if (blend > 0.0) and groundplane:
                 pivot = utils.find_root_pivot([obj, ])
                 pivot = (pivot[0], pivot[1], groundheight)
@@ -1495,9 +1497,9 @@ class SXTOOLS2_generate(object):
             vert_occ_list = generate.vert_dict_to_loop_list(obj, vert_occ_dict, 1, 4)
             result = self.mask_list(obj, vert_occ_list, masklayer)
 
-            # end_time = time.time()
-            # duration = round(end_time - start_time, 4)
-            # print(f'SX Tools: {obj.name} AO rendered in {duration} seconds') 
+            if sxglobals.benchmark_ao:
+                now = time.perf_counter()
+                print(f'SX Tools: {obj.name} AO rendered in {round(now-then, 4)} seconds') 
 
             return result
 
@@ -2319,7 +2321,9 @@ class SXTOOLS2_tools(object):
 
     # NOTE: Make sure color parameter is always provided in linear color space!
     def apply_tool(self, objs, targetlayer, masklayer=None, invertmask=False, color=None, apply_to_alpha=False):
-        # then = time.perf_counter()
+        if sxglobals.benchmark_tool:
+            then = time.perf_counter()
+
         utils.mode_manager(objs, set_mode=True, mode_id='apply_tool')
         scene = bpy.context.scene.sx2
         amplitude = scene.noiseamplitude
@@ -2382,8 +2386,9 @@ class SXTOOLS2_tools(object):
                     layers.set_layer(obj, colors, targetlayer)
 
         utils.mode_manager(objs, set_mode=False, mode_id='apply_tool')
-        # now = time.perf_counter()
-        # print('Apply tool ', scene.toolmode, ' duration: ', now-then, ' seconds')
+        if sxglobals.benchmark_tool:
+            now = time.perf_counter()
+            print(f'Apply tool {scene.toolmode} duration: {round(now-then, 4)} seconds')
 
 
     # mode 0: hue, mode 1: saturation, mode 2: lightness
@@ -2645,10 +2650,6 @@ class SXTOOLS2_modifiers(object):
         weight = setvalue
         bpy.context.view_layer.objects.active = objs[0]
 
-        # if bpy.context.tool_settings.mesh_select_mode[0]:
-        #     bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='VERT')
-        # else:
-        #     bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='EDGE')
         if clearsel:
             utils.clear_component_selection(objs)
 
@@ -2683,6 +2684,9 @@ class SXTOOLS2_modifiers(object):
 
     def add_modifiers(self, objs):
         for obj in objs:
+            if sxglobals.benchmark_modifiers:
+                then = time.perf_counter()
+
             if 'sxMirror' not in obj.modifiers:
                 obj.modifiers.new(type='MIRROR', name='sxMirror')
                 obj.modifiers['sxMirror'].show_viewport = True if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror else False
@@ -2693,6 +2697,12 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxMirror'].mirror_object = obj.sx2.mirrorobject if obj.sx2.mirrorobject is not None else None
                 obj.modifiers['sxMirror'].use_clip = True
                 obj.modifiers['sxMirror'].use_mirror_merge = True
+
+                if sxglobals.benchmark_modifiers:
+                    now = time.perf_counter()
+                    print(f'SX Tools: Mirror: {obj.name} {round(now-then, 4)} seconds')
+                    then = time.perf_counter()
+
             if 'sxTiler' not in obj.modifiers:
                 if 'sx_tiler' not in bpy.data.node_groups:
                     setup.create_tiler()
@@ -2707,11 +2717,18 @@ class SXTOOLS2_modifiers(object):
                 tiler['Input_8'] = obj.sx2.tile_pos_z
                 tiler.show_viewport = False
                 tiler.show_expanded = False
+
+                if sxglobals.benchmark_modifiers:
+                    now = time.perf_counter()
+                    print(f'SX Tools: Tiler: {obj.name} {round(now-then, 4)} seconds')
+                    then = time.perf_counter()
+
             # if 'sxAO' not in obj.modifiers:
             #     if 'sx_ao' not in bpy.data.node_groups:
             #         setup.create_occlusion_network(100)
             #     ao = obj.modifiers.new(type='NODES', name='sxAO')
             #     ao.node_group = bpy.data.node_groups['sx_ao']
+
             if 'sxSubdivision' not in obj.modifiers:
                 obj.modifiers.new(type='SUBSURF', name='sxSubdivision')
                 obj.modifiers['sxSubdivision'].show_viewport = obj.sx2.modifiervisibility
@@ -2721,6 +2738,12 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxSubdivision'].uv_smooth = 'NONE'
                 obj.modifiers['sxSubdivision'].show_only_control_edges = True
                 obj.modifiers['sxSubdivision'].show_on_cage = True
+
+                if sxglobals.benchmark_modifiers:
+                    now = time.perf_counter()
+                    print(f'SX Tools: Subdivision: {obj.name} {round(now-then, 4)} seconds')
+                    then = time.perf_counter()
+
             if 'sxBevel' not in obj.modifiers:
                 obj.modifiers.new(type='BEVEL', name='sxBevel')
                 obj.modifiers['sxBevel'].show_viewport = obj.sx2.modifiervisibility
@@ -2735,11 +2758,23 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxBevel'].offset_type = obj.sx2.beveltype
                 obj.modifiers['sxBevel'].limit_method = 'WEIGHT'
                 obj.modifiers['sxBevel'].miter_outer = 'MITER_ARC'
+
+                if sxglobals.benchmark_modifiers:
+                    now = time.perf_counter()
+                    print(f'SX Tools: Bevel: {obj.name} {round(now-then, 4)} seconds')
+                    then = time.perf_counter()
+
             if 'sxWeld' not in obj.modifiers:
                 obj.modifiers.new(type='WELD', name='sxWeld')
                 obj.modifiers['sxWeld'].show_viewport = False if obj.sx2.weldthreshold == 0 else obj.sx2.modifiervisibility
                 obj.modifiers['sxWeld'].show_expanded = False
                 obj.modifiers['sxWeld'].merge_threshold = obj.sx2.weldthreshold
+
+                if sxglobals.benchmark_modifiers:
+                    now = time.perf_counter()
+                    print(f'SX Tools: Weld: {obj.name} {round(now-then, 4)} seconds')
+                    then = time.perf_counter()
+
             if 'sxDecimate' not in obj.modifiers:
                 obj.modifiers.new(type='DECIMATE', name='sxDecimate')
                 obj.modifiers['sxDecimate'].show_viewport = False if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0) else obj.sx2.modifiervisibility
@@ -2748,17 +2783,24 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxDecimate'].angle_limit = math.radians(obj.sx2.decimation)
                 obj.modifiers['sxDecimate'].use_dissolve_boundaries = True
                 obj.modifiers['sxDecimate'].delimit = {'SHARP', 'UV'}
+
+                if sxglobals.benchmark_modifiers:
+                    now = time.perf_counter()
+                    print(f'SX Tools: Decimate1: {obj.name} {round(now-then, 4)} seconds')
+                    then = time.perf_counter()
+
             if 'sxDecimate2' not in obj.modifiers:
                 obj.modifiers.new(type='DECIMATE', name='sxDecimate2')
+                obj.modifiers['sxDecimate2'].show_viewport = False if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0) else obj.sx2.modifiervisibility
                 obj.modifiers['sxDecimate2'].show_expanded = False
                 obj.modifiers['sxDecimate2'].decimate_type = 'COLLAPSE'
                 obj.modifiers['sxDecimate2'].ratio = 0.99
                 obj.modifiers['sxDecimate2'].use_collapse_triangulate = True
-                # Toggle visibility to calculate poly count
-                obj.modifiers['sxDecimate2'].show_viewport = True
-                bpy.context.view_layer.update()
-                obj.modifiers['sxDecimate2'].show_viewport = False if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0) else obj.sx2.modifiervisibility
-                bpy.context.view_layer.update()
+
+                if sxglobals.benchmark_modifiers:
+                    now = time.perf_counter()
+                    print(f'SX Tools: Decimate2: {obj.name} {round(now-then, 4)} seconds')
+                    then = time.perf_counter()
 
             if 'sxWeightedNormal' not in obj.modifiers:
                 obj.modifiers.new(type='WEIGHTED_NORMAL', name='sxWeightedNormal')
@@ -2769,6 +2811,11 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxWeightedNormal'].keep_sharp = False if obj.sx2.hardmode == 'SMOOTH' else True
 
                 obj.sx2.smoothangle = obj.sx2.smoothangle
+
+                if sxglobals.benchmark_modifiers:
+                    now = time.perf_counter()
+                    print(f'SX Tools: Weighted Normals: {obj.name} {round(now-then, 4)} seconds')
+                    then = time.perf_counter()
 
 
     def apply_modifiers(self, objs):
@@ -2847,9 +2894,12 @@ class SXTOOLS2_modifiers(object):
 
     def calculate_triangles(self, objs):
         count = 0
+        edg = bpy.context.evaluated_depsgraph_get()
         for obj in objs:
-            if 'sxDecimate2' in obj.modifiers:
-                count += obj.modifiers['sxDecimate2'].face_count
+            if obj.type == 'MESH':
+                eval_data = obj.evaluated_get(edg).data
+                for face in eval_data.polygons:
+                    count += len(face.vertices) - 2
 
         return str(count)
 
@@ -3897,6 +3947,8 @@ class SXTOOLS2_magic(object):
             sxglobals.refresh_in_progress = True
 
         then = time.perf_counter()
+        then2 = 0.0
+
         scene = bpy.context.scene.sx2
         viewlayer = bpy.context.view_layer
         org_obj_names = {}
@@ -3943,12 +3995,20 @@ class SXTOOLS2_magic(object):
 
         # Prepare modifiers
         modifiers.remove_modifiers(objs)
+
+        if sxglobals.benchmark_magic:
+            now = time.perf_counter()
+            print(f'SX Tools: Modifier stack removed: {round(now-then, 4)} seconds')
+            then2 = now
+
         for obj in objs:
             obj.sx2.modifiervisibility = True
         modifiers.add_modifiers(objs)
 
-        # now = time.perf_counter()
-        # print(f'SX Tools: Modifier stack added: {now-then} seconds')
+        if sxglobals.benchmark_magic:
+            now = time.perf_counter()
+            print(f'SX Tools: Modifier stack added: {round(now-then2, 4)} seconds')
+            then2 = now
 
         # Create high-poly bake meshes
         if scene.exportquality == 'HI':
@@ -4036,10 +4096,12 @@ class SXTOOLS2_magic(object):
                 obj.hide_viewport = True
 
         # Mandatory to update visibility?
-        viewlayer.update()
+        # viewlayer.update()
 
-        # now = time.perf_counter()
-        # print(f'SX Tools: Misc and viewlayer update: {now-then} seconds')
+        if sxglobals.benchmark_magic:
+            now = time.perf_counter()
+            print(f'SX Tools: Mesh setup and viewlayer update: {round(now-then2, 4)} seconds')
+            then2 = now
 
         category_list = list(sxglobals.category_dict.keys())
         categories = [category.replace(" ", "_").upper() for category in category_list]
@@ -4120,8 +4182,10 @@ class SXTOOLS2_magic(object):
                         obj.select_set(False)
                         obj.hide_viewport = True
 
-                now = time.perf_counter()
-                print(f'SX Tools: {category} / {len(group_list)} groups duration: {now-then} seconds')
+                if sxglobals.benchmark_magic:
+                    now = time.perf_counter()
+                    print(f'SX Tools: {category} / {len(group_list)} groups duration: {round(now-then2, 4)} seconds')
+                    then2 = now
 
         for obj in viewlayer.objects:
             if (scene.exportquality == 'HI') and ('_org' in obj.name):
@@ -4164,9 +4228,7 @@ class SXTOOLS2_magic(object):
 
             # self.apply_modifiers(objs)
 
-        now = time.perf_counter()
-        print(f'SX Tools: Mesh processing duration: {now-then} seconds')
-
+        # Restore tool settings
         scene.toolmode = org_toolmode
         scene.toolopacity = org_toolopacity
         scene.toolblend = org_toolblend
@@ -4182,7 +4244,7 @@ class SXTOOLS2_magic(object):
         #     obj.sx2.modifiervisibility = True
 
         now = time.perf_counter()
-        print(f'SX Tools: Modifier stack duration: {now-then} seconds')
+        print(f'SX Tools: Magic process duration: {round(now-then, 4)} seconds')
 
         utils.mode_manager(objs, set_mode=False, mode_id='process_objects')
         sxglobals.refresh_in_progress = False
@@ -6194,20 +6256,7 @@ def save_post_handler(dummy):
             if obj['revision'] > revision:
                 revision = obj['revision']
 
-    # Update modifier stack for poly counts
-    for obj in objs:
-        if 'sxDecimate2' in obj.modifiers:
-            obj.modifiers['sxDecimate2'].show_viewport = True
-    bpy.context.view_layer.update()
-    for obj in objs:
-        if 'sxDecimate2' in obj.modifiers:
-            obj.modifiers['sxDecimate2'].show_viewport = False if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0) else obj.sx2.modifiervisibility
-    bpy.context.view_layer.update()
-
     cost = modifiers.calculate_triangles(objs)
-    if cost == '0':
-        s = bpy.context.scene.statistics(bpy.context.view_layer)
-        cost = s.split("Tris:")[1].split(' ')[0].replace(',', '')
 
     if len(prefs.cataloguepath) > 0:
         try:
