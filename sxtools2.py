@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 19, 4),
+    'version': (1, 19, 5),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3290,7 +3290,7 @@ class SXTOOLS2_export(object):
                     # Final convex conversion
                     bpy.ops.object.mode_set(mode='EDIT', toggle=False)
                     bpy.ops.mesh.select_all(action='SELECT')
-                    bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(15.0), shape_threshold=math.radians(15.0))
+                    bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(angle), shape_threshold=math.radians(angle))
                     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
                     if sxglobals.benchmark_cvx:
