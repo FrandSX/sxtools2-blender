@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 19, 6),
+    'version': (1, 19, 9),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -84,6 +84,7 @@ class SXTOOLS2_sxglobals(object):
         # Keywords used by Smart Separate. Avoid using these in regular object names
         self.keywords = ['_org', '_LOD0', '_top', '_bottom', '_front', '_rear', '_left', '_right']
 
+        self.version, _, _ = bpy.app.version
 
     def __del__(self):
         print('SX Tools: Exiting sxglobals')
@@ -2569,8 +2570,10 @@ class SXTOOLS2_modifiers(object):
         mode = objs[0].mode[:]
         mode_dict = {'CRS': 'crease', 'BEV': 'bevel_weight'}
         weight = setvalue
-        if (setmode == 'CRS') and (weight == -1.0):
-            weight = 0.0 
+        if (setmode == 'CRS') and (weight == -1.0) and (sxglobals.version == 3):
+            weight = 0.0
+        elif (weight == -1.0):
+            weight = 0.0
 
         utils.mode_manager(objs, set_mode=True, mode_id='assign_set')
         active = bpy.context.view_layer.objects.active
@@ -2579,38 +2582,75 @@ class SXTOOLS2_modifiers(object):
         for obj in objs:
             bpy.context.view_layer.objects.active = obj
             mesh = obj.data
-            if not mesh.has_crease_vertex:
-                bpy.ops.mesh.customdata_crease_vertex_add()
-            if not mesh.has_crease_edge:
-                bpy.ops.mesh.customdata_crease_edge_add()
-            if not mesh.has_bevel_weight_edge:
-                bpy.ops.mesh.customdata_bevel_weight_edge_add()
-            if not mesh.has_bevel_weight_vertex:
-                bpy.ops.mesh.customdata_bevel_weight_vertex_add()
+            if sxglobals.version == 4:
+                if not 'crease_vert' in mesh.attributes:
+                    mesh.vertex_creases_ensure()
+                if not 'crease_edge' in mesh.attributes:
+                    mesh.edge_creases_ensure()
+                if not 'bevel_weight_vert' in mesh.attributes:
+                    mesh.attributes.new(name='bevel_weight_vert', type='FLOAT', domain='POINT')
+                if not 'bevel_weight_edge' in mesh.attributes:
+                    mesh.attributes.new(name='bevel_weight_edge', type='FLOAT', domain='EDGE')
+                if not 'sharp_edge' in mesh.attributes:
+                    mesh.attributes.new(name='sharp_edge', type='BOOLEAN', domain='EDGE')
+                if not 'sharp_face' in mesh.attributes:
+                    mesh.attributes.new(name='sharp_face', type='BOOLEAN', domain='FACE')
+            else:
+                if not mesh.has_crease_vertex:
+                    bpy.ops.mesh.customdata_crease_vertex_add()
+                if not mesh.has_crease_edge:
+                    bpy.ops.mesh.customdata_crease_edge_add()
+                if not mesh.has_bevel_weight_edge:
+                    bpy.ops.mesh.customdata_bevel_weight_edge_add()
+                if not mesh.has_bevel_weight_vertex:
+                    bpy.ops.mesh.customdata_bevel_weight_vertex_add()
 
             if (mode == 'EDIT'):
                 # EDIT mode vertex creasing
-                # vertex beveling not supported
+                # vertex beveling not supported by SX Tools modifier stack
+                # a second bevel modifier would need to be added before subdivision modifier
                 if (bpy.context.tool_settings.mesh_select_mode[0]):
                     weight_values = [None] * len(mesh.vertices)
                     select_values = [None] * len(mesh.vertices)
                     mesh.vertices.foreach_get('select', select_values)
-                    if setmode == 'CRS':
-                        mesh.vertex_creases[0].data.foreach_get('value', weight_values)
-                        for i, sel in enumerate(select_values):
-                            if sel:
-                                weight_values[i] = weight
+                    if sxglobals.version == 4:
+                        if setmode == 'CRS':
+                            mesh.attributes['crease_vert'].data.foreach_get('value', weight_values)
+                        else:
+                            mesh.attributes['bevel_weight_vert'].data.foreach_get('value', weight_values)
+                    else:
+                        if setmode == 'CRS':
+                            mesh.vertex_creases[0].data.foreach_get('value', weight_values)
 
-                    mesh.vertex_creases[0].data.foreach_set('value', weight_values)
+                    for i, sel in enumerate(select_values):
+                        if sel:
+                            weight_values[i] = weight
+
+                    if sxglobals.version == 4:
+                        if setmode == 'CRS':
+                            mesh.attributes['crease_vert'].data.foreach_set('value', weight_values)
+                        else:
+                            mesh.attributes['bevel_weight_vert'].data.foreach_set('value', weight_values)
+                    else:
+                        if setmode == 'CRS':
+                            mesh.vertex_creases[0].data.foreach_set('value', weight_values)
 
                 # EDIT mode edge creasing and beveling
                 elif (bpy.context.tool_settings.mesh_select_mode[1] or bpy.context.tool_settings.mesh_select_mode[2]):
                     weight_values = [None] * len(mesh.edges)
                     sharp_values = [None] * len(mesh.edges)
                     select_values = [None] * len(mesh.edges)
-                    mesh.edges.foreach_get(mode_dict[setmode], weight_values)
-                    mesh.edges.foreach_get('use_edge_sharp', sharp_values)
                     mesh.edges.foreach_get('select', select_values)
+                    if sxglobals.version == 4:
+                        if setmode == 'CRS':
+                            mesh.attributes['crease_edge'].data.foreach_get('value', weight_values)
+                        else:
+                            mesh.attributes['bevel_weight_edge'].data.foreach_get('value', weight_values)
+                        mesh.attributes['sharp_edge'].data.foreach_get('value', sharp_values)
+                    else:
+                        mesh.edges.foreach_get(mode_dict[setmode], weight_values)
+                        mesh.edges.foreach_get('use_edge_sharp', sharp_values)
+                    
 
                     for i, sel in enumerate(select_values):
                         if sel:
@@ -2618,28 +2658,47 @@ class SXTOOLS2_modifiers(object):
                             if setmode == 'CRS':
                                 sharp_values[i] = (weight == 1.0)
 
-                    mesh.edges.foreach_set(mode_dict[setmode], weight_values)
-                    mesh.edges.foreach_set('use_edge_sharp', sharp_values)
+                    if sxglobals.version == 4:
+                        if setmode == 'CRS':
+                            mesh.attributes['crease_edge'].data.foreach_set('value', weight_values)
+                        else:
+                            mesh.attributes['bevel_weight_edge'].data.foreach_set('value', weight_values)
+                        mesh.attributes['sharp_edge'].data.foreach_set('value', sharp_values)
+                    else:
+                        mesh.edges.foreach_set(mode_dict[setmode], weight_values)
+                        mesh.edges.foreach_set('use_edge_sharp', sharp_values)
 
             # OBJECT mode
             else:
                 # vertex creasing
                 if (bpy.context.tool_settings.mesh_select_mode[0]):
+                    weight_values = [weight] * len(mesh.vertices)
                     if setmode == 'CRS':
-                        weight_values = [weight] * len(mesh.vertices)
-                        mesh.vertex_creases[0].data.foreach_set('value', weight_values)
+                        if sxglobals.version == 4:
+                            mesh.attributes['crease_vert'].data.foreach_set('value', weight_values)
+                        else:
+                            mesh.vertex_creases[0].data.foreach_set('value', weight_values)
 
                 # edge creasing and beveling
                 else:
-                    if setmode == 'CRS':
-                        if weight == 1.0:
-                            sharp_values = [True] * len(mesh.edges)
-                        else:
-                            sharp_values = [False] * len(mesh.edges)
-                        mesh.edges.foreach_set('use_edge_sharp', sharp_values)
-
                     weight_values = [weight] * len(mesh.edges)
-                    mesh.edges.foreach_set(mode_dict[setmode], weight_values)
+
+                    if setmode == 'CRS':
+                        sharp_values = [(weight == 1.0) * (bpy.context.scene.sx2.autocrease)] * len(mesh.edges)
+                    else:
+                        sharp_values = [(weight > 0.0) * (obj.sx2.hardmode == 'SHARP')] * len(mesh.edges)
+
+                    if sxglobals.version == 4:
+                        mesh.attributes['sharp_edge'].data.foreach_set('value', sharp_values)
+                        if setmode == 'CRS':
+                            mesh.attributes['crease_edge'].data.foreach_set('value', weight_values)
+                        else:
+                            mesh.attributes['bevel_weight_edge'].data.foreach_set('value', weight_values)
+                            if bpy.context.scene.sx2.autocrease:
+                                mesh.attributes['crease_edge'].data.foreach_set('value', weight_values)
+                    else:
+                        mesh.edges.foreach_set('use_edge_sharp', sharp_values)
+                        mesh.edges.foreach_set(mode_dict[setmode], weight_values)
 
             mesh.update()
         utils.mode_manager(objs, set_mode=False, mode_id='assign_set')
@@ -2683,7 +2742,6 @@ class SXTOOLS2_modifiers(object):
 
 
     def add_modifiers(self, objs):
-        version, _, _ = bpy.app.version
         for obj in objs:
             if sxglobals.benchmark_modifiers:
                 then = time.perf_counter()
@@ -2709,7 +2767,7 @@ class SXTOOLS2_modifiers(object):
                     setup.create_tiler()
                 tiler = obj.modifiers.new(type='NODES', name='sxTiler')
                 tiler.node_group = bpy.data.node_groups['sx_tiler']
-                if version == 4:
+                if sxglobals.version == 4:
                     tiler['Socket_1'] = obj.sx2.tile_offset
                     tiler['Socket_3'] = obj.sx2.tile_neg_x
                     tiler['Socket_4'] = obj.sx2.tile_pos_x
@@ -4692,7 +4750,6 @@ class SXTOOLS2_setup(object):
         def connect_nodes(output, input):
             nodetree.links.new(output, input)
 
-        version, _, _ = bpy.app.version
         nodetree = bpy.data.node_groups.new(type='GeometryNodeTree', name='sx_tiler')
         group_in = nodetree.nodes.new(type='NodeGroupInput')
         group_in.name = 'group_input'
@@ -4705,7 +4762,7 @@ class SXTOOLS2_setup(object):
         axis_switches = ['-X', '+X', '-Y', '+Y', '-Z', '+Z']
 
 
-        if version == 4:
+        if sxglobals.version == 4:
             nodetree.interface.new_socket(in_out='INPUT', name='Geometry', socket_type='NodeSocketGeometry')
             nodetree.interface.new_socket(in_out='INPUT', name='Offset', socket_type='NodeSocketFloat')
             nodetree.interface.new_socket(in_out='OUTPUT', name='Geometry', socket_type='NodeSocketGeometry')
@@ -5098,7 +5155,6 @@ class SXTOOLS2_setup(object):
         def connect_nodes(output, input):
             sxmaterial.node_tree.links.new(output, input)
 
-        version, _, _ = bpy.app.version
         blend_mode_dict = {'ALPHA': 'MIX', 'OVR': 'OVERLAY', 'MUL': 'MULTIPLY', 'ADD': 'ADD', 'SUB': 'SUBTRACT'}
         scene = bpy.context.scene.sx2
 
@@ -5106,19 +5162,19 @@ class SXTOOLS2_setup(object):
             if obj.sx2layers:
                 sxmaterial = bpy.data.materials.new(name='SX2Material_'+obj.name)
                 sxmaterial.use_nodes = True
-                if version == 3:
-                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'].default_value = [0.0, 0.0, 0.0, 1.0]
-                else:
+                if sxglobals.version == 4:
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26].default_value = [0.0, 0.0, 0.0, 1.0]
+                else:
+                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'].default_value = [0.0, 0.0, 0.0, 1.0]
                 sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = [0.0, 0.0, 0.0, 1.0]
                 sxmaterial.node_tree.nodes['Principled BSDF'].location = (1000, 0)
                 sxmaterial.node_tree.nodes['Material Output'].location = (1300, 0)
 
                 if obj.sx2.shadingmode == 'FULL':
-                    if version == 3:
+                    if sxglobals.version == 3:
                         sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = obj.sx2.mat_specular
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Anisotropic'].default_value = obj.sx2.mat_anisotropic
-                    if version == 4:
+                    if sxglobals.version == 4:
                         sxmaterial.node_tree.nodes['Principled BSDF'].inputs[18].default_value = obj.sx2.mat_clearcoat
                     else:
                         sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Clearcoat'].default_value = obj.sx2.mat_clearcoat
@@ -5378,7 +5434,7 @@ class SXTOOLS2_setup(object):
                                 connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Roughness'])
 
                             if material_layers[i][2] == 'TRN':
-                                if version == 4:
+                                if sxglobals.version == 4:
                                     connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs[17])
                                 else:
                                     connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission'])
@@ -5388,7 +5444,7 @@ class SXTOOLS2_setup(object):
                                 connect_nodes(palette_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface Color'])
 
                             if material_layers[i][2] == 'EMI':
-                                if version == 4:
+                                if sxglobals.version == 4:
                                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs[27].default_value = 10
                                     connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26])
                                 else:
@@ -5403,7 +5459,7 @@ class SXTOOLS2_setup(object):
                         connect_nodes(prev_alpha, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Alpha'])
 
                 elif (obj.sx2.shadingmode == 'DEBUG') or (obj.sx2.shadingmode == 'ALPHA'):
-                    if version == 4:
+                    if sxglobals.version == 4:
                         sxmaterial.node_tree.nodes['Principled BSDF'].inputs[12].default_value = 0.0
                         sxmaterial.node_tree.nodes['Principled BSDF'].inputs[27].default_value = 1
                     else:
@@ -5476,7 +5532,7 @@ class SXTOOLS2_setup(object):
                         output = base_color.outputs['Alpha']
 
                     connect_nodes(output, debug_blend.inputs['Color2'])
-                    if version == 4:
+                    if sxglobals.version == 4:
                         connect_nodes(debug_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26])
                     else:
                         connect_nodes(debug_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'])
@@ -5806,7 +5862,6 @@ def update_modifiers(self, context, prop):
     if not sxglobals.refresh_in_progress:
         sxglobals.refresh_in_progress = True
 
-        version, _, _ = bpy.app.version
         objs = mesh_selection_validator(self, context)
         if objs:
             if prop == 'modifiervisibility':
@@ -5875,7 +5930,7 @@ def update_modifiers(self, context, prop):
                         utils.round_tiling_verts([obj, ])
                         tiler = obj.modifiers['sxTiler']
 
-                        if version == 4:
+                        if sxglobals.version == 4:
                             tiler['Socket_1'] = obj.sx2.tile_offset
                             tiler['Socket_3'] = obj.sx2.tile_neg_x
                             tiler['Socket_4'] = obj.sx2.tile_pos_x
