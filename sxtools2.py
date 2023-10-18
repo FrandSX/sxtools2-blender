@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 19, 9),
+    'version': (1, 19, 10),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2613,71 +2613,80 @@ class SXTOOLS2_modifiers(object):
                     weight_values = [None] * len(mesh.vertices)
                     select_values = [None] * len(mesh.vertices)
                     mesh.vertices.foreach_get('select', select_values)
+
                     if sxglobals.version == 4:
-                        if setmode == 'CRS':
-                            mesh.attributes['crease_vert'].data.foreach_get('value', weight_values)
-                        else:
-                            mesh.attributes['bevel_weight_vert'].data.foreach_get('value', weight_values)
+                        mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
+                        mesh.attributes[mode_dict[setmode]].data.foreach_get('value', weight_values)
                     else:
                         if setmode == 'CRS':
                             mesh.vertex_creases[0].data.foreach_get('value', weight_values)
+                        else:
+                            mesh.vertices.foreach_get(mode_dict[setmode], weight_values)
 
                     for i, sel in enumerate(select_values):
                         if sel:
                             weight_values[i] = weight
 
                     if sxglobals.version == 4:
-                        if setmode == 'CRS':
-                            mesh.attributes['crease_vert'].data.foreach_set('value', weight_values)
-                        else:
-                            mesh.attributes['bevel_weight_vert'].data.foreach_set('value', weight_values)
+                        mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
+                        mesh.attributes[mode_dict[setmode]].data.foreach_set('value', weight_values)
                     else:
                         if setmode == 'CRS':
                             mesh.vertex_creases[0].data.foreach_set('value', weight_values)
+                        else:
+                            mesh.vertices.foreach_set(mode_dict[setmode], weight_values)
 
                 # EDIT mode edge creasing and beveling
-                elif (bpy.context.tool_settings.mesh_select_mode[1] or bpy.context.tool_settings.mesh_select_mode[2]):
+                else:
                     weight_values = [None] * len(mesh.edges)
                     sharp_values = [None] * len(mesh.edges)
                     select_values = [None] * len(mesh.edges)
+                    autocrease_values = [None] * len(mesh.edges)
                     mesh.edges.foreach_get('select', select_values)
+
                     if sxglobals.version == 4:
-                        if setmode == 'CRS':
-                            mesh.attributes['crease_edge'].data.foreach_get('value', weight_values)
-                        else:
-                            mesh.attributes['bevel_weight_edge'].data.foreach_get('value', weight_values)
+                        mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
+                        mesh.attributes[mode_dict[setmode]].data.foreach_get('value', weight_values)
                         mesh.attributes['sharp_edge'].data.foreach_get('value', sharp_values)
+                        if (bpy.context.scene.sx2.autocrease) and (setmode == 'BEV'):
+                            mesh.attributes['crease_edge'].data.foreach_get('value', autocrease_values)
                     else:
                         mesh.edges.foreach_get(mode_dict[setmode], weight_values)
                         mesh.edges.foreach_get('use_edge_sharp', sharp_values)
-                    
 
                     for i, sel in enumerate(select_values):
                         if sel:
                             weight_values[i] = weight
                             if setmode == 'CRS':
-                                sharp_values[i] = (weight == 1.0)
+                                sharp_values[i] = (weight == 1.0) * (bpy.context.scene.sx2.autocrease)
+                            else:
+                                sharp_values[i] = (weight > 0.0) * (obj.sx2.hardmode == 'SHARP')
+                                if (bpy.context.scene.sx2.autocrease) and (setmode == 'BEV') and (weight_values[i] > 0.0):
+                                    autocrease_values[i] = 1.0
 
                     if sxglobals.version == 4:
-                        if setmode == 'CRS':
-                            mesh.attributes['crease_edge'].data.foreach_set('value', weight_values)
-                        else:
-                            mesh.attributes['bevel_weight_edge'].data.foreach_set('value', weight_values)
+                        mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
                         mesh.attributes['sharp_edge'].data.foreach_set('value', sharp_values)
+                        mesh.attributes[mode_dict[setmode]].data.foreach_set('value', weight_values)
+                        if (bpy.context.scene.sx2.autocrease) and (setmode == 'BEV'):
+                            mesh.attributes['crease_edge'].data.foreach_set('value', autocrease_values)
                     else:
-                        mesh.edges.foreach_set(mode_dict[setmode], weight_values)
                         mesh.edges.foreach_set('use_edge_sharp', sharp_values)
+                        mesh.edges.foreach_set(mode_dict[setmode], weight_values)
 
             # OBJECT mode
             else:
-                # vertex creasing
+                # vertex creasing and beveling
                 if (bpy.context.tool_settings.mesh_select_mode[0]):
                     weight_values = [weight] * len(mesh.vertices)
-                    if setmode == 'CRS':
-                        if sxglobals.version == 4:
-                            mesh.attributes['crease_vert'].data.foreach_set('value', weight_values)
-                        else:
+                    if sxglobals.version == 4:
+                        mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
+                        mesh.attributes[mode_dict[setmode]].data.foreach_set('value', weight_values)
+                    else:
+                        if setmode == 'CRS':
                             mesh.vertex_creases[0].data.foreach_set('value', weight_values)
+                        else:
+                            mesh.vertices.foreach_set(mode_dict[setmode], weight_values)
 
                 # edge creasing and beveling
                 else:
@@ -2689,13 +2698,11 @@ class SXTOOLS2_modifiers(object):
                         sharp_values = [(weight > 0.0) * (obj.sx2.hardmode == 'SHARP')] * len(mesh.edges)
 
                     if sxglobals.version == 4:
+                        mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
                         mesh.attributes['sharp_edge'].data.foreach_set('value', sharp_values)
-                        if setmode == 'CRS':
+                        mesh.attributes[mode_dict[setmode]].data.foreach_set('value', weight_values)
+                        if (bpy.context.scene.sx2.autocrease) and (setmode == 'BEV'):
                             mesh.attributes['crease_edge'].data.foreach_set('value', weight_values)
-                        else:
-                            mesh.attributes['bevel_weight_edge'].data.foreach_set('value', weight_values)
-                            if bpy.context.scene.sx2.autocrease:
-                                mesh.attributes['crease_edge'].data.foreach_set('value', weight_values)
                     else:
                         mesh.edges.foreach_set('use_edge_sharp', sharp_values)
                         mesh.edges.foreach_set(mode_dict[setmode], weight_values)
@@ -2708,35 +2715,50 @@ class SXTOOLS2_modifiers(object):
     def select_set(self, objs, setvalue, setmode, clearsel=False):
         weight = setvalue
         bpy.context.view_layer.objects.active = objs[0]
-
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
         if clearsel:
             utils.clear_component_selection(objs)
 
-        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
         for obj in objs:
             mesh = obj.data
 
             if bpy.context.tool_settings.mesh_select_mode[0]:
-                if mesh.has_crease_vertex:
-                    for vert in mesh.vertices:
-                        creaseweight = mesh.vertex_creases[0].data[vert.index].value
-                        if math.isclose(creaseweight, weight, abs_tol=0.1):
-                            vert.select = True
-            else:
-                bm = bmesh.new()
-                bm.from_mesh(mesh)
-
-                if setmode == 'CRS':
-                    bmlayer = bm.edges.layers.crease.verify()
+                if sxglobals.version == 4:
+                    mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
+                    if mode_dict[setmode] in mesh.attributes:
+                        for vert in mesh.vertices:
+                            attr_weight = mesh.attributes[mode_dict[setmode]].data[vert.index].value
+                            if math.isclose(attr_weight, weight, abs_tol=0.1):
+                                vert.select = True
                 else:
-                    bmlayer = bm.edges.layers.bevel_weight.verify()
+                    if mesh.has_crease_vertex:
+                        for vert in mesh.vertices:
+                            creaseweight = mesh.vertex_creases[0].data[vert.index].value
+                            if math.isclose(creaseweight, weight, abs_tol=0.1):
+                                vert.select = True
+            else:
+                if sxglobals.version == 4:
+                    mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
+                    if mode_dict[setmode] in mesh.attributes:
+                        for edge in mesh.edges:
+                            attr_weight = mesh.attributes[mode_dict[setmode]].data[edge.index].value
+                            if math.isclose(attr_weight, weight, abs_tol=0.1):
+                                edge.select = True
+                else:
+                    bm = bmesh.new()
+                    bm.from_mesh(mesh)
 
-                for edge in bm.edges:
-                    if math.isclose(edge[bmlayer], weight, abs_tol=0.1):
-                        edge.select = True
+                    if setmode == 'CRS':
+                        bmlayer = bm.edges.layers.crease.verify()
+                    else:
+                        bmlayer = bm.edges.layers.bevel_weight.verify()
 
-                bm.to_mesh(mesh)
-                bm.free()
+                    for edge in bm.edges:
+                        if math.isclose(edge[bmlayer], weight, abs_tol=0.1):
+                            edge.select = True
+
+                    bm.to_mesh(mesh)
+                    bm.free()
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
 
@@ -8053,7 +8075,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         col_sel.prop(scene, 'curvaturelimit', slider=True, text='Curvature Selector')
                         col_sel.prop(scene, 'curvaturetolerance', slider=True, text='Curvature Tolerance')
                         col_sets = box_crease.column(align=True)
-                        if (bpy.context.tool_settings.mesh_select_mode[0]) and (scene.creasemode == 'CRS'):
+                        if (bpy.context.tool_settings.mesh_select_mode[0]):
                             clear_text = 'Clear Vertex Weights'
                         else:
                             clear_text = 'Clear Edge Weights'
