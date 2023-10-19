@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 19, 10),
+    'version': (1, 19, 11),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1643,9 +1643,9 @@ class SXTOOLS2_generate(object):
                         mask = mask1
                     else:
                         mask = [0.0] * len(mask1)
-                        for i in range(len(mask1)):
-                            if (mask1[i] > 0.0) and (mask2[i] > 0.0):
-                                mask[i] = min(mask1[i], mask2[i]) 
+                        for i, (m1, m2) in enumerate(zip(mask1, mask2)):
+                            if (m1 > 0.0) and (m2 > 0.0):
+                                mask[i] = min(m1, m2)
             else:
                 mask, empty = layers.get_layer_mask(obj, masklayer)
                 if empty:
@@ -2189,26 +2189,30 @@ class SXTOOLS2_layers(object):
             for obj in objs:
                 colors = layers.get_layer(obj, targetlayer)
                 alphas = sxglobals.copy_buffer[obj.name]
-                count = len(colors)//4
-                for i in range(count):
-                    colors[(3+i*4):(4+i*4)] = alphas[(3+i*4):(4+i*4)]
-                layers.set_layer(obj, colors, targetlayer)
+                if alphas:
+                    count = len(colors)//4
+                    for i in range(count):
+                        colors[(3+i*4):(4+i*4)] = alphas[(3+i*4):(4+i*4)]
+                    layers.set_layer(obj, colors, targetlayer)
         elif fillmode == 'lumtomask':
             for obj in objs:
                 colors = layers.get_layer(obj, targetlayer)
-                alphas = convert.colors_to_values(sxglobals.copy_buffer[obj.name])
-                count = len(colors)//4
-                for i in range(count):
-                    colors[3+i*4] = alphas[i]
-                layers.set_layer(obj, colors, targetlayer)
+                values = sxglobals.copy_buffer[obj.name]
+                if values:
+                    alphas = convert.colors_to_values(values)
+                    count = len(colors)//4
+                    for i in range(count):
+                        colors[3+i*4] = alphas[i]
+                    layers.set_layer(obj, colors, targetlayer)
         else:
             for obj in objs:
                 colors = sxglobals.copy_buffer[obj.name]
-                targetvalues = self.get_layer(obj, targetlayer)
-                if sxglobals.mode == 'EDIT':
-                    colors = generate.mask_list(obj, colors)
-                colors = tools.blend_values(colors, targetvalues, 'ALPHA', 1.0)
-                layers.set_layer(obj, colors, targetlayer)
+                if colors:
+                    targetvalues = self.get_layer(obj, targetlayer)
+                    if sxglobals.mode == 'EDIT':
+                        colors = generate.mask_list(obj, colors)
+                    colors = tools.blend_values(colors, targetvalues, 'ALPHA', 1.0)
+                    layers.set_layer(obj, colors, targetlayer)
 
         utils.mode_manager(objs, set_mode=False, mode_id='paste_layer')
 
