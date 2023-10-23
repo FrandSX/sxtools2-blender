@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 19, 11),
+    'version': (1, 19, 12),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -532,10 +532,11 @@ class SXTOOLS2_utils(object):
         mat_anisotropic = obj.sx2.mat_anisotropic
         mat_clearcoat = obj.sx2.mat_clearcoat
         layer_keys = tuple(obj.sx2layers.keys())
+        layer_attributes = tuple([layer.color_attribute for layer in obj.sx2layers])
         layer_vis = tuple([layer.visibility for layer in obj.sx2layers])
         layer_paletted = tuple([layer.paletted for layer in obj.sx2layers])
         layer_palette_ids = tuple([layer.palette_index for layer in obj.sx2layers])
-        return (obj.sx2.shadingmode, sel_layer, mat_opaque, mat_culling, mat_specular, mat_anisotropic, mat_clearcoat, layer_keys, layer_vis, layer_paletted, layer_palette_ids)
+        return (obj.sx2.shadingmode, sel_layer, mat_opaque, mat_culling, mat_specular, mat_anisotropic, mat_clearcoat, layer_keys, layer_attributes, layer_vis, layer_paletted, layer_palette_ids)
 
 
     def find_layer_by_stack_index(self, obj, index):
