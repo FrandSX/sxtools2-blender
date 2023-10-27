@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 19, 12),
+    'version': (1, 19, 13),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3861,6 +3861,7 @@ class SXTOOLS2_export(object):
         for obj in objs:
             bpy.context.view_layer.objects.active = obj
             bpy.ops.mesh.customdata_custom_splitnormals_clear()
+            bpy.ops.object.shade_flat()
 
         bpy.context.view_layer.objects.active = active
         sxglobals.magic_in_progress = False
@@ -10123,8 +10124,6 @@ class SXTOOLS2_OT_revertobjects(bpy.types.Operator):
         if objs:
             utils.mode_manager(objs, set_mode=True, mode_id='revertobjects')
             export.revert_objects(objs)
-
-            bpy.ops.object.shade_flat()
             objs[0].sx2.shadingmode = 'FULL'
             refresh_swatches(self, context)
 
