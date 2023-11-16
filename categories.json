@@ -1,6 +1,6 @@
 {
     "Default": {
-        "export_subfolder": "TurboDismount2//Content//3D_imports",
+        "export_subfolder": "TurboDismount2LevelEditor//Content//3D_imports",
         "layers": [
             ["Layer 0", "COLOR", "ALPHA", 1.0, "None"]
         ],
