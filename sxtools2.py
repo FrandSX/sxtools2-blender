@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 20, 0),
+    'version': (1, 21, 0),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4424,6 +4424,8 @@ class SXTOOLS2_magic(object):
                 mask = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), obj.sx2layers[masklayername])
                 colors = tools.blend_values(mask, colors, 'ALPHA', 1.0)
             layers.set_layer(obj, colors, layer)
+
+            obj.sx2layers['Occlusion'].opacity = obj.sx2.mat_occlusion
     
 
     def apply_curvature_overlay(self, objs, convex=True, concave=True, noise=0.0):
@@ -6771,6 +6773,14 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         default=False,
         update=lambda self, context: update_obj_props(self, context, 'materialoverride'))
 
+    mat_occlusion: bpy.props.FloatProperty(
+        name='Occlusion Opacity',
+        min=0.0,
+        max=1.0,
+        precision=2,
+        default=1.0,
+        update=lambda self, context: update_obj_props(self, context, 'mat_occlusion'))
+
     mat_overlay: bpy.props.FloatProperty(
         name='Overlay Opacity',
         min=0.0,
@@ -8208,6 +8218,9 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             col_export.separator()
                             col_export.prop(sx2, 'materialoverride', text='Override Shading Properties', toggle=True)
                             if obj.sx2.materialoverride:
+                                row_occlusion = col_export.row(align=True)
+                                row_occlusion.label(text='Occlusion Opacity:')
+                                row_occlusion.prop(sx2, 'mat_occlusion', text='')
                                 row_overlay = col_export.row(align=True)
                                 row_overlay.label(text='Overlay Opacity:')
                                 row_overlay.prop(sx2, 'mat_overlay', text='')
