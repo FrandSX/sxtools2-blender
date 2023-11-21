@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 0),
+    'version': (1, 21, 1),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -6241,6 +6241,14 @@ def update_obj_props(self, context, prop):
         if prop in mat_upd_props:
             setup.update_sx2material(context)
             refresh_swatches(self, context)
+
+        if prop == 'mat_occlusion':
+            for obj in objs:
+                obj.sx2layers['Occlusion'].opacity = obj.sx2.mat_occlusion
+
+        if prop == 'mat_overlay':
+            for obj in objs:
+                obj.sx2layers['Overlay'].opacity = obj.sx2.mat_overlay
 
         elif prop == 'selectedlayer':
             update_selected_layer(self, context)
