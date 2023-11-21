@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 19, 13),
+    'version': (1, 20, 0),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4426,7 +4426,7 @@ class SXTOOLS2_magic(object):
             layers.set_layer(obj, colors, layer)
     
 
-    def apply_curvature_overlay(self, objs, opacity=1.0, convex=True, concave=True, noise=0.0):
+    def apply_curvature_overlay(self, objs, convex=True, concave=True, noise=0.0):
         scene = bpy.context.scene.sx2
         layer = objs[0].sx2layers['Overlay']
         scene.toolmode = 'CRV'
@@ -4446,7 +4446,7 @@ class SXTOOLS2_magic(object):
 
         for obj in objs:
             obj.sx2layers['Overlay'].blend_mode = 'OVR'
-            obj.sx2layers['Overlay'].opacity = opacity
+            obj.sx2layers['Overlay'].opacity = obj.sx2.mat_overlay
 
         scene.toolopacity = 1.0
 
@@ -4460,8 +4460,7 @@ class SXTOOLS2_magic(object):
 
         self.apply_palette_overrides(objs, clear=True)
         self.apply_occlusion(objs)
-        self.apply_curvature_overlay(objs, opacity=1.0, convex=True, concave=True, noise=0.01)
-
+        self.apply_curvature_overlay(objs, convex=True, concave=True, noise=0.01)
         # Emissives are smooth
         tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Emission'], color=(0.0, 0.0, 0.0, 1.0))
 
@@ -4496,7 +4495,7 @@ class SXTOOLS2_magic(object):
 
         self.apply_palette_overrides(objs)
         self.apply_occlusion(objs, blend=0.2, distance=1.0)
-        self.apply_curvature_overlay(objs, opacity=0.2)
+        self.apply_curvature_overlay(objs)
 
         # Emissives are smooth
         tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Emission'], color=(0.0, 0.0, 0.0, 1.0))
@@ -4508,7 +4507,7 @@ class SXTOOLS2_magic(object):
 
         self.apply_palette_overrides(objs, clear=True)
         self.apply_occlusion(objs, masklayername='Emission')
-        self.apply_curvature_overlay(objs, opacity=1.0, convex=True, concave=True, noise=0.01)
+        self.apply_curvature_overlay(objs, convex=True, concave=True, noise=0.01)
 
         material = 'Iron'
         palette = [
@@ -4565,7 +4564,7 @@ class SXTOOLS2_magic(object):
 
         self.apply_palette_overrides(objs, clear=True)
         self.apply_occlusion(objs, masklayername='Emission')
-        self.apply_curvature_overlay(objs, opacity=0.6, convex=True, concave=False, noise=0.01)
+        self.apply_curvature_overlay(objs, convex=True, concave=False, noise=0.01)
 
         material = 'Iron'
         palette = [
@@ -4722,7 +4721,7 @@ class SXTOOLS2_magic(object):
 
         self.apply_palette_overrides(objs, clear=True)
         self.apply_occlusion(objs)
-        self.apply_curvature_overlay(objs, opacity=1.0, convex=True, concave=False, noise=0.03)
+        self.apply_curvature_overlay(objs, convex=True, concave=False, noise=0.03)
 
         # Apply thickness to transmission
         layers.clear_layers(objs, obj.sx2layers['Transmission'])
@@ -6121,6 +6120,9 @@ def load_category(self, context):
             obj.sx2.roughness2 = category_data['palette_roughness'][2]
             obj.sx2.roughness3 = category_data['palette_roughness'][3]
             obj.sx2.roughness4 = category_data['palette_roughness'][4]
+            if category_data['overlay_opacity'] < 1.0:
+                obj.sx2.materialoverride = True
+                obj.sx2.mat_overlay = category_data['overlay_opacity']
             obj.sx2.selectedlayer = 1
 
             utils.sort_stack_indices(obj)
@@ -6765,9 +6767,17 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
 
     materialoverride: bpy.props.BoolProperty(
         name='Material Property Override',
-        description='Apply custom material properties\nNOTE: These are only exported as custom properties!',
+        description='Apply custom shading properties\nNOTE: Specular, Anisotropic and Clearcoat\nare only exported as custom properties',
         default=False,
         update=lambda self, context: update_obj_props(self, context, 'materialoverride'))
+
+    mat_overlay: bpy.props.FloatProperty(
+        name='Overlay Opacity',
+        min=0.0,
+        max=1.0,
+        precision=2,
+        default=1.0,
+        update=lambda self, context: update_obj_props(self, context, 'mat_overlay'))
 
     mat_specular: bpy.props.FloatProperty(
         name='Material Specular',
@@ -8196,8 +8206,11 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             col_export.prop(sx2, 'transmissionoverride', text='Override Transmission / SSS', toggle=True)
 
                             col_export.separator()
-                            col_export.prop(sx2, 'materialoverride', text='Override Material Properties', toggle=True)
+                            col_export.prop(sx2, 'materialoverride', text='Override Shading Properties', toggle=True)
                             if obj.sx2.materialoverride:
+                                row_overlay = col_export.row(align=True)
+                                row_overlay.label(text='Overlay Opacity:')
+                                row_overlay.prop(sx2, 'mat_overlay', text='')
                                 row_specular = col_export.row(align=True)
                                 row_specular.label(text='Specular:')
                                 row_specular.prop(sx2, 'mat_specular', text='')
