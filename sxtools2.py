@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 2),
+    'version': (1, 21, 3),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3626,7 +3626,12 @@ class SXTOOLS2_export(object):
 
                     # Take layer opacity into account
                     values = layers.get_luminances(obj, layer)
-                    values = [value * layer.opacity for value in values]
+                    if layer.name == 'Occlusion':
+                        values = convert.invert_values(values)
+                        values = [value * layer.opacity for value in values]
+                        values = convert.invert_values(values)
+                    else:
+                        values = [value * layer.opacity for value in values]
 
                     if (prefs.exportroughness =='SMOOTH') and (layer.layer_type == 'RGH'):
                         values = convert.invert_values(values)
