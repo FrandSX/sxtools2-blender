@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 3),
+    'version': (1, 21, 5),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -852,7 +852,7 @@ class SXTOOLS2_utils(object):
                     safe_distance = dist
 
         bm.free()
-        return safe_distance
+        return safe_distance if safe_distance is not None else 0
 
 
     def __del__(self):
@@ -3326,38 +3326,42 @@ class SXTOOLS2_export(object):
                     bpy.ops.object.mode_set(mode='EDIT', toggle=False)
                     bpy.ops.mesh.select_all(action='SELECT')
                     bpy.ops.mesh.convex_hull(use_existing_faces=True, face_threshold=math.radians(15.0), shape_threshold=math.radians(15.0))
-
-                    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                    new_obj.modifiers.new(type='DECIMATE', name='hullDecimate')
-                    new_obj.modifiers['hullDecimate'].show_viewport = True
-                    new_obj.modifiers['hullDecimate'].show_expanded = False
-                    new_obj.modifiers['hullDecimate'].decimate_type = 'DISSOLVE'
-                    new_obj.modifiers['hullDecimate'].angle_limit = math.radians(0.0)
-                    new_obj.modifiers['hullDecimate'].use_dissolve_boundaries = False
-
-                    # new_obj.modifiers.update()
-                    # bpy.context.view_layer.update()
-
-                    # Decimate until below tri count limit
+                    tri_opt = False
+                    shrink_opt = False
                     angle = 0.0
-                    if sxglobals.benchmark_cvx:
-                        then = time.perf_counter()
 
-                    while (int(modifiers.calculate_triangles([new_obj, ])) > new_obj.sx2.hulltrimax) and (angle < 180.0):
-                        angle += 0.5
-                        new_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
+                    if int(modifiers.calculate_triangles([new_obj, ])) > new_obj.sx2.hulltrimax:
+                        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                        new_obj.modifiers.new(type='DECIMATE', name='hullDecimate')
+                        new_obj.modifiers['hullDecimate'].show_viewport = True
+                        new_obj.modifiers['hullDecimate'].show_expanded = False
+                        new_obj.modifiers['hullDecimate'].decimate_type = 'DISSOLVE'
+                        new_obj.modifiers['hullDecimate'].angle_limit = math.radians(0.0)
+                        new_obj.modifiers['hullDecimate'].use_dissolve_boundaries = False
 
-                    # while (new_obj.modifiers['hullDecimate'].face_count > new_obj.sx2.hulltrimax) and (angle < 180.0):
-                    #     angle += 0.1
-                    #     new_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
-                    #     new_obj.modifiers.update()
-                    #     bpy.context.view_layer.update()
+                        # new_obj.modifiers.update()
+                        # bpy.context.view_layer.update()
 
-                    if sxglobals.benchmark_cvx:
-                        now = time.perf_counter()
-                        print(f'SX Tools: {new_obj.name} Tris/limit: {modifiers.calculate_triangles([new_obj, ])}/{new_obj.sx2.hulltrimax} Angle: {angle} Iteration Time: {now-then}')
+                        # Decimate until below tri count limit
+                        if sxglobals.benchmark_cvx:
+                            then = time.perf_counter()
 
-                    bpy.ops.object.modifier_apply(modifier='hullDecimate')
+                        while (int(modifiers.calculate_triangles([new_obj, ])) > new_obj.sx2.hulltrimax) and (angle < 180.0):
+                            angle += 0.5
+                            new_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
+
+                        # while (new_obj.modifiers['hullDecimate'].face_count > new_obj.sx2.hulltrimax) and (angle < 180.0):
+                        #     angle += 0.1
+                        #     new_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
+                        #     new_obj.modifiers.update()
+                        #     bpy.context.view_layer.update()
+
+                        if sxglobals.benchmark_cvx:
+                            now = time.perf_counter()
+                            print(f'SX Tools: {new_obj.name} Tris/limit: {modifiers.calculate_triangles([new_obj, ])}/{new_obj.sx2.hulltrimax} Angle: {angle} Iteration Time: {now-then}')
+
+                        bpy.ops.object.modifier_apply(modifier='hullDecimate')
+                        tri_opt = True
 
                     # Shrink hull according to factor
                     if new_obj.sx2.collideroffsetfactor > 0.0:
@@ -3371,12 +3375,14 @@ class SXTOOLS2_export(object):
                         new_obj.modifiers.new(type='WELD', name='hullWeld')
                         new_obj.modifiers["hullWeld"].merge_threshold = min(new_obj.dimensions) * 0.15
                         bpy.ops.object.modifier_apply(modifier='hullWeld')
+                        shrink_opt = True
 
                     # Final convex conversion
-                    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                    bpy.ops.mesh.select_all(action='SELECT')
-                    bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(angle), shape_threshold=math.radians(angle))
-                    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                    if tri_opt or shrink_opt:
+                        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+                        bpy.ops.mesh.select_all(action='SELECT')
+                        bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(angle), shape_threshold=math.radians(angle))
+                        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
                     if sxglobals.benchmark_cvx:
                         print(f'SX Tools: {new_obj.name} Tri Count {modifiers.calculate_triangles([new_obj, ])}')
