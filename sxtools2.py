@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 5),
+    'version': (1, 21, 6),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3266,8 +3266,9 @@ class SXTOOLS2_export(object):
                                 if vert_co not in vert_map:
                                     new_vert = new_bm.verts.new(vert_co)
                                     vert_map[vert_co] = new_vert
-                                    
-                                new_verts.append(vert_map[vert_co])
+
+                                if vert_map[vert_co] not in new_verts:
+                                    new_verts.append(vert_map[vert_co])
                             
                             new_bm.faces.new(new_verts)
                         
@@ -3320,11 +3321,27 @@ class SXTOOLS2_export(object):
 
                 bpy.ops.object.select_all(action='DESELECT')
 
+                separated_objs = []
+                view_layer = bpy.context.view_layer
                 for new_obj in new_objs:
                     new_obj.select_set(True)
                     bpy.context.view_layer.objects.active = new_obj
+                    ref_objs = view_layer.objects[:]
+
                     bpy.ops.object.mode_set(mode='EDIT', toggle=False)
                     bpy.ops.mesh.select_all(action='SELECT')
+                    bpy.ops.mesh.separate(type='LOOSE')
+
+                    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                    for vl_obj in view_layer.objects:
+                        if vl_obj not in ref_objs:
+                            separated_objs.append(vl_obj)
+
+                if separated_objs:
+                    new_objs += separated_objs
+
+                for new_obj in new_objs:
+                    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
                     bpy.ops.mesh.convex_hull(use_existing_faces=True, face_threshold=math.radians(15.0), shape_threshold=math.radians(15.0))
                     tri_opt = False
                     shrink_opt = False
