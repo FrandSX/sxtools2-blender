@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 10),
+    'version': (1, 21, 11),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3244,7 +3244,7 @@ class SXTOOLS2_export(object):
                                 color = tuple(round(c, 2) for c in color)
 
                                 if color not in color_ref_obj:
-                                    color_ref_obj[color] = (obj.location.copy(), obj.matrix_world.inverted(), obj.sx2.hulltrimax)
+                                    color_ref_obj[color] = (obj.location.copy(), obj.matrix_world.inverted(), obj.sx2.hulltrimax, obj.name)
 
                                 transformed_face_verts = []
                                 first_obj_matrix_world_inv = color_ref_obj[color][1]
@@ -3281,8 +3281,8 @@ class SXTOOLS2_export(object):
                         new_bm.edges.index_update()
                         new_bm.faces.index_update()
 
-                        groupname = group.name[:-5] if group.name.endswith("_root") else group.name
-                        name = f'{groupname}_combined_hull_{i}'
+                        # groupname = group.name[:-5] if group.name.endswith("_root") else group.name
+                        name = f'{color_ref_obj[color][3]}_combined_hull_{i}'
                         mesh_data = bpy.data.meshes.new(name+f'_mesh')
                         new_bm.to_mesh(mesh_data)
                         new_bm.free()
@@ -3400,7 +3400,7 @@ class SXTOOLS2_export(object):
 
                     bpy.ops.object.mode_set(mode='EDIT', toggle=False)
                     bpy.ops.mesh.select_all(action='SELECT')
-                    bpy.ops.mesh.decimate(ratio=0.25)
+                    bpy.ops.mesh.decimate(ratio=0.5)
                     bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
                     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
