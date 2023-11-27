@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 23),
+    'version': (1, 21, 24),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3214,6 +3214,7 @@ class SXTOOLS2_export(object):
     # Multi-pass convex hull generator
     def generate_hulls(self, objs, group=None):
         if objs:
+            view_layer = bpy.context.view_layer
             org_objs = []
             hull_objs = [obj for obj in objs if (obj.sx2.generatehulls and not obj.sx2.use_cids)]
             cid_objs = [obj for obj in objs if (obj.sx2.generatehulls and obj.sx2.use_cids)]
@@ -3230,7 +3231,6 @@ class SXTOOLS2_export(object):
                     # Map color regions to mesh islands
                     color_to_faces = defaultdict(list)
                     color_ref_obj = {}
-                    view_layer = bpy.context.view_layer
 
                     for obj in cid_objs:
                         if obj.type == 'MESH':
@@ -3282,7 +3282,15 @@ class SXTOOLS2_export(object):
                                 if vert_map[vert_co] not in new_verts:
                                     new_verts.append(vert_map[vert_co])
                             
-                            new_bm.faces.new(new_verts)
+                            if len(new_verts) > 2:
+                                existing_face = False
+                                for f in new_bm.faces:
+                                    if set(f.verts[:]) == set(new_verts):
+                                        existing_face = True
+                                        break
+
+                                if not existing_face:
+                                    new_bm.faces.new(new_verts)
                         
                         new_bm.verts.index_update()
                         new_bm.edges.index_update()
@@ -3319,7 +3327,8 @@ class SXTOOLS2_export(object):
                             bpy.context.scene.collection.objects.link(pivot_obj)
                             view_layer.objects.active = pivot_obj
 
-                            pivot_obj.modifiers.remove(pivot_obj.modifiers.get('sxMirror'))
+                            if 'sxMirror' in pivot_obj.modifiers:
+                                pivot_obj.modifiers.remove(pivot_obj.modifiers.get('sxMirror'))
                             modifiers.apply_modifiers([pivot_obj, ])
                             self.set_pivots([pivot_obj, ])
                             pivot_loc = pivot_obj.matrix_world.to_translation()[:]
