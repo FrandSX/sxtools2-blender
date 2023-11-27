@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 11),
+    'version': (1, 21, 20),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3024,7 +3024,7 @@ class SXTOOLS2_export(object):
         utils.mode_manager(objs, set_mode=False, mode_id='composite_color_layers')
 
 
-    def smart_separate(self, objs):
+    def smart_separate(self, objs, override=False, parent=True):
         if objs:
             mirror_pairs = [('_top', '_bottom'), ('_front', '_rear'), ('_left', '_right'), ('_bottom', '_top'), ('_rear', '_front'), ('_right', '_left')]
             prefs = bpy.context.preferences.addons['sxtools2'].preferences
@@ -3037,7 +3037,11 @@ class SXTOOLS2_export(object):
             export_objects = utils.create_collection('ExportObjects')
             source_objects = utils.create_collection('SourceObjects')
 
-            sep_objs = [obj for obj in objs if obj.sx2.smartseparate]
+            if override:
+                sep_objs = objs
+            else:
+                sep_objs = [obj for obj in objs if obj.sx2.smartseparate]
+
             if sep_objs:
                 for obj in sep_objs:
                     if (scene.exportquality == 'LO') and (obj.name not in source_objects.objects.keys()) and (obj.name not in export_objects.objects.keys()) and (obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror):
@@ -3104,7 +3108,8 @@ class SXTOOLS2_export(object):
 
                     separated_objs.extend(new_obj_list)
 
-                    # Parent new children to their matching parents
+                # Parent new children to their matching parents
+                if parent:
                     for obj in separated_objs:
                         for mirror_pair in mirror_pairs:
                             if mirror_pair[0] in obj.name:
@@ -3290,15 +3295,47 @@ class SXTOOLS2_export(object):
                         new_obj = bpy.data.objects.new(name, mesh_data)
                         bpy.context.scene.collection.objects.link(new_obj)
                         colliders.objects.link(new_obj)
-                        new_obj.sx2.weldthreshold = 0.0
-                        new_obj.sx2.decimation = 0.0
+
                         new_obj.sx2.smartseparate = False
-                        new_obj.sx2.lodmeshes = False
-                        new_obj.sx2.generateemissionmeshes = False
-                        new_obj.parent = group
                         new_obj.location = color_ref_obj[color][0]
                         new_obj.sx2.hulltrimax = color_ref_obj[color][2]
+                        new_obj.sx2.mirrorobject = view_layer.objects[color_ref_obj[color][3]].sx2.mirrorobject
+                        new_obj.sx2.xmirror = view_layer.objects[color_ref_obj[color][3]].sx2.xmirror
+                        new_obj.sx2.ymirror = view_layer.objects[color_ref_obj[color][3]].sx2.ymirror
+                        new_obj.sx2.zmirror = view_layer.objects[color_ref_obj[color][3]].sx2.zmirror
+                        new_obj.sx2.pivotmode = 'OFF'
 
+                        # Set pivots manually for split convex hulls
+                        if bpy.data.objects[color_ref_obj[color][3]].sx2.smartseparate:
+                            ref_obj = bpy.data.objects[color_ref_obj[color][3]]
+                            pivot_obj = ref_obj.copy()
+                            pivot_obj.data = ref_obj.data.copy()
+
+                            pivot_obj.sx2.weldthreshold = 0.0
+                            pivot_obj.sx2.decimation = 0.0
+
+                            bpy.context.scene.collection.objects.link(pivot_obj)
+                            view_layer.objects.active = pivot_obj
+
+                            pivot_obj.modifiers.remove(pivot_obj.modifiers.get('sxMirror'))
+                            modifiers.apply_modifiers([pivot_obj, ])
+                            self.set_pivots([pivot_obj, ])
+                            pivot_loc = pivot_obj.matrix_world.to_translation()[:]
+                            bpy.data.objects.remove(pivot_obj)
+                        else:
+                            pivot_loc = view_layer.objects[color_ref_obj[color][3]].matrix_world.to_translation()[:]
+
+                        view_layer.objects.active = new_obj
+                        bpy.context.scene.cursor.location = pivot_loc
+                        bpy.ops.object.select_all(action='DESELECT')
+                        new_obj.select_set(True)
+                        bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
+                        new_obj.sx2.lodmeshes = False
+                        new_obj.sx2.generateemissionmeshes = False
+                        new_obj.sx2.weldthreshold = 0.0
+                        new_obj.sx2.decimation = 0.0
+                        new_obj.parent = group
                         new_objs.append(new_obj)
 
                 if hull_objs:
@@ -3306,40 +3343,42 @@ class SXTOOLS2_export(object):
                     for obj in org_objs:
                         new_obj = obj.copy()
                         new_obj.data = obj.data.copy()
-
                         new_obj.data.name = obj.name[:] + '_hull_mesh'
                         new_obj.name = obj.name[:] + '_hull'
 
-                        new_obj.sx2.weldthreshold = 0.0
-                        new_obj.sx2.decimation = 0.0
-
                         bpy.context.scene.collection.objects.link(new_obj)
-                        bpy.context.view_layer.objects.active = new_obj
+                        view_layer.objects.active = new_obj
                         colliders.objects.link(new_obj)
 
-                        new_obj.parent = bpy.context.view_layer.objects[obj.parent.name]
+                        new_obj.sx2.lodmeshes = False
+                        new_obj.sx2.generateemissionmeshes = False
+                        new_obj.sx2.weldthreshold = 0.0
+                        new_obj.sx2.decimation = 0.0
+                        new_obj.parent = group
                         new_objs.append(new_obj)
 
                         # Clear existing modifier stacks
                         modifiers.apply_modifiers(new_objs)
 
+                # Split mirrored collider source objects
                 bpy.ops.object.select_all(action='DESELECT')
-                separated_objs = []
-                for new_obj in new_objs:
-                    new_obj.select_set(True)
-                    bpy.context.view_layer.objects.active = new_obj
-                    ref_objs = view_layer.objects[:]
-
-                    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                    bpy.ops.mesh.select_all(action='SELECT')
-                    bpy.ops.mesh.separate(type='LOOSE')
-
-                    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                    for vl_obj in view_layer.objects:
-                        if vl_obj not in ref_objs:
-                            separated_objs.append(vl_obj)
-
+                separated_objs = self.smart_separate(new_objs, override=True, parent=False)
                 if separated_objs:
+                    for sep_obj in separated_objs:
+                        bpy.ops.object.select_all(action='DESELECT')
+                        view_layer.objects.active = sep_obj
+                        sep_obj.select_set(True)
+                        pivot_loc = sep_obj.matrix_world.to_translation()
+                        xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([sep_obj, ])
+                        if sep_obj.sx2.xmirror and (abs(((xmin + xmax) * 0.5) - pivot_loc[0]) > abs(((xmin + xmax) * 0.5) + pivot_loc[0])):
+                            pivot_loc[0] *= -1.0
+                        if sep_obj.sx2.ymirror and (abs(((ymin + ymax) * 0.5) - pivot_loc[1]) > abs(((ymin + ymax) * 0.5) + pivot_loc[1])):
+                            pivot_loc[1] *= -1.0
+                        if sep_obj.sx2.zmirror and (abs(((zmin + zmax) * 0.5) - pivot_loc[2]) > abs(((zmin + zmax) * 0.5) + pivot_loc[2])):
+                            pivot_loc[2] *= -1.0
+                        bpy.context.scene.cursor.location = pivot_loc
+                        bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
                     new_objs += separated_objs
 
                 bpy.ops.object.select_all(action='DESELECT')
@@ -3732,7 +3771,8 @@ class SXTOOLS2_export(object):
 
 
     # pivotmodes: 0 == no change, 1 == center of mass, 2 == center of bbox,
-    # 3 == base of bbox, 4 == world origin, 5 == pivot of parent, force == set mirror axis to mirrorobj
+    # 3 == base of bbox, 4 == world origin, 5 == pivot of parent,
+    # force == set mirror axis to mirrorobj
     def set_pivots(self, objs, pivotmode=None, force=False):
         viewlayer = bpy.context.view_layer
         active = viewlayer.objects.active
