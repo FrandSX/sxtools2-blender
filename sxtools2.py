@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 20),
+    'version': (1, 21, 22),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3062,6 +3062,8 @@ class SXTOOLS2_export(object):
                         ref_loc = obj.modifiers['sxMirror'].mirror_object.matrix_world.to_translation()
                         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
                         bpy.ops.object.modifier_apply(modifier='sxMirror')
+                    elif obj.sx2.mirrorobject is not None:
+                        ref_loc = obj.sx2.mirrorobject.matrix_world.to_translation()
                     else:
                         ref_loc = obj.matrix_world.to_translation()
 
@@ -3287,7 +3289,7 @@ class SXTOOLS2_export(object):
                         new_bm.faces.index_update()
 
                         # groupname = group.name[:-5] if group.name.endswith("_root") else group.name
-                        name = f'{color_ref_obj[color][3]}_combined_hull_{i}'
+                        name = f'{color_ref_obj[color][3]}_hull_{i}'
                         mesh_data = bpy.data.meshes.new(name+f'_mesh')
                         new_bm.to_mesh(mesh_data)
                         new_bm.free()
@@ -3303,7 +3305,7 @@ class SXTOOLS2_export(object):
                         new_obj.sx2.xmirror = view_layer.objects[color_ref_obj[color][3]].sx2.xmirror
                         new_obj.sx2.ymirror = view_layer.objects[color_ref_obj[color][3]].sx2.ymirror
                         new_obj.sx2.zmirror = view_layer.objects[color_ref_obj[color][3]].sx2.zmirror
-                        new_obj.sx2.pivotmode = 'OFF'
+                        new_obj.sx2.pivotmode = 'CID'
 
                         # Set pivots manually for split convex hulls
                         if bpy.data.objects[color_ref_obj[color][3]].sx2.smartseparate:
@@ -3364,21 +3366,6 @@ class SXTOOLS2_export(object):
                 bpy.ops.object.select_all(action='DESELECT')
                 separated_objs = self.smart_separate(new_objs, override=True, parent=False)
                 if separated_objs:
-                    for sep_obj in separated_objs:
-                        bpy.ops.object.select_all(action='DESELECT')
-                        view_layer.objects.active = sep_obj
-                        sep_obj.select_set(True)
-                        pivot_loc = sep_obj.matrix_world.to_translation()
-                        xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([sep_obj, ])
-                        if sep_obj.sx2.xmirror and (abs(((xmin + xmax) * 0.5) - pivot_loc[0]) > abs(((xmin + xmax) * 0.5) + pivot_loc[0])):
-                            pivot_loc[0] *= -1.0
-                        if sep_obj.sx2.ymirror and (abs(((ymin + ymax) * 0.5) - pivot_loc[1]) > abs(((ymin + ymax) * 0.5) + pivot_loc[1])):
-                            pivot_loc[1] *= -1.0
-                        if sep_obj.sx2.zmirror and (abs(((zmin + zmax) * 0.5) - pivot_loc[2]) > abs(((zmin + zmax) * 0.5) + pivot_loc[2])):
-                            pivot_loc[2] *= -1.0
-                        bpy.context.scene.cursor.location = pivot_loc
-                        bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-
                     new_objs += separated_objs
 
                 bpy.ops.object.select_all(action='DESELECT')
@@ -3771,13 +3758,13 @@ class SXTOOLS2_export(object):
 
 
     # pivotmodes: 0 == no change, 1 == center of mass, 2 == center of bbox,
-    # 3 == base of bbox, 4 == world origin, 5 == pivot of parent,
+    # 3 == base of bbox, 4 == world origin, 5 == pivot of parent, 6 == used with submesh convex hulls,
     # force == set mirror axis to mirrorobj
     def set_pivots(self, objs, pivotmode=None, force=False):
         viewlayer = bpy.context.view_layer
         active = viewlayer.objects.active
         selected = viewlayer.objects.selected[:]
-        modedict = {'OFF': 0, 'MASS': 1, 'BBOX': 2, 'ROOT': 3, 'ORG': 4, 'PAR': 5}
+        modedict = {'OFF': 0, 'MASS': 1, 'BBOX': 2, 'ROOT': 3, 'ORG': 4, 'PAR': 5, 'CID': 6}
 
         for sel in viewlayer.objects.selected:
             sel.select_set(False)
@@ -3841,6 +3828,23 @@ class SXTOOLS2_export(object):
                 bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
             elif mode == 5:
                 pivot_loc = obj.parent.matrix_world.to_translation()
+                bpy.context.scene.cursor.location = pivot_loc
+                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+            elif mode == 6:
+                pivot_loc = obj.matrix_world.to_translation()
+                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ])
+                if obj.sx2.xmirror and (((xmin + xmax) * 0.5) > 0.0) and (pivot_loc[0] < 0.0):
+                    pivot_loc[0] *= -1.0
+                elif obj.sx2.xmirror and (((xmin + xmax) * 0.5) < 0.0) and (pivot_loc[0] > 0.0):
+                    pivot_loc[0] *= -1.0
+                if obj.sx2.ymirror and (((ymin + ymax) * 0.5) > 0.0) and (pivot_loc[1] < 0.0):
+                    pivot_loc[1] *= -1.0
+                elif obj.sx2.ymirror and (((ymin + ymax) * 0.5) < 0.0) and (pivot_loc[1] > 0.0):
+                    pivot_loc[1] *= -1.0
+                if obj.sx2.zmirror and (((zmin + zmax) * 0.5) > 0.0) and (pivot_loc[2] < 0.0):
+                    pivot_loc[2] *= -1.0
+                elif obj.sx2.zmirror and (((zmin + zmax) * 0.5) < 0.0) and (pivot_loc[2] > 0.0):
+                    pivot_loc[2] *= -1.0
                 bpy.context.scene.cursor.location = pivot_loc
                 bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
             else:
@@ -6911,7 +6915,8 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
             ('BBOX', 'Bbox Center', ''),
             ('ROOT', 'Bbox Base', ''),
             ('ORG', 'Origin', ''),
-            ('PAR', 'Parent', '')],
+            ('PAR', 'Parent', ''),
+            ('CID', 'Collision Hull', '')],
         default='OFF',
         update=lambda self, context: update_obj_props(self, context, 'pivotmode'))
 
@@ -10689,7 +10694,7 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     obj.sx2.decimation = obj['sxtools'].get('decimation', 0)
                     obj.sx2.weldthreshold = obj['sxtools'].get('weldthreshold', 0)
                     obj.sx2.smartseparate = obj['sxtools'].get('smartseparate', False)
-                    pivot_dict = {0: 'OFF', 1: 'MASS', 2: 'BBOX', 3: 'ROOT', 4: 'ORG', 5: 'PAR'}
+                    pivot_dict = {0: 'OFF', 1: 'MASS', 2: 'BBOX', 3: 'ROOT', 4: 'ORG', 5: 'PAR', 6: 'CID'}
                     obj.sx2.pivotmode = pivot_dict[obj['sxtools'].get('pivotmode', 0)]
                     obj.sx2.lodmeshes = obj['sxtools'].get('lodmeshes', False)
                     obj.sx2.xmirror = obj['sxtools'].get('xmirror', False)
