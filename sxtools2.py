@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 22),
+    'version': (1, 21, 23),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -10596,13 +10596,14 @@ class SXTOOLS2_OT_generate_hulls(bpy.types.Operator):
                 sxglobals.refresh_in_progress = True
                 sxglobals.magic_in_progress = True
 
-            groups = utils.find_groups(source_objs)
-            if not groups:
-                message_box('Hull generation requires source objects to be in groups.')
-            else:
-                for group in groups:
-                    hull_objs = utils.find_children(group, recursive=True, child_type='MESH')
-                    export.generate_hulls(hull_objs, group)
+            export.generate_hulls(source_objs)
+            # groups = utils.find_groups(source_objs)
+            # if not groups:
+            #     message_box('Hull generation requires source objects to be in groups.')
+            # else:
+            #     for group in groups:
+            #         hull_objs = utils.find_children(group, recursive=True, child_type='MESH')
+            #         export.generate_hulls(hull_objs, group)
 
             sxglobals.refresh_in_progress = False
             sxglobals.magic_in_progress = False
