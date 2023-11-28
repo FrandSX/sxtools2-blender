@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 26),
+    'version': (1, 21, 28),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -43,6 +43,7 @@ class SXTOOLS2_sxglobals(object):
         self.refresh_in_progress = False
         self.layer_update_in_progress = False
         self.magic_in_progress = False
+        self.export_in_progress = False
         self.hsl_update = False
         self.mat_update = False
         self.curvature_update = False
@@ -3382,6 +3383,7 @@ class SXTOOLS2_export(object):
                 bpy.ops.object.select_all(action='DESELECT')
                 for new_obj in new_objs:
                     new_obj.select_set(True)
+                    new_obj.sx2.smartseparate = False
                     view_layer.objects.active = new_obj
                     bpy.ops.object.mode_set(mode='EDIT', toggle=False)
                     bpy.ops.mesh.convex_hull(use_existing_faces=True, face_threshold=math.radians(15.0), shape_threshold=math.radians(15.0))
@@ -3452,7 +3454,8 @@ class SXTOOLS2_export(object):
                     obj.select_set(True)
 
                 bpy.context.view_layer.objects.active = active_obj
-                setup.update_sx2material(bpy.context)
+                if not bpy.app.background:
+                    setup.update_sx2material(bpy.context)
 
 
     def generate_mesh_colliders(self, objs):
@@ -10105,9 +10108,9 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
                 export.smart_separate(selected + emission_objs)
                 export.create_sxcollection()
 
-                for group in groups:
-                    hull_objs = utils.find_children(group, recursive=True, child_type='MESH')
-                    export.generate_hulls(hull_objs, group)
+                # for group in groups:
+                #     hull_objs = utils.find_children(group, recursive=True, child_type='MESH')
+                #     export.generate_hulls(hull_objs, group)
 
             files.export_files(groups)
 
@@ -10133,8 +10136,6 @@ class SXTOOLS2_OT_exportgroups(bpy.types.Operator):
         meshes = utils.find_children(group, recursive=True, child_type='MESH')
         export.generate_emission_meshes(meshes)
         export.smart_separate(meshes)
-        meshes = utils.find_children(group, recursive=True, child_type='MESH')
-        export.generate_hulls(meshes, group)
         files.export_files([group, ])
         if prefs.removelods:
             export.remove_exports()
@@ -10354,20 +10355,31 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
         if objs:
             if bpy.app.background:
                 setup.create_sxtoolmaterial()
+                sxglobals.export_in_progress = True
 
             bpy.context.view_layer.objects.active = objs[0]
             check = export.validate_objects(objs)
             if check:
                 sxglobals.magic_in_progress = True
                 magic.process_objects(objs)
+
+                if sxglobals.export_in_progress:
+                    sxglobals.refresh_in_progress = True
+                    export.generate_hulls(objs)
+                    bpy.ops.object.select_all(action='DESELECT')
+                    for obj in objs:
+                        obj.select_set(True)
+                    sxglobals.refresh_in_progress = False
+
                 if hasattr(bpy.types, bpy.ops.object.vhacd.idname()) and scene.exportcolliders:
                     export.generate_mesh_colliders(objs)
 
                 sxglobals.magic_in_progress = False
-                objs[0].sx2.shadingmode = 'FULL'
-                refresh_swatches(self, context)
 
-                bpy.ops.object.shade_smooth(use_auto_smooth=True)
+                if not bpy.app.background:
+                    objs[0].sx2.shadingmode = 'FULL'
+                    refresh_swatches(self, context)
+                    bpy.ops.object.shade_smooth(use_auto_smooth=True)
                 objs[0].sx2.smoothangle = objs[0].sx2.smoothangle
 
         return {'FINISHED'}
