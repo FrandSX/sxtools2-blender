@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 24),
+    'version': (1, 21, 26),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3226,6 +3226,7 @@ class SXTOOLS2_export(object):
                     bpy.context.scene.collection.children.link(colliders)
 
                 # Create hull meshes via object copies or Collider IDs
+                # Discard black faces
                 if cid_objs:
                     org_objs += cid_objs[:]
                     # Map color regions to mesh islands
@@ -3250,18 +3251,19 @@ class SXTOOLS2_export(object):
                                 color = face.loops[0][color_layer]
                                 color = tuple(round(c, 2) for c in color)
 
-                                if color not in color_ref_obj:
-                                    color_ref_obj[color] = (obj.location.copy(), obj.matrix_world.inverted(), obj.sx2.hulltrimax, obj.name)
+                                if (color != (0.0, 0.0, 0.0, 0.0)):
+                                    if (color not in color_ref_obj):
+                                        color_ref_obj[color] = (obj.location.copy(), obj.matrix_world.inverted(), obj.sx2.hulltrimax, obj.name)
 
-                                transformed_face_verts = []
-                                first_obj_matrix_world_inv = color_ref_obj[color][1]
+                                    transformed_face_verts = []
+                                    first_obj_matrix_world_inv = color_ref_obj[color][1]
 
-                                for vert in face.verts:
-                                    world_coord = obj.matrix_world @ vert.co
-                                    local_coord_first_obj = first_obj_matrix_world_inv @ world_coord
-                                    transformed_face_verts.append(tuple(local_coord_first_obj))
+                                    for vert in face.verts:
+                                        world_coord = obj.matrix_world @ vert.co
+                                        local_coord_first_obj = first_obj_matrix_world_inv @ world_coord
+                                        transformed_face_verts.append(tuple(local_coord_first_obj))
 
-                                color_to_faces[color].append(transformed_face_verts)
+                                    color_to_faces[color].append(transformed_face_verts)
                             
                             bm.free()
                             obj.evaluated_get(edg).to_mesh_clear()
@@ -6935,7 +6937,8 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         update=lambda self, context: update_obj_props(self, context, 'generatehulls'))
 
     use_cids: bpy.props.BoolProperty(
-        name='Use Collision IDs',
+        name='Use Collider ID',
+        description='Add a Collider ID layer and paint unique face colors for each convex submesh.\nFaces with (0.0, 0.0, 0.0, 0.0) color are discarded',
         default=False,
         update=lambda self, context: update_obj_props(self, context, 'use_cids'))
 
