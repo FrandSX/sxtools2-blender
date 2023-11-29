@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 28),
+    'version': (1, 21, 30),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -321,6 +321,7 @@ class SXTOOLS2_files(object):
                             use_space_transform=export_settings[2],
                             bake_space_transform=export_settings[3],
                             use_mesh_modifiers=True,
+                            mesh_smooth_type='OFF',
                             prioritize_active_color=True,
                             axis_up=export_settings[4],
                             axis_forward=export_settings[5],
@@ -10379,7 +10380,8 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
                 if not bpy.app.background:
                     objs[0].sx2.shadingmode = 'FULL'
                     refresh_swatches(self, context)
-                    bpy.ops.object.shade_smooth(use_auto_smooth=True)
+
+                bpy.ops.object.shade_smooth(use_auto_smooth=True)
                 objs[0].sx2.smoothangle = objs[0].sx2.smoothangle
 
         return {'FINISHED'}
