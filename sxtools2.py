@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 30),
+    'version': (1, 21, 33),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3088,15 +3088,16 @@ class SXTOOLS2_export(object):
                             view_layer.objects.active = new_obj
                             zstring = ystring = xstring = ''
                             xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([new_obj, ])
+                            pivot_loc = new_obj.matrix_world.to_translation()
 
                             # 1) compare bounding box max to reference pivot
                             # 2) flip result with xor according to SX Tools prefs
                             # 3) look up matching sub-string from mirror_pairs
-                            if zmirror:
+                            if zmirror and (abs(ref_loc[2] - pivot_loc[2]) > 0.001):
                                 zstring = mirror_pairs[0][int(zmax < ref_loc[2])]
-                            if ymirror:
+                            if ymirror and (abs(ref_loc[1] - pivot_loc[1]) > 0.001):
                                 ystring = mirror_pairs[1][int((ymax < ref_loc[1]) ^ prefs.flipsmarty)]
-                            if xmirror:
+                            if xmirror and (abs(ref_loc[0] - pivot_loc[0]) > 0.001):
                                 xstring = mirror_pairs[2][int((xmax < ref_loc[0]) ^ prefs.flipsmartx)]
 
                             if len(new_obj_list) > 2 ** (zmirror + ymirror + xmirror):
@@ -3335,10 +3336,33 @@ class SXTOOLS2_export(object):
                                 pivot_obj.modifiers.remove(pivot_obj.modifiers.get('sxMirror'))
                             modifiers.apply_modifiers([pivot_obj, ])
                             self.set_pivots([pivot_obj, ])
-                            pivot_loc = pivot_obj.matrix_world.to_translation()[:]
+                            pivot_loc = list(pivot_obj.matrix_world.to_translation())
+
+                            # Fix pivot location for object halves
+                            adjustables = ['MASS', 'BBOX']
+                            if new_obj.sx2.mirrorobject:
+                                mirror_pos = new_obj.sx2.mirrorobject.matrix_world.to_translation()
+                            else:
+                                mirror_pos = (0.0, 0.0, 0.0)
+
+                            if pivot_obj.sx2.pivotmode in adjustables:
+                                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([pivot_obj, ])
+
+                                for bound in [xmin, xmax]:
+                                    if (abs(mirror_pos[0] - bound) < 0.001):
+                                        pivot_loc[0] = mirror_pos[0]
+
+                                for bound in [ymin, ymax]:
+                                    if (abs(mirror_pos[1] - bound) < 0.001):
+                                        pivot_loc[1] = mirror_pos[1]
+
+                                for bound in [zmin, zmax]:
+                                    if (abs(mirror_pos[2] - bound) < 0.001):
+                                        pivot_loc[2] = mirror_pos[2]
+                            
                             bpy.data.objects.remove(pivot_obj)
                         else:
-                            pivot_loc = view_layer.objects[color_ref_obj[color][3]].matrix_world.to_translation()[:]
+                            pivot_loc = view_layer.objects[color_ref_obj[color][3]].matrix_world.to_translation()
 
                         view_layer.objects.active = new_obj
                         bpy.context.scene.cursor.location = pivot_loc
