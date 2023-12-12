@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 21, 33),
+    'version': (1, 22, 0),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3223,7 +3223,7 @@ class SXTOOLS2_export(object):
             cid_objs = [obj for obj in objs if (obj.sx2.generatehulls and obj.sx2.use_cids)]
             if (hull_objs or cid_objs):
                 new_objs = []
-                active_obj = bpy.context.view_layer.objects.active
+                active_obj = view_layer.objects.active
                 colliders = utils.create_collection('SXColliders')
                 if colliders.name not in bpy.context.scene.collection.children:
                     bpy.context.scene.collection.children.link(colliders)
@@ -3235,6 +3235,7 @@ class SXTOOLS2_export(object):
                     # Map color regions to mesh islands
                     color_to_faces = defaultdict(list)
                     color_ref_obj = {}
+                    pivot_ref = {}
 
                     for obj in cid_objs:
                         if obj.type == 'MESH':
@@ -3253,6 +3254,7 @@ class SXTOOLS2_export(object):
                             for face in bm.faces:
                                 color = face.loops[0][color_layer]
                                 color = tuple(round(c, 2) for c in color)
+                                # color = tuple(round(c * 20) / 20 for c in color)
 
                                 if (color != (0.0, 0.0, 0.0, 0.0)):
                                     if (color not in color_ref_obj):
@@ -3369,6 +3371,7 @@ class SXTOOLS2_export(object):
                         bpy.ops.object.select_all(action='DESELECT')
                         new_obj.select_set(True)
                         bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+                        pivot_ref[new_obj] = new_obj.sx2.mirrorobject.matrix_world.to_translation() if new_obj.sx2.mirrorobject else (0.0, 0.0, 0.0)
 
                         new_obj.sx2.lodmeshes = False
                         new_obj.sx2.generateemissionmeshes = False
@@ -3389,6 +3392,8 @@ class SXTOOLS2_export(object):
                         view_layer.objects.active = new_obj
                         colliders.objects.link(new_obj)
 
+                        pivot_ref[new_obj] = new_obj.matrix_world.to_translation()
+
                         new_obj.sx2.lodmeshes = False
                         new_obj.sx2.generateemissionmeshes = False
                         new_obj.sx2.weldthreshold = 0.0
@@ -3400,8 +3405,55 @@ class SXTOOLS2_export(object):
                         modifiers.apply_modifiers(new_objs)
 
                 # Split mirrored collider source objects
-                bpy.ops.object.select_all(action='DESELECT')
-                separated_objs = self.smart_separate(new_objs, override=True, parent=False)
+                separated_objs = []
+                for new_obj in new_objs:
+                    bpy.ops.object.select_all(action='DESELECT')
+                    sep_objs = self.smart_separate([new_obj, ], override=True, parent=False)
+
+                    # Merge needlessly separated objects by analyzing their bbx centers
+                    left, right, top, bottom, front, back, center_x, center_y, center_z = [], [], [], [], [], [], [], [], []
+
+                    for i, sep_obj in enumerate(sep_objs):
+                        xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([sep_obj, ])
+                        ref_pivot = pivot_ref[new_obj]
+                        # print('New obj:', new_obj.name, ref_pivot)
+                        # print('Sep obj:', sep_obj.name, (xmin + xmax * 0.5, ymin + ymax * 0.5, zmin + zmax * 0.5))
+
+                        if new_obj.sx2.xmirror:
+                            if (xmin + xmax * 0.5 > ref_pivot[0]) and (abs((xmin + xmax * 0.5) - abs(ref_pivot[0])) > 0.01):
+                                left.append(sep_obj)
+                            elif (xmin + xmax * 0.5 < ref_pivot[0]) and (abs((xmin + xmax * 0.5) - abs(ref_pivot[0])) > 0.01):
+                                right.append(sep_obj)
+                            else:
+                                center_x.append(sep_obj)
+                        if new_obj.sx2.ymirror:
+                            if (ymin + ymax * 0.5 > ref_pivot[1]) and (abs((ymin + ymax * 0.5) - abs(ref_pivot[1])) > 0.01):
+                                top.append(sep_obj)
+                            elif (ymin + ymax * 0.5 < ref_pivot[1]) and (abs((ymin + ymax * 0.5) - abs(ref_pivot[1])) > 0.01):
+                                bottom.append(sep_obj)
+                            else:
+                                center_y.append(sep_obj)
+                        if new_obj.sx2.zmirror:
+                            if (zmin + zmax * 0.5 > ref_pivot[2]) and (abs((zmin + zmax * 0.5) - abs(ref_pivot[2])) > 0.01):
+                                front.append(sep_obj)
+                            elif (zmin + zmax * 0.5 < ref_pivot[2]) and (abs((zmin + zmax * 0.5) - abs(ref_pivot[2])) > 0.01):
+                                back.append(sep_obj)
+                            else:
+                                center_z.append(sep_obj)
+
+                    for bucket in [left, right, center_x, top, bottom, center_y, front, back, center_z]:
+                        if len(bucket) > 1:
+                            bpy.ops.object.select_all(action='DESELECT')
+                            view_layer.objects.active = bucket[0]
+                            for bucket_object in bucket:
+                                bucket_object.select_set(True)
+                            print('Bucket:', bucket)
+                            bpy.ops.object.join()
+
+                    sep_objs = [sep_obj for sep_obj in sep_objs if sep_obj.name in view_layer.objects]
+                    if sep_objs:
+                        separated_objs += sep_objs
+
                 if separated_objs:
                     new_objs += separated_objs
 
@@ -3418,8 +3470,9 @@ class SXTOOLS2_export(object):
 
                     # Shrink hull according to factor
                     if new_obj.sx2.collideroffsetfactor > 0.0:
-                        offset = -1.0 * new_obj.sx2.collideroffsetfactor * utils.find_safe_mesh_offset(new_obj)
+                        offset = -1.0 * min(new_obj.sx2.collideroffsetfactor, utils.find_safe_mesh_offset(new_obj))
                         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+                        bpy.context.tool_settings.mesh_select_mode = (True, False, False)
                         bpy.ops.mesh.select_all(action='SELECT')
                         bpy.ops.transform.shrink_fatten(value=offset)
                         shrink_opt = True
