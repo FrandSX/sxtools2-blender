@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 22, 0),
+    'version': (1, 22, 1),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3350,17 +3350,20 @@ class SXTOOLS2_export(object):
                             if pivot_obj.sx2.pivotmode in adjustables:
                                 xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([pivot_obj, ])
 
-                                for bound in [xmin, xmax]:
-                                    if (abs(mirror_pos[0] - bound) < 0.001):
-                                        pivot_loc[0] = mirror_pos[0]
+                                if pivot_obj.sx2.xmirror:
+                                    for bound in [xmin, xmax]:
+                                        if (abs(mirror_pos[0] - bound) < 0.001):
+                                            pivot_loc[0] = mirror_pos[0]
 
-                                for bound in [ymin, ymax]:
-                                    if (abs(mirror_pos[1] - bound) < 0.001):
-                                        pivot_loc[1] = mirror_pos[1]
+                                if pivot_obj.sx2.ymirror:
+                                    for bound in [ymin, ymax]:
+                                        if (abs(mirror_pos[1] - bound) < 0.001):
+                                            pivot_loc[1] = mirror_pos[1]
 
-                                for bound in [zmin, zmax]:
-                                    if (abs(mirror_pos[2] - bound) < 0.001):
-                                        pivot_loc[2] = mirror_pos[2]
+                                if pivot_obj.sx2.zmirror:
+                                    for bound in [zmin, zmax]:
+                                        if (abs(mirror_pos[2] - bound) < 0.001):
+                                            pivot_loc[2] = mirror_pos[2]
                             
                             bpy.data.objects.remove(pivot_obj)
                         else:
