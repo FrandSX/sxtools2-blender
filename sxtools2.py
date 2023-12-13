@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 23, 1),
+    'version': (1, 23, 4),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3223,10 +3223,13 @@ class SXTOOLS2_export(object):
             cid_objs = [obj for obj in objs if (obj.sx2.generatehulls and obj.sx2.use_cids)]
             if (hull_objs or cid_objs):
                 new_objs = []
+                new_cid_objs = []
+                new_hull_objs = []
                 active_obj = view_layer.objects.active
                 colliders = utils.create_collection('SXColliders')
                 if colliders.name not in bpy.context.scene.collection.children:
                     bpy.context.scene.collection.children.link(colliders)
+                pivot_ref = {}
 
                 # Create hull meshes via object copies or Collider IDs
                 # Discard black faces
@@ -3235,7 +3238,6 @@ class SXTOOLS2_export(object):
                     # Map color regions to mesh islands
                     color_to_faces = defaultdict(list)
                     color_ref_obj = {}
-                    pivot_ref = {}
 
                     for obj in cid_objs:
                         if obj.type == 'MESH':
@@ -3382,7 +3384,7 @@ class SXTOOLS2_export(object):
                         new_obj.sx2.weldthreshold = 0.0
                         new_obj.sx2.decimation = 0.0
                         new_obj.parent = group
-                        new_objs.append(new_obj)
+                        new_cid_objs.append(new_obj)
 
                 if hull_objs:
                     org_objs = hull_objs[:]
@@ -3398,19 +3400,25 @@ class SXTOOLS2_export(object):
 
                         pivot_ref[new_obj] = new_obj.matrix_world.to_translation()
 
+                        org_subdiv = obj.sx2.subdivisionlevel
+                        if ('sxSubdivision' in obj.modifiers):
+                            new_obj.sx2.subdivisionlevel = 1 if org_subdiv > 1 else org_subdiv
+                            new_obj.modifiers['sxSubdivision'].levels = 1 if org_subdiv > 1 else org_subdiv
+
+                        new_obj.sx2.smartseparate = obj.sx2.smartseparate
                         new_obj.sx2.lodmeshes = False
                         new_obj.sx2.generateemissionmeshes = False
                         new_obj.sx2.weldthreshold = 0.0
                         new_obj.sx2.decimation = 0.0
                         new_obj.parent = group
-                        new_objs.append(new_obj)
+                        new_hull_objs.append(new_obj)
 
                         # Clear existing modifier stacks
-                        modifiers.apply_modifiers(new_objs)
+                        modifiers.apply_modifiers([new_obj, ])
 
                 # Split mirrored collider source objects
                 separated_objs = []
-                for new_obj in new_objs:
+                for new_obj in new_cid_objs:
                     bpy.ops.object.select_all(action='DESELECT')
                     sep_objs = self.smart_separate([new_obj, ], override=True, parent=False)
                     
@@ -3463,6 +3471,15 @@ class SXTOOLS2_export(object):
                     sep_objs = [sep_obj for sep_obj in sep_objs if sep_obj.name in view_layer.objects]
                     if sep_objs:
                         separated_objs += sep_objs
+
+                for new_obj in new_hull_objs:
+                    bpy.ops.object.select_all(action='DESELECT')
+                    sep_objs = self.smart_separate([new_obj, ], parent=False)
+
+                    if sep_objs:
+                        separated_objs += sep_objs
+                    else:
+                        new_objs.append(new_obj)
 
                 if separated_objs:
                     new_objs += separated_objs
@@ -8457,7 +8474,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             if obj.sx2.generatehulls:
                                 row_cids = col_export.row(align=True)
                                 row_cids.prop(sx2, 'use_cids', text='Use Collider IDs')
-                                row_cids.prop(sx2, 'mergefragments', text='Merge CID fragments')
+                                if obj.sx2.use_cids:
+                                    row_cids.prop(sx2, 'mergefragments', text='Merge CID fragments')
                                 col_export.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
                                 col_export.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Factor', slider=True)
 
