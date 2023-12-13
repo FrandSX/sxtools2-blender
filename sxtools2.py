@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 22, 1),
+    'version': (1, 23, 1),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3320,6 +3320,7 @@ class SXTOOLS2_export(object):
                         new_obj.sx2.xmirror = view_layer.objects[color_ref_obj[color][3]].sx2.xmirror
                         new_obj.sx2.ymirror = view_layer.objects[color_ref_obj[color][3]].sx2.ymirror
                         new_obj.sx2.zmirror = view_layer.objects[color_ref_obj[color][3]].sx2.zmirror
+                        new_obj.sx2.mergefragments = view_layer.objects[color_ref_obj[color][3]].sx2.mergefragments
                         new_obj.sx2.pivotmode = 'CID'
 
                         # Set pivots manually for split convex hulls
@@ -3412,57 +3413,52 @@ class SXTOOLS2_export(object):
                 for new_obj in new_objs:
                     bpy.ops.object.select_all(action='DESELECT')
                     sep_objs = self.smart_separate([new_obj, ], override=True, parent=False)
-                    print('Hull Mesh:', new_obj.name)
-                    print('Separated:', [sep_obj.name for sep_obj in sep_objs])
+                    
+                    if new_obj.sx2.mergefragments:
+                        # print('Hull Mesh:', new_obj.name)
+                        # print('Separated:', [sep_obj.name for sep_obj in sep_objs])
 
-                    # Merge needlessly separated objects by analyzing their bbx centers
-                    left, right, front, back, top, bottom, center_x, center_y, center_z = [], [], [], [], [], [], [], [], []
+                        # Merge needlessly separated objects by analyzing their bbx centers
+                        left, right, front, back, top, bottom, center_x, center_y, center_z = [], [], [], [], [], [], [], [], []
 
-                    for i, sep_obj in enumerate(sep_objs):
-                        xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([sep_obj, ])
-                        ref_pivot = pivot_ref[new_obj]
-                        print('New obj:', new_obj.name, ref_pivot)
-                        print('Sep obj:', sep_obj.name, (xmin + xmax * 0.5, ymin + ymax * 0.5, zmin + zmax * 0.5))
+                        for i, sep_obj in enumerate(sep_objs):
+                            xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([sep_obj, ])
+                            ref_pivot = pivot_ref[new_obj]
+                            # print('New obj:', new_obj.name, ref_pivot)
+                            # print('Sep obj:', sep_obj.name, (xmin + xmax * 0.5, ymin + ymax * 0.5, zmin + zmax * 0.5))
 
-                        if new_obj.sx2.xmirror:
-                            if (xmin + xmax * 0.5 > ref_pivot[0]) and (abs((xmin + xmax * 0.5) - abs(ref_pivot[0])) > 0.01):
-                                left.append(sep_obj)
-                                print('left of pivot')
-                            elif (xmin + xmax * 0.5 < ref_pivot[0]) and (abs((xmin + xmax * 0.5) - abs(ref_pivot[0])) > 0.01):
-                                right.append(sep_obj)
-                                print('right of pivot')
-                            else:
-                                center_x.append(sep_obj)
-                                print('at pivot x')
-                        if new_obj.sx2.ymirror:
-                            if (ymin + ymax * 0.5 > ref_pivot[1]) and (abs((ymin + ymax * 0.5) - abs(ref_pivot[1])) > 0.01):
-                                front.append(sep_obj)
-                                print('in front of pivot')
-                            elif (ymin + ymax * 0.5 < ref_pivot[1]) and (abs((ymin + ymax * 0.5) - abs(ref_pivot[1])) > 0.01):
-                                back.append(sep_obj)
-                                print('behind pivot')
-                            else:
-                                center_y.append(sep_obj)
-                                print('at pivot y')
-                        if new_obj.sx2.zmirror:
-                            if (zmin + zmax * 0.5 > ref_pivot[2]) and (abs((zmin + zmax * 0.5) - abs(ref_pivot[2])) > 0.01):
-                                top.append(sep_obj)
-                                print('above pivot')
-                            elif (zmin + zmax * 0.5 < ref_pivot[2]) and (abs((zmin + zmax * 0.5) - abs(ref_pivot[2])) > 0.01):
-                                bottom.append(sep_obj)
-                                print('below pivot')
-                            else:
-                                center_z.append(sep_obj)
-                                print('at pivot z')
+                            if new_obj.sx2.xmirror:
+                                if (xmin + xmax * 0.5 > ref_pivot[0]) and (abs((xmin + xmax * 0.5) - abs(ref_pivot[0])) > 0.01):
+                                    left.append(sep_obj)
+                                elif (xmin + xmax * 0.5 < ref_pivot[0]) and (abs((xmin + xmax * 0.5) - abs(ref_pivot[0])) > 0.01):
+                                    right.append(sep_obj)
+                                else:
+                                    center_x.append(sep_obj)
 
-                    for bucket in [left, right, center_x, top, bottom, center_y, front, back, center_z]:
-                        if len(bucket) > 1:
-                            bpy.ops.object.select_all(action='DESELECT')
-                            view_layer.objects.active = bucket[0]
-                            for bucket_object in bucket:
-                                bucket_object.select_set(True)
-                            print('Bucket:', bucket)
-                            bpy.ops.object.join()
+                            elif new_obj.sx2.ymirror:
+                                if (ymin + ymax * 0.5 > ref_pivot[1]) and (abs((ymin + ymax * 0.5) - abs(ref_pivot[1])) > 0.01):
+                                    front.append(sep_obj)
+                                elif (ymin + ymax * 0.5 < ref_pivot[1]) and (abs((ymin + ymax * 0.5) - abs(ref_pivot[1])) > 0.01):
+                                    back.append(sep_obj)
+                                else:
+                                    center_y.append(sep_obj)
+
+                            elif new_obj.sx2.zmirror:
+                                if (zmin + zmax * 0.5 > ref_pivot[2]) and (abs((zmin + zmax * 0.5) - abs(ref_pivot[2])) > 0.01):
+                                    top.append(sep_obj)
+                                elif (zmin + zmax * 0.5 < ref_pivot[2]) and (abs((zmin + zmax * 0.5) - abs(ref_pivot[2])) > 0.01):
+                                    bottom.append(sep_obj)
+                                else:
+                                    center_z.append(sep_obj)
+
+                        for bucket in [left, right, center_x, top, bottom, center_y, front, back, center_z]:
+                            if len(bucket) > 1:
+                                bpy.ops.object.select_all(action='DESELECT')
+                                view_layer.objects.active = bucket[0]
+                                for bucket_object in bucket:
+                                    bucket_object.select_set(True)
+                                # print('Bucket:', bucket)
+                                bpy.ops.object.join()
 
                     sep_objs = [sep_obj for sep_obj in sep_objs if sep_obj.name in view_layer.objects]
                     if sep_objs:
@@ -7037,6 +7033,12 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         default=False,
         update=lambda self, context: update_obj_props(self, context, 'use_cids'))
 
+    mergefragments: bpy.props.BoolProperty(
+        name='Merge fragments',
+        description='Merge hull fragments by pivot. Useful for CIDs that are not continuous.',
+        default=True,
+        update=lambda self, context: update_obj_props(self, context, 'mergefragments'))
+
     hulltrimax: bpy.props.IntProperty(
         name='Max Hull Triangles',
         description='Max number of triangles allowed in the convex hull',
@@ -8453,7 +8455,9 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_hulls.prop(sx2, 'generatehulls', text='', toggle=False)
 
                             if obj.sx2.generatehulls:
-                                col_export.prop(sx2, 'use_cids', text='Use Collider IDs')
+                                row_cids = col_export.row(align=True)
+                                row_cids.prop(sx2, 'use_cids', text='Use Collider IDs')
+                                row_cids.prop(sx2, 'mergefragments', text='Merge CID fragments')
                                 col_export.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
                                 col_export.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Factor', slider=True)
 
