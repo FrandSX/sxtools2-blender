@@ -3412,37 +3412,48 @@ class SXTOOLS2_export(object):
                 for new_obj in new_objs:
                     bpy.ops.object.select_all(action='DESELECT')
                     sep_objs = self.smart_separate([new_obj, ], override=True, parent=False)
+                    print('Hull Mesh:', new_obj.name)
+                    print('Separated:', [sep_obj.name for sep_obj in sep_objs])
 
                     # Merge needlessly separated objects by analyzing their bbx centers
-                    left, right, top, bottom, front, back, center_x, center_y, center_z = [], [], [], [], [], [], [], [], []
+                    left, right, front, back, top, bottom, center_x, center_y, center_z = [], [], [], [], [], [], [], [], []
 
                     for i, sep_obj in enumerate(sep_objs):
                         xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([sep_obj, ])
                         ref_pivot = pivot_ref[new_obj]
-                        # print('New obj:', new_obj.name, ref_pivot)
-                        # print('Sep obj:', sep_obj.name, (xmin + xmax * 0.5, ymin + ymax * 0.5, zmin + zmax * 0.5))
+                        print('New obj:', new_obj.name, ref_pivot)
+                        print('Sep obj:', sep_obj.name, (xmin + xmax * 0.5, ymin + ymax * 0.5, zmin + zmax * 0.5))
 
                         if new_obj.sx2.xmirror:
                             if (xmin + xmax * 0.5 > ref_pivot[0]) and (abs((xmin + xmax * 0.5) - abs(ref_pivot[0])) > 0.01):
                                 left.append(sep_obj)
+                                print('left of pivot')
                             elif (xmin + xmax * 0.5 < ref_pivot[0]) and (abs((xmin + xmax * 0.5) - abs(ref_pivot[0])) > 0.01):
                                 right.append(sep_obj)
+                                print('right of pivot')
                             else:
                                 center_x.append(sep_obj)
+                                print('at pivot x')
                         if new_obj.sx2.ymirror:
                             if (ymin + ymax * 0.5 > ref_pivot[1]) and (abs((ymin + ymax * 0.5) - abs(ref_pivot[1])) > 0.01):
-                                top.append(sep_obj)
+                                front.append(sep_obj)
+                                print('in front of pivot')
                             elif (ymin + ymax * 0.5 < ref_pivot[1]) and (abs((ymin + ymax * 0.5) - abs(ref_pivot[1])) > 0.01):
-                                bottom.append(sep_obj)
+                                back.append(sep_obj)
+                                print('behind pivot')
                             else:
                                 center_y.append(sep_obj)
+                                print('at pivot y')
                         if new_obj.sx2.zmirror:
                             if (zmin + zmax * 0.5 > ref_pivot[2]) and (abs((zmin + zmax * 0.5) - abs(ref_pivot[2])) > 0.01):
-                                front.append(sep_obj)
+                                top.append(sep_obj)
+                                print('above pivot')
                             elif (zmin + zmax * 0.5 < ref_pivot[2]) and (abs((zmin + zmax * 0.5) - abs(ref_pivot[2])) > 0.01):
-                                back.append(sep_obj)
+                                bottom.append(sep_obj)
+                                print('below pivot')
                             else:
                                 center_z.append(sep_obj)
+                                print('at pivot z')
 
                     for bucket in [left, right, center_x, top, bottom, center_y, front, back, center_z]:
                         if len(bucket) > 1:
