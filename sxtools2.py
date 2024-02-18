@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 23, 4),
+    'version': (1, 23, 5),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -6284,6 +6284,16 @@ def load_category(self, context):
         for obj in objs:
             obj.select_set(True)
             context.view_layer.objects.active = obj
+
+            # Move Collider ID layer out of the way
+            for layer in obj.sx2layers:
+                if layer.type == 'CID':
+                    # utils.mode_manager(objs, set_mode=True, mode_id='layer_move')
+                    new_index = len(obj.sx2layers) - 1
+                    layer.index = utils.insert_layer_at_index(obj, layer, new_index)
+                    # utils.mode_manager(objs, set_mode=False, mode_id='layer_move')
+                    # setup.update_sx2material(context)
+
             utils.sort_stack_indices(obj)
 
             for i in range(len(category_data['layers'])):
