@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 23, 5),
+    'version': (1, 23, 6),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4131,6 +4131,7 @@ class SXTOOLS2_export(object):
         bpy.ops.mesh.select_all(action='SELECT')
         bpy.ops.mesh.select_loose()
 
+        loose_objs = []
         for obj in objs:
             obj.update_from_editmode()
             mesh = obj.data
@@ -4138,12 +4139,13 @@ class SXTOOLS2_export(object):
             mesh.vertices.foreach_get('select', selection)
 
             if True in selection:
-                message_box('Objects contain loose geometry!')
-                print(f'SX Tools Error: {obj.name} contains loose geometry')
-                return False
+                loose_objs.append(obj.name)
 
-        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-        return True
+        if loose_objs:
+            new_line = '\n'
+            message_box(f'Objects contain loose geometry:{new_line}{new_line.join(map(str, loose_objs))}')
+            print(f'SX Tools Error: Loose geometry in {loose_objs}')
+            return False
 
 
     # Check that objects are grouped
@@ -6287,12 +6289,9 @@ def load_category(self, context):
 
             # Move Collider ID layer out of the way
             for layer in obj.sx2layers:
-                if layer.type == 'CID':
-                    # utils.mode_manager(objs, set_mode=True, mode_id='layer_move')
+                if layer.layer_type == 'CID':
                     new_index = len(obj.sx2layers) - 1
                     layer.index = utils.insert_layer_at_index(obj, layer, new_index)
-                    # utils.mode_manager(objs, set_mode=False, mode_id='layer_move')
-                    # setup.update_sx2material(context)
 
             utils.sort_stack_indices(obj)
 
