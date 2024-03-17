@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 23, 6),
+    'version': (1, 24, 0),
     'blender': (3, 6, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4291,8 +4291,8 @@ class SXTOOLS2_magic(object):
                 export.group_objects([obj, ])
 
             # Make sure auto-smooth is on
-            obj.data.use_auto_smooth = True
-            obj.data.auto_smooth_angle = math.radians(obj.sx2.smoothangle)
+            # obj.data.use_auto_smooth = True
+            # obj.data.auto_smooth_angle = math.radians(obj.sx2.smoothangle)
             if '_mesh' not in obj.data.name:
                 obj.data.name = obj.name + '_mesh'
 
@@ -6457,8 +6457,9 @@ def update_obj_props(self, context, prop):
         elif prop == 'smoothangle':
             smooth_angle = math.radians(objs[0].sx2.smoothangle)
             for obj in objs:
-                obj.data.use_auto_smooth = True
-                obj.data.auto_smooth_angle = smooth_angle
+                pass
+                # obj.data.use_auto_smooth = True
+                # obj.data.auto_smooth_angle = smooth_angle
 
         elif prop == 'staticvertexcolors':
             for obj in objs:
@@ -6569,8 +6570,8 @@ def load_post_handler(dummy):
         export.bytes_to_floats(bpy.data.objects)
 
     for obj in bpy.data.objects:
-        if (obj is not None) and (obj.type == 'MESH') and (('sxtools' in obj.keys()) or ('sx2' in obj.keys())):
-            obj.data.use_auto_smooth = True
+        # if (obj is not None) and (obj.type == 'MESH') and (('sxtools' in obj.keys()) or ('sx2' in obj.keys())):
+        #     obj.data.use_auto_smooth = True
 
         if len(obj.sx2.keys()) > 0:
             if obj.sx2.hardmode == '':
@@ -10104,8 +10105,8 @@ class SXTOOLS2_OT_addmodifiers(bpy.types.Operator):
             modifiers.add_modifiers(objs)
 
             if objs[0].mode == 'OBJECT':
-                bpy.ops.object.shade_smooth(use_auto_smooth=True)
-                objs[0].sx2.smoothangle = objs[0].sx2.smoothangle
+                bpy.ops.object.shade_smooth()  # (use_auto_smooth=True)
+                # objs[0].sx2.smoothangle = objs[0].sx2.smoothangle
         return {'FINISHED'}
 
 
@@ -10503,8 +10504,8 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
                     objs[0].sx2.shadingmode = 'FULL'
                     refresh_swatches(self, context)
 
-                bpy.ops.object.shade_smooth(use_auto_smooth=True)
-                objs[0].sx2.smoothangle = objs[0].sx2.smoothangle
+                bpy.ops.object.shade_smooth()  # (use_auto_smooth=True)
+                # objs[0].sx2.smoothangle = objs[0].sx2.smoothangle
 
         return {'FINISHED'}
 
