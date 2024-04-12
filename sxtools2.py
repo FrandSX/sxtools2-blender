@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 24, 3),
+    'version': (1, 24, 4),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5002,9 +5002,9 @@ class SXTOOLS2_setup(object):
         combine_offset.location = (-600, 100)
 
         # expose offset, connect to bbx offsets
-        connect_nodes(group_in.outputs['Offset'], combine_offset.inputs[0])
-        connect_nodes(group_in.outputs['Offset'], combine_offset.inputs[1])
-        connect_nodes(group_in.outputs['Offset'], combine_offset.inputs[2])
+        connect_nodes(group_in.outputs['Offset'], combine_offset.inputs['X'])
+        connect_nodes(group_in.outputs['Offset'], combine_offset.inputs['Y'])
+        connect_nodes(group_in.outputs['Offset'], combine_offset.inputs['Z'])
 
         connect_nodes(combine_offset.outputs['Vector'], bbx_subtract.inputs[1])
         connect_nodes(combine_offset.outputs['Vector'], bbx_add.inputs[1])
@@ -5062,12 +5062,12 @@ class SXTOOLS2_setup(object):
         connect_nodes(nodetree.nodes['separate0'].outputs['Z'], nodetree.nodes['combine4'].inputs['Z'])
         connect_nodes(nodetree.nodes['separate1'].outputs['Z'], nodetree.nodes['combine5'].inputs['Z'])
 
-        nodetree.nodes['transform0'].inputs['Translation'].default_value[0] = -3.0
-        nodetree.nodes['transform1'].inputs['Translation'].default_value[0] = -3.0
-        nodetree.nodes['transform2'].inputs['Translation'].default_value[1] = -3.0
-        nodetree.nodes['transform3'].inputs['Translation'].default_value[1] = -3.0
-        nodetree.nodes['transform4'].inputs['Translation'].default_value[2] = -3.0
-        nodetree.nodes['transform5'].inputs['Translation'].default_value[2] = -3.0
+        nodetree.nodes['transform0'].inputs['Scale'].default_value[0] = -3.0
+        nodetree.nodes['transform1'].inputs['Scale'].default_value[0] = -3.0
+        nodetree.nodes['transform2'].inputs['Scale'].default_value[1] = -3.0
+        nodetree.nodes['transform3'].inputs['Scale'].default_value[1] = -3.0
+        nodetree.nodes['transform4'].inputs['Scale'].default_value[2] = -3.0
+        nodetree.nodes['transform5'].inputs['Scale'].default_value[2] = -3.0
 
 
     def create_occlusion_network(self, raycount):
