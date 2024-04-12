@@ -1,8 +1,8 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 23, 7),
-    'blender': (3, 6, 0),
+    'version': (1, 24, 3),
+    'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
     'doc_url': 'https://secretexit.notion.site/SX-Tools-2-for-Blender-Documentation-1681c68851fb4d018d1f9ec762e5aec9',
@@ -2577,9 +2577,7 @@ class SXTOOLS2_modifiers(object):
         mode = objs[0].mode[:]
         mode_dict = {'CRS': 'crease', 'BEV': 'bevel_weight'}
         weight = setvalue
-        if (setmode == 'CRS') and (weight == -1.0) and (sxglobals.version == 3):
-            weight = 0.0
-        elif (weight == -1.0):
+        if (weight == -1.0):
             weight = 0.0
 
         utils.mode_manager(objs, set_mode=True, mode_id='assign_set')
@@ -2589,28 +2587,19 @@ class SXTOOLS2_modifiers(object):
         for obj in objs:
             bpy.context.view_layer.objects.active = obj
             mesh = obj.data
-            if sxglobals.version == 4:
-                if not 'crease_vert' in mesh.attributes:
-                    mesh.vertex_creases_ensure()
-                if not 'crease_edge' in mesh.attributes:
-                    mesh.edge_creases_ensure()
-                if not 'bevel_weight_vert' in mesh.attributes:
-                    mesh.attributes.new(name='bevel_weight_vert', type='FLOAT', domain='POINT')
-                if not 'bevel_weight_edge' in mesh.attributes:
-                    mesh.attributes.new(name='bevel_weight_edge', type='FLOAT', domain='EDGE')
-                if not 'sharp_edge' in mesh.attributes:
-                    mesh.attributes.new(name='sharp_edge', type='BOOLEAN', domain='EDGE')
-                if not 'sharp_face' in mesh.attributes:
-                    mesh.attributes.new(name='sharp_face', type='BOOLEAN', domain='FACE')
-            else:
-                if not mesh.has_crease_vertex:
-                    bpy.ops.mesh.customdata_crease_vertex_add()
-                if not mesh.has_crease_edge:
-                    bpy.ops.mesh.customdata_crease_edge_add()
-                if not mesh.has_bevel_weight_edge:
-                    bpy.ops.mesh.customdata_bevel_weight_edge_add()
-                if not mesh.has_bevel_weight_vertex:
-                    bpy.ops.mesh.customdata_bevel_weight_vertex_add()
+
+            if not 'crease_vert' in mesh.attributes:
+                mesh.vertex_creases_ensure()
+            if not 'crease_edge' in mesh.attributes:
+                mesh.edge_creases_ensure()
+            if not 'bevel_weight_vert' in mesh.attributes:
+                mesh.attributes.new(name='bevel_weight_vert', type='FLOAT', domain='POINT')
+            if not 'bevel_weight_edge' in mesh.attributes:
+                mesh.attributes.new(name='bevel_weight_edge', type='FLOAT', domain='EDGE')
+            if not 'sharp_edge' in mesh.attributes:
+                mesh.attributes.new(name='sharp_edge', type='BOOLEAN', domain='EDGE')
+            if not 'sharp_face' in mesh.attributes:
+                mesh.attributes.new(name='sharp_face', type='BOOLEAN', domain='FACE')
 
             if (mode == 'EDIT'):
                 # EDIT mode vertex creasing
@@ -2621,27 +2610,15 @@ class SXTOOLS2_modifiers(object):
                     select_values = [None] * len(mesh.vertices)
                     mesh.vertices.foreach_get('select', select_values)
 
-                    if sxglobals.version == 4:
-                        mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
-                        mesh.attributes[mode_dict[setmode]].data.foreach_get('value', weight_values)
-                    else:
-                        if setmode == 'CRS':
-                            mesh.vertex_creases[0].data.foreach_get('value', weight_values)
-                        else:
-                            mesh.vertices.foreach_get(mode_dict[setmode], weight_values)
+                    mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
+                    mesh.attributes[mode_dict[setmode]].data.foreach_get('value', weight_values)
 
                     for i, sel in enumerate(select_values):
                         if sel:
                             weight_values[i] = weight
 
-                    if sxglobals.version == 4:
-                        mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
-                        mesh.attributes[mode_dict[setmode]].data.foreach_set('value', weight_values)
-                    else:
-                        if setmode == 'CRS':
-                            mesh.vertex_creases[0].data.foreach_set('value', weight_values)
-                        else:
-                            mesh.vertices.foreach_set(mode_dict[setmode], weight_values)
+                    mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
+                    mesh.attributes[mode_dict[setmode]].data.foreach_set('value', weight_values)
 
                 # EDIT mode edge creasing and beveling
                 else:
@@ -2651,15 +2628,11 @@ class SXTOOLS2_modifiers(object):
                     autocrease_values = [None] * len(mesh.edges)
                     mesh.edges.foreach_get('select', select_values)
 
-                    if sxglobals.version == 4:
-                        mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
-                        mesh.attributes[mode_dict[setmode]].data.foreach_get('value', weight_values)
-                        mesh.attributes['sharp_edge'].data.foreach_get('value', sharp_values)
-                        if (bpy.context.scene.sx2.autocrease) and (setmode == 'BEV'):
-                            mesh.attributes['crease_edge'].data.foreach_get('value', autocrease_values)
-                    else:
-                        mesh.edges.foreach_get(mode_dict[setmode], weight_values)
-                        mesh.edges.foreach_get('use_edge_sharp', sharp_values)
+                    mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
+                    mesh.attributes[mode_dict[setmode]].data.foreach_get('value', weight_values)
+                    mesh.attributes['sharp_edge'].data.foreach_get('value', sharp_values)
+                    if (bpy.context.scene.sx2.autocrease) and (setmode == 'BEV'):
+                        mesh.attributes['crease_edge'].data.foreach_get('value', autocrease_values)
 
                     for i, sel in enumerate(select_values):
                         if sel:
@@ -2671,29 +2644,19 @@ class SXTOOLS2_modifiers(object):
                                 if (bpy.context.scene.sx2.autocrease) and (setmode == 'BEV') and (weight_values[i] > 0.0):
                                     autocrease_values[i] = 1.0
 
-                    if sxglobals.version == 4:
-                        mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
-                        mesh.attributes['sharp_edge'].data.foreach_set('value', sharp_values)
-                        mesh.attributes[mode_dict[setmode]].data.foreach_set('value', weight_values)
-                        if (bpy.context.scene.sx2.autocrease) and (setmode == 'BEV'):
-                            mesh.attributes['crease_edge'].data.foreach_set('value', autocrease_values)
-                    else:
-                        mesh.edges.foreach_set('use_edge_sharp', sharp_values)
-                        mesh.edges.foreach_set(mode_dict[setmode], weight_values)
+                    mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
+                    mesh.attributes['sharp_edge'].data.foreach_set('value', sharp_values)
+                    mesh.attributes[mode_dict[setmode]].data.foreach_set('value', weight_values)
+                    if (bpy.context.scene.sx2.autocrease) and (setmode == 'BEV'):
+                        mesh.attributes['crease_edge'].data.foreach_set('value', autocrease_values)
 
             # OBJECT mode
             else:
                 # vertex creasing and beveling
                 if (bpy.context.tool_settings.mesh_select_mode[0]):
                     weight_values = [weight] * len(mesh.vertices)
-                    if sxglobals.version == 4:
-                        mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
-                        mesh.attributes[mode_dict[setmode]].data.foreach_set('value', weight_values)
-                    else:
-                        if setmode == 'CRS':
-                            mesh.vertex_creases[0].data.foreach_set('value', weight_values)
-                        else:
-                            mesh.vertices.foreach_set(mode_dict[setmode], weight_values)
+                    mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
+                    mesh.attributes[mode_dict[setmode]].data.foreach_set('value', weight_values)
 
                 # edge creasing and beveling
                 else:
@@ -2704,15 +2667,11 @@ class SXTOOLS2_modifiers(object):
                     else:
                         sharp_values = [(weight > 0.0) * (obj.sx2.hardmode == 'SHARP')] * len(mesh.edges)
 
-                    if sxglobals.version == 4:
-                        mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
-                        mesh.attributes['sharp_edge'].data.foreach_set('value', sharp_values)
-                        mesh.attributes[mode_dict[setmode]].data.foreach_set('value', weight_values)
-                        if (bpy.context.scene.sx2.autocrease) and (setmode == 'BEV'):
-                            mesh.attributes['crease_edge'].data.foreach_set('value', weight_values)
-                    else:
-                        mesh.edges.foreach_set('use_edge_sharp', sharp_values)
-                        mesh.edges.foreach_set(mode_dict[setmode], weight_values)
+                    mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
+                    mesh.attributes['sharp_edge'].data.foreach_set('value', sharp_values)
+                    mesh.attributes[mode_dict[setmode]].data.foreach_set('value', weight_values)
+                    if (bpy.context.scene.sx2.autocrease) and (setmode == 'BEV'):
+                        mesh.attributes['crease_edge'].data.foreach_set('value', weight_values)
 
             mesh.update()
         utils.mode_manager(objs, set_mode=False, mode_id='assign_set')
@@ -2730,42 +2689,19 @@ class SXTOOLS2_modifiers(object):
             mesh = obj.data
 
             if bpy.context.tool_settings.mesh_select_mode[0]:
-                if sxglobals.version == 4:
-                    mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
-                    if mode_dict[setmode] in mesh.attributes:
-                        for vert in mesh.vertices:
-                            attr_weight = mesh.attributes[mode_dict[setmode]].data[vert.index].value
-                            if math.isclose(attr_weight, weight, abs_tol=0.1):
-                                vert.select = True
-                else:
-                    if mesh.has_crease_vertex:
-                        for vert in mesh.vertices:
-                            creaseweight = mesh.vertex_creases[0].data[vert.index].value
-                            if math.isclose(creaseweight, weight, abs_tol=0.1):
-                                vert.select = True
+                mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
+                if mode_dict[setmode] in mesh.attributes:
+                    for vert in mesh.vertices:
+                        attr_weight = mesh.attributes[mode_dict[setmode]].data[vert.index].value
+                        if math.isclose(attr_weight, weight, abs_tol=0.1):
+                            vert.select = True
             else:
-                if sxglobals.version == 4:
-                    mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
-                    if mode_dict[setmode] in mesh.attributes:
-                        for edge in mesh.edges:
-                            attr_weight = mesh.attributes[mode_dict[setmode]].data[edge.index].value
-                            if math.isclose(attr_weight, weight, abs_tol=0.1):
-                                edge.select = True
-                else:
-                    bm = bmesh.new()
-                    bm.from_mesh(mesh)
-
-                    if setmode == 'CRS':
-                        bmlayer = bm.edges.layers.crease.verify()
-                    else:
-                        bmlayer = bm.edges.layers.bevel_weight.verify()
-
-                    for edge in bm.edges:
-                        if math.isclose(edge[bmlayer], weight, abs_tol=0.1):
+                mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
+                if mode_dict[setmode] in mesh.attributes:
+                    for edge in mesh.edges:
+                        attr_weight = mesh.attributes[mode_dict[setmode]].data[edge.index].value
+                        if math.isclose(attr_weight, weight, abs_tol=0.1):
                             edge.select = True
-
-                    bm.to_mesh(mesh)
-                    bm.free()
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
 
@@ -2796,22 +2732,13 @@ class SXTOOLS2_modifiers(object):
                     setup.create_tiler()
                 tiler = obj.modifiers.new(type='NODES', name='sxTiler')
                 tiler.node_group = bpy.data.node_groups['sx_tiler']
-                if sxglobals.version == 4:
-                    tiler['Socket_1'] = obj.sx2.tile_offset
-                    tiler['Socket_3'] = obj.sx2.tile_neg_x
-                    tiler['Socket_4'] = obj.sx2.tile_pos_x
-                    tiler['Socket_5'] = obj.sx2.tile_neg_y
-                    tiler['Socket_6'] = obj.sx2.tile_pos_y
-                    tiler['Socket_7'] = obj.sx2.tile_neg_z
-                    tiler['Socket_8'] = obj.sx2.tile_pos_z
-                else:
-                    tiler['Input_1'] = obj.sx2.tile_offset
-                    tiler['Input_3'] = obj.sx2.tile_neg_x
-                    tiler['Input_4'] = obj.sx2.tile_pos_x
-                    tiler['Input_5'] = obj.sx2.tile_neg_y
-                    tiler['Input_6'] = obj.sx2.tile_pos_y
-                    tiler['Input_7'] = obj.sx2.tile_neg_z
-                    tiler['Input_8'] = obj.sx2.tile_pos_z
+                tiler['Socket_1'] = obj.sx2.tile_offset
+                tiler['Socket_3'] = obj.sx2.tile_neg_x
+                tiler['Socket_4'] = obj.sx2.tile_pos_x
+                tiler['Socket_5'] = obj.sx2.tile_neg_y
+                tiler['Socket_6'] = obj.sx2.tile_pos_y
+                tiler['Socket_7'] = obj.sx2.tile_neg_z
+                tiler['Socket_8'] = obj.sx2.tile_pos_z
                 tiler.show_viewport = False
                 tiler.show_expanded = False
 
@@ -2899,6 +2826,22 @@ class SXTOOLS2_modifiers(object):
                     print(f'SX Tools: Decimate2: {obj.name} {round(now-then, 4)} seconds')
                     then = time.perf_counter()
 
+            if 'sxSmoothNormals' not in obj.modifiers:
+                root = os.path.dirname(bpy.app.binary_path)
+                blend_file_path = os.path.join(root, '4.1', 'datafiles', 'assets', 'geometry_nodes', 'smooth_by_angle.blend')
+                node_group_name = "Smooth by Angle"
+                node_group = bpy.data.node_groups.get(node_group_name)
+                if not node_group:
+                    with bpy.data.libraries.load(blend_file_path, link=False) as (data_from, data_to):
+                        data_to.node_groups = [name for name in data_from.node_groups if name == node_group_name]
+
+                tiler = obj.modifiers.new(type='NODES', name='sxSmoothNormals')
+                tiler.node_group = bpy.data.node_groups['Smooth by Angle']
+                # bpy.ops.object.modifier_add_node_group(asset_library_type='ESSENTIALS', asset_library_identifier="", relative_asset_identifier="geometry_nodes\\smooth_by_angle.blend\\NodeTree\\Smooth by Angle")
+                obj.modifiers['sxSmoothNormals'].show_viewport = obj.sx2.modifiervisibility
+                obj.modifiers['sxSmoothNormals'].show_expanded = False
+                obj.modifiers["sxSmoothNormals"]["Input_1"] = math.radians(obj.sx2.smoothangle)
+
             if 'sxWeightedNormal' not in obj.modifiers:
                 obj.modifiers.new(type='WEIGHTED_NORMAL', name='sxWeightedNormal')
                 obj.modifiers['sxWeightedNormal'].show_viewport = obj.sx2.modifiervisibility if obj.sx2.weightednormals else False
@@ -2907,7 +2850,7 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxWeightedNormal'].weight = 50
                 obj.modifiers['sxWeightedNormal'].keep_sharp = False if obj.sx2.hardmode == 'SMOOTH' else True
 
-                obj.sx2.smoothangle = obj.sx2.smoothangle
+                # obj.sx2.smoothangle = obj.sx2.smoothangle
 
                 if sxglobals.benchmark_modifiers:
                     now = time.perf_counter()
@@ -2952,6 +2895,11 @@ class SXTOOLS2_modifiers(object):
                     bpy.ops.object.modifier_remove(modifier='sxDecimate2')
                 else:
                     bpy.ops.object.modifier_apply(modifier='sxDecimate2')
+            if 'sxSmoothNormals' in obj.modifiers:
+                if obj.sx2.smoothangle == 0:
+                    bpy.ops.object.modifier_remove(modifier='sxSmoothNormals')
+                else:
+                    bpy.ops.object.modifier_apply(modifier='sxSmoothNormals')
             if 'sxWeightedNormal' in obj.modifiers:
                 if not obj.sx2.weightednormals:
                     bpy.ops.object.modifier_remove(modifier='sxWeightedNormal')
@@ -2960,7 +2908,7 @@ class SXTOOLS2_modifiers(object):
 
 
     def remove_modifiers(self, objs, reset=False):
-        modifiers = ['sxMirror', 'sxTiler', 'sxAO', 'sxGeometryNodes', 'sxSubdivision', 'sxBevel', 'sxWeld', 'sxDecimate', 'sxDecimate2', 'sxEdgeSplit', 'sxWeightedNormal']
+        modifiers = ['Auto Smooth', 'sxMirror', 'sxTiler', 'sxAO', 'sxGeometryNodes', 'sxSubdivision', 'sxBevel', 'sxWeld', 'sxDecimate', 'sxDecimate2', 'sxEdgeSplit', 'sxSmoothNormals', 'sxWeightedNormal']
         if reset and ('sx_tiler' in bpy.data.node_groups):
             bpy.data.node_groups.remove(bpy.data.node_groups['sx_tiler'], do_unlink=True)
         if reset and ('sx_ao' in bpy.data.node_groups):
@@ -2971,7 +2919,7 @@ class SXTOOLS2_modifiers(object):
                 if modifier in obj.modifiers:
                     obj.modifiers.remove(obj.modifiers.get(modifier))
 
-            obj.sx2.smoothangle = obj.sx2.smoothangle
+            # obj.sx2.smoothangle = obj.sx2.smoothangle
 
             if reset:
                 obj.sx2.xmirror = False
@@ -4297,9 +4245,6 @@ class SXTOOLS2_magic(object):
                 # viewlayer.objects.active = obj
                 export.group_objects([obj, ])
 
-            # Make sure auto-smooth is on
-            obj.data.use_auto_smooth = True
-            obj.data.auto_smooth_angle = math.radians(obj.sx2.smoothangle)
             if '_mesh' not in obj.data.name:
                 obj.data.name = obj.name + '_mesh'
 
@@ -4983,6 +4928,7 @@ class SXTOOLS2_setup(object):
             nodetree.links.new(output, input)
 
         nodetree = bpy.data.node_groups.new(type='GeometryNodeTree', name='sx_tiler')
+        nodetree.is_modifier = True
         group_in = nodetree.nodes.new(type='NodeGroupInput')
         group_in.name = 'group_input'
         group_in.location = (-800, 0)
@@ -4993,19 +4939,11 @@ class SXTOOLS2_setup(object):
         # create tiler inputs and outputs
         axis_switches = ['-X', '+X', '-Y', '+Y', '-Z', '+Z']
 
-
-        if sxglobals.version == 4:
-            nodetree.interface.new_socket(in_out='INPUT', name='Geometry', socket_type='NodeSocketGeometry')
-            nodetree.interface.new_socket(in_out='INPUT', name='Offset', socket_type='NodeSocketFloat')
-            nodetree.interface.new_socket(in_out='OUTPUT', name='Geometry', socket_type='NodeSocketGeometry')
-            for axis in axis_switches:
-                nodetree.interface.new_socket(in_out='INPUT', name=axis, socket_type='NodeSocketBool')
-        else:
-            nodetree.inputs.new('NodeSocketGeometry', 'Geometry')
-            nodetree.inputs.new('NodeSocketFloat', 'Offset')
-            nodetree.outputs.new('NodeSocketGeometry', 'Geometry')
-            for axis in axis_switches:
-                nodetree.inputs.new('NodeSocketBool', axis)
+        nodetree.interface.new_socket(in_out='INPUT', name='Geometry', socket_type='NodeSocketGeometry')
+        nodetree.interface.new_socket(in_out='INPUT', name='Offset', socket_type='NodeSocketFloat')
+        nodetree.interface.new_socket(in_out='OUTPUT', name='Geometry', socket_type='NodeSocketGeometry')
+        for axis in axis_switches:
+            nodetree.interface.new_socket(in_out='INPUT', name=axis, socket_type='NodeSocketBool')
 
         bbx = nodetree.nodes.new(type='GeometryNodeBoundBox')
         bbx.name = 'bbx'
@@ -5028,7 +4966,7 @@ class SXTOOLS2_setup(object):
 
         # link base mesh to bbx and flip faces
         connect_nodes(group_in.outputs['Geometry'], nodetree.nodes['bbx'].inputs['Geometry'])
-        connect_nodes(group_in.outputs['Geometry'], nodetree.nodes['flip'].inputs[0])
+        connect_nodes(group_in.outputs['Geometry'], nodetree.nodes['flip'].inputs['Mesh'])
 
         for i in range(2): 
             # bbx offset multipliers for mirror objects
@@ -5043,7 +4981,7 @@ class SXTOOLS2_setup(object):
             separate.location = (0, 400-100*i)
 
             # link offset to multipliers
-            connect_nodes(offset.outputs[0], multiply.inputs[1])
+            connect_nodes(offset.outputs['Value'], multiply.inputs[1])
 
             # link bbx bounds to multipliers
             connect_nodes(bbx.outputs[i+1], multiply.inputs[0])
@@ -5068,16 +5006,16 @@ class SXTOOLS2_setup(object):
         connect_nodes(group_in.outputs['Offset'], combine_offset.inputs[1])
         connect_nodes(group_in.outputs['Offset'], combine_offset.inputs[2])
 
-        connect_nodes(combine_offset.outputs[0], bbx_subtract.inputs[1])
-        connect_nodes(combine_offset.outputs[0], bbx_add.inputs[1])
+        connect_nodes(combine_offset.outputs['Vector'], bbx_subtract.inputs[1])
+        connect_nodes(combine_offset.outputs['Vector'], bbx_add.inputs[1])
 
         # link multipliers to bbx offsets
-        connect_nodes(nodetree.nodes['multiply0'].outputs[0], nodetree.nodes['bbx_subtract'].inputs[0])
-        connect_nodes(nodetree.nodes['multiply1'].outputs[0], nodetree.nodes['bbx_add'].inputs[0])
+        connect_nodes(nodetree.nodes['multiply0'].outputs['Vector'], nodetree.nodes['bbx_subtract'].inputs[0])
+        connect_nodes(nodetree.nodes['multiply1'].outputs['Vector'], nodetree.nodes['bbx_add'].inputs[0])
 
         # bbx to separate min and max
-        connect_nodes(nodetree.nodes['bbx_subtract'].outputs[0], nodetree.nodes['separate0'].inputs[0])
-        connect_nodes(nodetree.nodes['bbx_add'].outputs[0], nodetree.nodes['separate1'].inputs[0])
+        connect_nodes(nodetree.nodes['bbx_subtract'].outputs['Vector'], nodetree.nodes['separate0'].inputs[0])
+        connect_nodes(nodetree.nodes['bbx_add'].outputs['Vector'], nodetree.nodes['separate1'].inputs[0])
 
         for i in range(6):
             # combine nodes for mirror offsets
@@ -5096,19 +5034,19 @@ class SXTOOLS2_setup(object):
             transform.location = (800, -100*i)
 
             # link combine to translation
-            connect_nodes(combine.outputs[0], transform.inputs[1])
+            connect_nodes(combine.outputs["Vector"], transform.inputs[1])
 
             # expose axis enable switches
-            connect_nodes(group_in.outputs[axis_switches[i]], switch.inputs[1])
+            connect_nodes(group_in.outputs[axis_switches[i]], switch.inputs['Switch'])
 
             # link flipped mesh to switch input
-            connect_nodes(flip.outputs[0], switch.inputs[15])
+            connect_nodes(flip.outputs['Mesh'], switch.inputs['True'])
 
             # link switch mesh output to transform
-            connect_nodes(switch.outputs[6], transform.inputs[0])
+            connect_nodes(switch.outputs['Output'], transform.inputs['Geometry'])
 
             # link mirror mesh output to join node
-            connect_nodes(transform.outputs[0], join.inputs[0])
+            connect_nodes(transform.outputs['Geometry'], join.inputs[0])
 
         # link group in as first in join node for working auto-smooth
         connect_nodes(group_in.outputs['Geometry'], join.inputs[0])
@@ -5117,19 +5055,19 @@ class SXTOOLS2_setup(object):
         connect_nodes(nodetree.nodes['join'].outputs['Geometry'], group_out.inputs['Geometry'])
 
         # min max pairs to combiners in -x, x, -y, y, -z, z order
-        connect_nodes(nodetree.nodes['separate0'].outputs[0], nodetree.nodes['combine0'].inputs[0])
-        connect_nodes(nodetree.nodes['separate1'].outputs[0], nodetree.nodes['combine1'].inputs[0])
-        connect_nodes(nodetree.nodes['separate0'].outputs[1], nodetree.nodes['combine2'].inputs[1])
-        connect_nodes(nodetree.nodes['separate1'].outputs[1], nodetree.nodes['combine3'].inputs[1])
-        connect_nodes(nodetree.nodes['separate0'].outputs[2], nodetree.nodes['combine4'].inputs[2])
-        connect_nodes(nodetree.nodes['separate1'].outputs[2], nodetree.nodes['combine5'].inputs[2])
+        connect_nodes(nodetree.nodes['separate0'].outputs['X'], nodetree.nodes['combine0'].inputs['X'])
+        connect_nodes(nodetree.nodes['separate1'].outputs['X'], nodetree.nodes['combine1'].inputs['X'])
+        connect_nodes(nodetree.nodes['separate0'].outputs['Y'], nodetree.nodes['combine2'].inputs['Y'])
+        connect_nodes(nodetree.nodes['separate1'].outputs['Y'], nodetree.nodes['combine3'].inputs['Y'])
+        connect_nodes(nodetree.nodes['separate0'].outputs['Z'], nodetree.nodes['combine4'].inputs['Z'])
+        connect_nodes(nodetree.nodes['separate1'].outputs['Z'], nodetree.nodes['combine5'].inputs['Z'])
 
-        nodetree.nodes['transform0'].inputs[3].default_value[0] = -3.0
-        nodetree.nodes['transform1'].inputs[3].default_value[0] = -3.0
-        nodetree.nodes['transform2'].inputs[3].default_value[1] = -3.0
-        nodetree.nodes['transform3'].inputs[3].default_value[1] = -3.0
-        nodetree.nodes['transform4'].inputs[3].default_value[2] = -3.0
-        nodetree.nodes['transform5'].inputs[3].default_value[2] = -3.0
+        nodetree.nodes['transform0'].inputs['Translation'].default_value[0] = -3.0
+        nodetree.nodes['transform1'].inputs['Translation'].default_value[0] = -3.0
+        nodetree.nodes['transform2'].inputs['Translation'].default_value[1] = -3.0
+        nodetree.nodes['transform3'].inputs['Translation'].default_value[1] = -3.0
+        nodetree.nodes['transform4'].inputs['Translation'].default_value[2] = -3.0
+        nodetree.nodes['transform5'].inputs['Translation'].default_value[2] = -3.0
 
 
     def create_occlusion_network(self, raycount):
@@ -5394,22 +5332,14 @@ class SXTOOLS2_setup(object):
             if obj.sx2layers:
                 sxmaterial = bpy.data.materials.new(name='SX2Material_'+obj.name)
                 sxmaterial.use_nodes = True
-                if sxglobals.version == 4:
-                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26].default_value = [0.0, 0.0, 0.0, 1.0]
-                else:
-                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'].default_value = [0.0, 0.0, 0.0, 1.0]
+                sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26].default_value = [0.0, 0.0, 0.0, 1.0]
                 sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = [0.0, 0.0, 0.0, 1.0]
                 sxmaterial.node_tree.nodes['Principled BSDF'].location = (1000, 0)
                 sxmaterial.node_tree.nodes['Material Output'].location = (1300, 0)
 
                 if obj.sx2.shadingmode == 'FULL':
-                    if sxglobals.version == 3:
-                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = obj.sx2.mat_specular
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Anisotropic'].default_value = obj.sx2.mat_anisotropic
-                    if sxglobals.version == 4:
-                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs[18].default_value = obj.sx2.mat_clearcoat
-                    else:
-                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Clearcoat'].default_value = obj.sx2.mat_clearcoat
+                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs[18].default_value = obj.sx2.mat_clearcoat
                     prev_color = None
                     prev_alpha = None
                     rgba_mats = ['SSS', 'EMI']
@@ -5666,22 +5596,15 @@ class SXTOOLS2_setup(object):
                                 connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Roughness'])
 
                             if material_layers[i][2] == 'TRN':
-                                if sxglobals.version == 4:
-                                    connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs[17])
-                                else:
-                                    connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission'])
+                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs[17])
 
                             if material_layers[i][2] == 'SSS':
                                 connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface'])
                                 connect_nodes(palette_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface Color'])
 
                             if material_layers[i][2] == 'EMI':
-                                if sxglobals.version == 4:
-                                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs[27].default_value = 10
-                                    connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26])
-                                else:
-                                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 10
-                                    connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'])
+                                sxmaterial.node_tree.nodes['Principled BSDF'].inputs[27].default_value = 10
+                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26])
                                 bpy.context.scene.eevee.use_bloom = True
 
                     if prev_color is not None:
@@ -5691,12 +5614,8 @@ class SXTOOLS2_setup(object):
                         connect_nodes(prev_alpha, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Alpha'])
 
                 elif (obj.sx2.shadingmode == 'DEBUG') or (obj.sx2.shadingmode == 'ALPHA'):
-                    if sxglobals.version == 4:
-                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs[12].default_value = 0.0
-                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs[27].default_value = 1
-                    else:
-                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular'].default_value = 0.0
-                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 1
+                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs[12].default_value = 0.0
+                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs[27].default_value = 1
                     
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 1
                     alpha_mats = ['OCC', 'MET', 'RGH', 'TRN']
@@ -5764,10 +5683,7 @@ class SXTOOLS2_setup(object):
                         output = base_color.outputs['Alpha']
 
                     connect_nodes(output, debug_blend.inputs['Color2'])
-                    if sxglobals.version == 4:
-                        connect_nodes(debug_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26])
-                    else:
-                        connect_nodes(debug_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission'])
+                    connect_nodes(debug_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26])
 
 
     def update_sx2material(self, context):
@@ -6161,23 +6077,13 @@ def update_modifiers(self, context, prop):
                     if obj.sx2.tiling:
                         utils.round_tiling_verts([obj, ])
                         tiler = obj.modifiers['sxTiler']
-
-                        if sxglobals.version == 4:
-                            tiler['Socket_1'] = obj.sx2.tile_offset
-                            tiler['Socket_3'] = obj.sx2.tile_neg_x
-                            tiler['Socket_4'] = obj.sx2.tile_pos_x
-                            tiler['Socket_5'] = obj.sx2.tile_neg_y
-                            tiler['Socket_6'] = obj.sx2.tile_pos_y
-                            tiler['Socket_7'] = obj.sx2.tile_neg_z
-                            tiler['Socket_8'] = obj.sx2.tile_pos_z
-                        else:
-                            tiler['Input_1'] = obj.sx2.tile_offset
-                            tiler['Input_3'] = obj.sx2.tile_neg_x
-                            tiler['Input_4'] = obj.sx2.tile_pos_x
-                            tiler['Input_5'] = obj.sx2.tile_neg_y
-                            tiler['Input_6'] = obj.sx2.tile_pos_y
-                            tiler['Input_7'] = obj.sx2.tile_neg_z
-                            tiler['Input_8'] = obj.sx2.tile_pos_z
+                        tiler['Socket_1'] = obj.sx2.tile_offset
+                        tiler['Socket_3'] = obj.sx2.tile_neg_x
+                        tiler['Socket_4'] = obj.sx2.tile_pos_x
+                        tiler['Socket_5'] = obj.sx2.tile_neg_y
+                        tiler['Socket_6'] = obj.sx2.tile_pos_y
+                        tiler['Socket_7'] = obj.sx2.tile_neg_z
+                        tiler['Socket_8'] = obj.sx2.tile_pos_z
 
             elif prop == 'hardmode':
                 for obj in objs:
@@ -6237,6 +6143,11 @@ def update_modifiers(self, context, prop):
                         elif (obj.sx2.decimation > 0) and obj.sx2.modifiervisibility:
                             obj.modifiers['sxDecimate'].show_viewport = True
                             obj.modifiers['sxDecimate2'].show_viewport = True
+
+            elif prop == 'smoothangle':
+                for obj in objs:
+                    if 'sxSmoothNormals' in obj.modifiers:
+                        obj.modifiers["sxSmoothNormals"]["Input_1"] = math.radians(obj.sx2.smoothangle)
 
             elif prop == 'weightednormals':
                 for obj in objs:
@@ -6461,12 +6372,6 @@ def update_obj_props(self, context, prop):
         elif prop == 'selectedlayer':
             update_selected_layer(self, context)
 
-        elif prop == 'smoothangle':
-            smooth_angle = math.radians(objs[0].sx2.smoothangle)
-            for obj in objs:
-                obj.data.use_auto_smooth = True
-                obj.data.auto_smooth_angle = smooth_angle
-
         elif prop == 'staticvertexcolors':
             for obj in objs:
                 obj['staticVertexColors'] = int(objs[0].sx2.staticvertexcolors)
@@ -6576,9 +6481,6 @@ def load_post_handler(dummy):
         export.bytes_to_floats(bpy.data.objects)
 
     for obj in bpy.data.objects:
-        if (obj is not None) and (obj.type == 'MESH') and (('sxtools' in obj.keys()) or ('sx2' in obj.keys())):
-            obj.data.use_auto_smooth = True
-
         if len(obj.sx2.keys()) > 0:
             if obj.sx2.hardmode == '':
                 obj.sx2.hardmode = 'SHARP'
@@ -10111,8 +10013,8 @@ class SXTOOLS2_OT_addmodifiers(bpy.types.Operator):
             modifiers.add_modifiers(objs)
 
             if objs[0].mode == 'OBJECT':
-                bpy.ops.object.shade_smooth(use_auto_smooth=True)
-                objs[0].sx2.smoothangle = objs[0].sx2.smoothangle
+                bpy.ops.object.shade_smooth()
+
         return {'FINISHED'}
 
 
@@ -10510,8 +10412,7 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
                     objs[0].sx2.shadingmode = 'FULL'
                     refresh_swatches(self, context)
 
-                bpy.ops.object.shade_smooth(use_auto_smooth=True)
-                objs[0].sx2.smoothangle = objs[0].sx2.smoothangle
+                bpy.ops.object.shade_smooth()
 
         return {'FINISHED'}
 
