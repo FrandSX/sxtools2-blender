@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 24, 4),
+    'version': (1, 24, 7),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2749,7 +2749,7 @@ class SXTOOLS2_modifiers(object):
 
             # if 'sxAO' not in obj.modifiers:
             #     if 'sx_ao' not in bpy.data.node_groups:
-            #         setup.create_occlusion_network(100)
+            #         setup.create_occlusion_network(10)
             #     ao = obj.modifiers.new(type='NODES', name='sxAO')
             #     ao.node_group = bpy.data.node_groups['sx_ao']
 
@@ -3164,6 +3164,75 @@ class SXTOOLS2_export(object):
 
     # Multi-pass convex hull generator
     def generate_hulls(self, objs, group=None):
+
+
+        def shrink_colliders(collider_obj):
+            collider_obj.select_set(True)
+            collider_obj.sx2.smartseparate = False
+            view_layer.objects.active = collider_obj
+            bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+            bpy.ops.mesh.convex_hull(use_existing_faces=True, face_threshold=math.radians(15.0), shape_threshold=math.radians(15.0))
+            tri_opt = False
+            shrink_opt = False
+            angle = 0.0
+
+            # Shrink hull according to factor
+            if collider_obj.sx2.collideroffsetfactor > 0.0:
+                offset = -1.0 * min(collider_obj.sx2.collideroffsetfactor, utils.find_safe_mesh_offset(collider_obj))
+                bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+                bpy.context.tool_settings.mesh_select_mode = (True, False, False)
+                bpy.ops.mesh.select_all(action='SELECT')
+                bpy.ops.transform.shrink_fatten(value=offset)
+                shrink_opt = True
+
+                # Weld after shrink to clean up clumped verts
+                # bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                # collider_obj.modifiers.new(type='WELD', name='hullWeld')
+                # collider_obj.modifiers["hullWeld"].merge_threshold = min(collider_obj.dimensions) * 0.15
+                # bpy.ops.object.modifier_apply(modifier='hullWeld')
+
+            if int(modifiers.calculate_triangles([collider_obj, ])) > collider_obj.sx2.hulltrimax:
+                # Decimate until below tri count limit
+                if sxglobals.benchmark_cvx:
+                    then = time.perf_counter()
+
+                bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                collider_obj.modifiers.new(type='DECIMATE', name='hullDecimate')
+                collider_obj.modifiers['hullDecimate'].show_viewport = True
+                collider_obj.modifiers['hullDecimate'].show_expanded = False
+                collider_obj.modifiers['hullDecimate'].decimate_type = 'DISSOLVE'
+                collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
+                collider_obj.modifiers['hullDecimate'].use_dissolve_boundaries = False
+
+                while (int(modifiers.calculate_triangles([collider_obj, ])) > collider_obj.sx2.hulltrimax) and (angle < 180.0):
+                    angle += 0.5
+                    collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
+
+                bpy.ops.object.modifier_apply(modifier='hullDecimate')
+
+                if sxglobals.benchmark_cvx:
+                    now = time.perf_counter()
+                    print(f'SX Tools: {collider_obj.name} Tris/limit: {modifiers.calculate_triangles([collider_obj, ])}/{collider_obj.sx2.hulltrimax} Angle: {angle} Iteration Time: {now-then}')
+
+                tri_opt = True
+
+            # Final convex conversion
+            if tri_opt or shrink_opt:
+                bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+                bpy.ops.mesh.select_all(action='SELECT')
+                bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(angle), shape_threshold=math.radians(angle))
+                bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+
+            bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.mesh.decimate(ratio=0.5)
+            bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
+            bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+
+            if sxglobals.benchmark_cvx:
+                print(f'SX Tools: {collider_obj.name} Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
+
+
         if objs:
             view_layer = bpy.context.view_layer
             org_objs = []
@@ -3180,7 +3249,6 @@ class SXTOOLS2_export(object):
                 pivot_ref = {}
 
                 # Create hull meshes via object copies or Collider IDs
-                # Discard black faces
                 if cid_objs:
                     org_objs += cid_objs[:]
                     # Map color regions to mesh islands
@@ -3193,6 +3261,8 @@ class SXTOOLS2_export(object):
                             org_subdiv = obj.sx2.subdivisionlevel
                             if ('sxSubdivision' in obj.modifiers):
                                 obj.modifiers['sxSubdivision'].levels = 1 if org_subdiv > 1 else org_subdiv
+
+                            # Get evaluated mesh at subdiv 1
                             edg = bpy.context.evaluated_depsgraph_get()
                             temp_mesh = obj.evaluated_get(edg).to_mesh()
                             bm = bmesh.new()
@@ -3206,6 +3276,7 @@ class SXTOOLS2_export(object):
                                 color = tuple(round(c, 2) for c in color)
                                 # color = tuple(round(c * 20) / 20 for c in color)
 
+                                # Create color buckets, discard uncolored faces
                                 if (color != (0.0, 0.0, 0.0, 0.0)):
                                     if (color not in color_ref_obj):
                                         color_ref_obj[color] = (obj.location.copy(), obj.matrix_world.inverted(), obj.sx2.hulltrimax, obj.name)
@@ -3213,6 +3284,8 @@ class SXTOOLS2_export(object):
                                     transformed_face_verts = []
                                     first_obj_matrix_world_inv = color_ref_obj[color][1]
 
+                                    # Transform all color island vertices to the local space of reference object
+                                    # (first source obj with respective color)
                                     for vert in face.verts:
                                         world_coord = obj.matrix_world @ vert.co
                                         local_coord_first_obj = first_obj_matrix_world_inv @ world_coord
@@ -3253,7 +3326,6 @@ class SXTOOLS2_export(object):
                         new_bm.edges.index_update()
                         new_bm.faces.index_update()
 
-                        # groupname = group.name[:-5] if group.name.endswith("_root") else group.name
                         name = f'{color_ref_obj[color][3]}_hull_{i}'
                         mesh_data = bpy.data.meshes.new(name+f'_mesh')
                         new_bm.to_mesh(mesh_data)
@@ -3263,6 +3335,8 @@ class SXTOOLS2_export(object):
                         bpy.context.scene.collection.objects.link(new_obj)
                         colliders.objects.link(new_obj)
 
+                        # New meshes now at origin
+                        # Proceed to smart separate and move to correct location
                         new_obj.sx2.smartseparate = False
                         new_obj.location = color_ref_obj[color][0]
                         new_obj.sx2.hulltrimax = color_ref_obj[color][2]
@@ -3289,12 +3363,12 @@ class SXTOOLS2_export(object):
                                 pivot_obj.modifiers.remove(pivot_obj.modifiers.get('sxMirror'))
                             modifiers.apply_modifiers([pivot_obj, ])
                             self.set_pivots([pivot_obj, ])
-                            pivot_loc = list(pivot_obj.matrix_world.to_translation())
+                            pivot_loc = list(pivot_obj.matrix_local.to_translation())
 
                             # Fix pivot location for object halves
                             adjustables = ['MASS', 'BBOX']
-                            if new_obj.sx2.mirrorobject:
-                                mirror_pos = new_obj.sx2.mirrorobject.matrix_world.to_translation()
+                            if (new_obj.sx2.mirrorobject) and (new_obj.sx2.mirrorobject.type == 'MESH'):
+                                mirror_pos = new_obj.sx2.mirrorobject.matrix_local.to_translation()
                             else:
                                 mirror_pos = (0.0, 0.0, 0.0)
 
@@ -3318,22 +3392,22 @@ class SXTOOLS2_export(object):
                             
                             bpy.data.objects.remove(pivot_obj)
                         else:
-                            pivot_loc = view_layer.objects[color_ref_obj[color][3]].matrix_world.to_translation()
+                            pivot_loc = view_layer.objects[color_ref_obj[color][3]].matrix_local.to_translation()
 
                         view_layer.objects.active = new_obj
                         bpy.context.scene.cursor.location = pivot_loc
                         bpy.ops.object.select_all(action='DESELECT')
                         new_obj.select_set(True)
                         bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-                        pivot_ref[new_obj] = new_obj.sx2.mirrorobject.matrix_world.to_translation() if new_obj.sx2.mirrorobject else (0.0, 0.0, 0.0)
+                        pivot_ref[new_obj] = new_obj.sx2.mirrorobject.matrix_local.to_translation() if (new_obj.sx2.mirrorobject and new_obj.sx2.mirrorobject.type == 'MESH') else (0.0, 0.0, 0.0)
 
                         new_obj.sx2.lodmeshes = False
                         new_obj.sx2.generateemissionmeshes = False
                         new_obj.sx2.weldthreshold = 0.0
                         new_obj.sx2.decimation = 0.0
-                        new_obj.parent = group
+                        # new_obj.parent = group
                         new_cid_objs.append(new_obj)
-
+                        
                 if hull_objs:
                     org_objs = hull_objs[:]
                     for obj in org_objs:
@@ -3434,70 +3508,7 @@ class SXTOOLS2_export(object):
 
                 bpy.ops.object.select_all(action='DESELECT')
                 for new_obj in new_objs:
-                    new_obj.select_set(True)
-                    new_obj.sx2.smartseparate = False
-                    view_layer.objects.active = new_obj
-                    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                    bpy.ops.mesh.convex_hull(use_existing_faces=True, face_threshold=math.radians(15.0), shape_threshold=math.radians(15.0))
-                    tri_opt = False
-                    shrink_opt = False
-                    angle = 0.0
-
-                    # Shrink hull according to factor
-                    if new_obj.sx2.collideroffsetfactor > 0.0:
-                        offset = -1.0 * min(new_obj.sx2.collideroffsetfactor, utils.find_safe_mesh_offset(new_obj))
-                        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                        bpy.context.tool_settings.mesh_select_mode = (True, False, False)
-                        bpy.ops.mesh.select_all(action='SELECT')
-                        bpy.ops.transform.shrink_fatten(value=offset)
-                        shrink_opt = True
-
-                        # Weld after shrink to clean up clumped verts
-                        # bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                        # new_obj.modifiers.new(type='WELD', name='hullWeld')
-                        # new_obj.modifiers["hullWeld"].merge_threshold = min(new_obj.dimensions) * 0.15
-                        # bpy.ops.object.modifier_apply(modifier='hullWeld')
-
-                    if int(modifiers.calculate_triangles([new_obj, ])) > new_obj.sx2.hulltrimax:
-                        # Decimate until below tri count limit
-                        if sxglobals.benchmark_cvx:
-                            then = time.perf_counter()
-
-                        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                        new_obj.modifiers.new(type='DECIMATE', name='hullDecimate')
-                        new_obj.modifiers['hullDecimate'].show_viewport = True
-                        new_obj.modifiers['hullDecimate'].show_expanded = False
-                        new_obj.modifiers['hullDecimate'].decimate_type = 'DISSOLVE'
-                        new_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
-                        new_obj.modifiers['hullDecimate'].use_dissolve_boundaries = False
-
-                        while (int(modifiers.calculate_triangles([new_obj, ])) > new_obj.sx2.hulltrimax) and (angle < 180.0):
-                            angle += 0.5
-                            new_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
-
-                        bpy.ops.object.modifier_apply(modifier='hullDecimate')
-
-                        if sxglobals.benchmark_cvx:
-                            now = time.perf_counter()
-                            print(f'SX Tools: {new_obj.name} Tris/limit: {modifiers.calculate_triangles([new_obj, ])}/{new_obj.sx2.hulltrimax} Angle: {angle} Iteration Time: {now-then}')
-
-                        tri_opt = True
-
-                    # Final convex conversion
-                    if tri_opt or shrink_opt:
-                        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                        bpy.ops.mesh.select_all(action='SELECT')
-                        bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(angle), shape_threshold=math.radians(angle))
-                        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-
-                    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                    bpy.ops.mesh.select_all(action='SELECT')
-                    bpy.ops.mesh.decimate(ratio=0.5)
-                    bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
-                    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-
-                    if sxglobals.benchmark_cvx:
-                        print(f'SX Tools: {new_obj.name} Tri Count {modifiers.calculate_triangles([new_obj, ])}')
+                    shrink_colliders(new_obj)
 
                     # Clear sx2layers
                     new_obj.sx2layers.clear()
@@ -3899,6 +3910,7 @@ class SXTOOLS2_export(object):
                 bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
             elif mode == 6:
                 pivot_loc = obj.matrix_world.to_translation()
+                # pivot_loc = obj.matrix_local.to_translation()
                 xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ])
                 if obj.sx2.xmirror and (((xmin + xmax) * 0.5) > 0.0) and (pivot_loc[0] < 0.0):
                     pivot_loc[0] *= -1.0
@@ -5089,23 +5101,24 @@ class SXTOOLS2_setup(object):
 
 
         nodetree = bpy.data.node_groups.new(type='GeometryNodeTree', name='sx_ao')
+        nodetree.is_modifier = True
 
         # expose bias and ground plane inputs
         group_in = nodetree.nodes.new(type='NodeGroupInput')
         group_in.name = 'group_input'
         group_in.location = (-1000, 0)
 
-        geometry = nodetree.inputs.new('NodeSocketGeometry', 'Geometry')
 
-        bias = nodetree.inputs.new('NodeSocketFloat', 'Ray Bias')
+        geometry = nodetree.interface.new_socket(in_out='INPUT', name='Geometry', socket_type='NodeSocketGeometry')
+        bias = nodetree.interface.new_socket(in_out='INPUT', name='Ray Bias', socket_type='NodeSocketFloat')
         bias.min_value = 0
         bias.max_value = 1
         bias.default_value = 0.001
 
-        ground_plane = nodetree.inputs.new('NodeSocketBool', 'Ground Plane')
+        ground_plane = nodetree.interface.new_socket(in_out='INPUT', name='Ground Plane', socket_type='NodeSocketBool')
         ground_plane.default_value = False
 
-        ground_offset = nodetree.inputs.new('NodeSocketFloat', 'Ground Plane Offset')
+        ground_offset = nodetree.interface.new_socket(in_out='INPUT', name='Ground Plane Offset', socket_type='NodeSocketFloat')
         ground_offset.default_value = 0
 
         # expose group color output
@@ -5113,8 +5126,8 @@ class SXTOOLS2_setup(object):
         group_out.name = 'group_output'
         group_out.location = (2000, 0)
 
-        geometry_out = nodetree.outputs.new('NodeSocketGeometry', 'Geometry')
-        color_out = nodetree.outputs.new('NodeSocketColor', 'Color Output')
+        geometry_out = nodetree.interface.new_socket(in_out='OUTPUT', name='Geometry', socket_type='NodeSocketGeometry')
+        color_out = nodetree.interface.new_socket(in_out='OUTPUT', name='Color Output', socket_type='NodeSocketColor')
         color_out.attribute_domain = 'POINT'
         color_out.default_attribute_name = 'Occlusion'
         color_out.default_value = (1, 1, 1, 1)
@@ -5165,14 +5178,14 @@ class SXTOOLS2_setup(object):
 
         connect_nodes(index.outputs['Index'], eval_normal.inputs['Index'])
         connect_nodes(index.outputs['Index'], eval_position.inputs['Index'])
-        connect_nodes(normal.outputs['Normal'], eval_normal.inputs[3])
-        connect_nodes(position.outputs['Position'], eval_position.inputs[3])
+        connect_nodes(normal.outputs['Normal'], eval_normal.inputs['Value'])
+        connect_nodes(position.outputs['Position'], eval_position.inputs['Value'])
 
-        connect_nodes(eval_normal.outputs[2], bias_normal.inputs[0])
+        connect_nodes(eval_normal.outputs['Value'], bias_normal.inputs[0])
         connect_nodes(group_in.outputs['Ray Bias'], bias_normal.inputs[1])
 
-        connect_nodes(bias_normal.outputs[0], bias_pos.inputs[0])
-        connect_nodes(eval_position.outputs[2], bias_pos.inputs[1])
+        connect_nodes(bias_normal.outputs['Vector'], bias_pos.inputs[0])
+        connect_nodes(eval_position.outputs['Value'], bias_pos.inputs[1])
 
 
         # optional ground plane
@@ -5247,9 +5260,9 @@ class SXTOOLS2_setup(object):
         connect_nodes(ground_grid.outputs['Mesh'], ground_transform.inputs['Geometry'])
         connect_nodes(group_in.outputs['Geometry'], join.inputs[0])
         connect_nodes(ground_transform.outputs['Geometry'], join.inputs[0])
-        connect_nodes(group_in.outputs['Ground Plane'], ground_switch.inputs[1])
-        connect_nodes(group_in.outputs['Geometry'], ground_switch.inputs[14])
-        connect_nodes(join.outputs['Geometry'], ground_switch.inputs[15])
+        connect_nodes(group_in.outputs['Ground Plane'], ground_switch.inputs['Switch'])
+        connect_nodes(group_in.outputs['Geometry'], ground_switch.inputs['False'])
+        connect_nodes(join.outputs['Geometry'], ground_switch.inputs['True'])
 
         # create raycasts with a loop
         hemisphere = ray_randomizer(raycount)
@@ -5265,7 +5278,7 @@ class SXTOOLS2_setup(object):
             raycast = nodetree.nodes.new(type='GeometryNodeRaycast')
             raycast.name = 'raycast'
             raycast.location = (800, i * 100 + 400)
-            raycast.inputs[8].default_value = 10
+            raycast.inputs['Ray Length'].default_value = 10
             raycast.hide = True
 
             if previous is not None:
@@ -5280,11 +5293,11 @@ class SXTOOLS2_setup(object):
             else:
                 previous = raycast
 
-            connect_nodes(eval_normal.outputs[2], random_rot.inputs['Vector'])
-            connect_nodes(bias_pos.outputs[0], random_rot.inputs['Center'])
-            connect_nodes(ground_switch.outputs[6], raycast.inputs['Target Geometry'])
+            connect_nodes(eval_normal.outputs['Value'], random_rot.inputs['Vector'])
+            connect_nodes(bias_pos.outputs['Vector'], random_rot.inputs['Center'])
+            connect_nodes(ground_switch.outputs['Output'], raycast.inputs['Target Geometry'])
             connect_nodes(random_rot.outputs[0], raycast.inputs['Ray Direction'])
-            connect_nodes(bias_pos.outputs[0], raycast.inputs['Source Position'])
+            connect_nodes(bias_pos.outputs['Vector'], raycast.inputs['Source Position'])
 
 
         # normalize hit results
@@ -10652,14 +10665,20 @@ class SXTOOLS2_OT_generate_hulls(bpy.types.Operator):
                 sxglobals.refresh_in_progress = True
                 sxglobals.magic_in_progress = True
 
-            export.generate_hulls(source_objs)
-            # groups = utils.find_groups(source_objs)
-            # if not groups:
-            #     message_box('Hull generation requires source objects to be in groups.')
-            # else:
-            #     for group in groups:
-            #         hull_objs = utils.find_children(group, recursive=True, child_type='MESH')
-            #         export.generate_hulls(hull_objs, group)
+            groups = utils.find_groups(source_objs)
+            processed_objs = []
+            if groups:
+                for group in groups:
+                    children = utils.find_children(group, recursive=True, child_type='MESH')
+                    hull_objs = [child for child in children if child in source_objs]
+                    processed_objs += hull_objs
+                    export.generate_hulls(hull_objs, group)
+                
+                groupless = [obj for obj in source_objs if obj not in processed_objs]
+                if groupless:
+                    export.generate_hulls(groupless)
+            else:
+                export.generate_hulls(source_objs)
 
             sxglobals.refresh_in_progress = False
             sxglobals.magic_in_progress = False
