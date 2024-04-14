@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 24, 7),
+    'version': (1, 24, 12),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3335,10 +3335,11 @@ class SXTOOLS2_export(object):
                         bpy.context.scene.collection.objects.link(new_obj)
                         colliders.objects.link(new_obj)
 
-                        # New meshes now at origin
+                        # New meshes local to origin
                         # Proceed to smart separate and move to correct location
                         new_obj.sx2.smartseparate = False
                         new_obj.location = color_ref_obj[color][0]
+                        new_obj.parent = group
                         new_obj.sx2.hulltrimax = color_ref_obj[color][2]
                         new_obj.sx2.mirrorobject = view_layer.objects[color_ref_obj[color][3]].sx2.mirrorobject
                         new_obj.sx2.xmirror = view_layer.objects[color_ref_obj[color][3]].sx2.xmirror
@@ -3363,15 +3364,16 @@ class SXTOOLS2_export(object):
                                 pivot_obj.modifiers.remove(pivot_obj.modifiers.get('sxMirror'))
                             modifiers.apply_modifiers([pivot_obj, ])
                             self.set_pivots([pivot_obj, ])
-                            pivot_loc = list(pivot_obj.matrix_local.to_translation())
+                            pivot_loc = list(pivot_obj.matrix_world.to_translation())
 
                             # Fix pivot location for object halves
                             adjustables = ['MASS', 'BBOX']
-                            if (new_obj.sx2.mirrorobject) and (new_obj.sx2.mirrorobject.type == 'MESH'):
-                                mirror_pos = new_obj.sx2.mirrorobject.matrix_local.to_translation()
+                            if new_obj.sx2.mirrorobject:
+                                mirror_pos = new_obj.sx2.mirrorobject.matrix_world.to_translation()
                             else:
-                                mirror_pos = (0.0, 0.0, 0.0)
+                                mirror_pos = new_obj.parent.matrix_world.to_translation() if new_obj.parent else (0.0, 0.0, 0.0)
 
+                            # Check if object has vertices at mirror axes
                             if pivot_obj.sx2.pivotmode in adjustables:
                                 xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([pivot_obj, ])
 
@@ -3392,20 +3394,20 @@ class SXTOOLS2_export(object):
                             
                             bpy.data.objects.remove(pivot_obj)
                         else:
-                            pivot_loc = view_layer.objects[color_ref_obj[color][3]].matrix_local.to_translation()
+                            pivot_loc = view_layer.objects[color_ref_obj[color][3]].matrix_world.to_translation()
 
                         view_layer.objects.active = new_obj
                         bpy.context.scene.cursor.location = pivot_loc
                         bpy.ops.object.select_all(action='DESELECT')
                         new_obj.select_set(True)
                         bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-                        pivot_ref[new_obj] = new_obj.sx2.mirrorobject.matrix_local.to_translation() if (new_obj.sx2.mirrorobject and new_obj.sx2.mirrorobject.type == 'MESH') else (0.0, 0.0, 0.0)
+                        parent_pivot = new_obj.parent.matrix_world.to_translation() if new_obj.parent else (0.0, 0.0, 0.0)
+                        pivot_ref[new_obj] = new_obj.sx2.mirrorobject.matrix_world.to_translation() if new_obj.sx2.mirrorobject else parent_pivot
 
                         new_obj.sx2.lodmeshes = False
                         new_obj.sx2.generateemissionmeshes = False
                         new_obj.sx2.weldthreshold = 0.0
                         new_obj.sx2.decimation = 0.0
-                        # new_obj.parent = group
                         new_cid_objs.append(new_obj)
                         
                 if hull_objs:
@@ -3458,25 +3460,26 @@ class SXTOOLS2_export(object):
                             # print('Sep obj:', sep_obj.name, (xmin + xmax * 0.5, ymin + ymax * 0.5, zmin + zmax * 0.5))
 
                             if new_obj.sx2.xmirror:
-                                if (xmin + xmax * 0.5 > ref_pivot[0]) and (abs((xmin + xmax * 0.5) - abs(ref_pivot[0])) > 0.01):
+                                if ((xmin + xmax) * 0.5 > ref_pivot[0]) and (abs(((xmin + xmax) * 0.5) - abs(ref_pivot[0])) > 0.01):
                                     left.append(sep_obj)
-                                elif (xmin + xmax * 0.5 < ref_pivot[0]) and (abs((xmin + xmax * 0.5) - abs(ref_pivot[0])) > 0.01):
+                                elif ((xmin + xmax) * 0.5 < ref_pivot[0]) and (abs(((xmin + xmax) * 0.5) - abs(ref_pivot[0])) > 0.01):
                                     right.append(sep_obj)
                                 else:
+                                    print('center')
                                     center_x.append(sep_obj)
 
                             elif new_obj.sx2.ymirror:
-                                if (ymin + ymax * 0.5 > ref_pivot[1]) and (abs((ymin + ymax * 0.5) - abs(ref_pivot[1])) > 0.01):
+                                if ((ymin + ymax) * 0.5 > ref_pivot[1]) and (abs(((ymin + ymax) * 0.5) - abs(ref_pivot[1])) > 0.01):
                                     front.append(sep_obj)
-                                elif (ymin + ymax * 0.5 < ref_pivot[1]) and (abs((ymin + ymax * 0.5) - abs(ref_pivot[1])) > 0.01):
+                                elif ((ymin + ymax) * 0.5 < ref_pivot[1]) and (abs(((ymin + ymax) * 0.5) - abs(ref_pivot[1])) > 0.01):
                                     back.append(sep_obj)
                                 else:
                                     center_y.append(sep_obj)
 
                             elif new_obj.sx2.zmirror:
-                                if (zmin + zmax * 0.5 > ref_pivot[2]) and (abs((zmin + zmax * 0.5) - abs(ref_pivot[2])) > 0.01):
+                                if ((zmin + zmax) * 0.5 > ref_pivot[2]) and (abs(((zmin + zmax) * 0.5) - abs(ref_pivot[2])) > 0.01):
                                     top.append(sep_obj)
-                                elif (zmin + zmax * 0.5 < ref_pivot[2]) and (abs((zmin + zmax * 0.5) - abs(ref_pivot[2])) > 0.01):
+                                elif ((zmin + zmax) * 0.5 < ref_pivot[2]) and (abs(((zmin + zmax) * 0.5) - abs(ref_pivot[2])) > 0.01):
                                     bottom.append(sep_obj)
                                 else:
                                     center_z.append(sep_obj)
@@ -3505,6 +3508,7 @@ class SXTOOLS2_export(object):
 
                 if separated_objs:
                     new_objs += separated_objs
+                    
 
                 bpy.ops.object.select_all(action='DESELECT')
                 for new_obj in new_objs:
@@ -3909,22 +3913,28 @@ class SXTOOLS2_export(object):
                 bpy.context.scene.cursor.location = pivot_loc
                 bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
             elif mode == 6:
-                pivot_loc = obj.matrix_world.to_translation()
-                # pivot_loc = obj.matrix_local.to_translation()
-                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ])
+                pivot_world = obj.matrix_world.to_translation()
+                pivot_loc = obj.matrix_local.to_translation()
+                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], local=True)
                 if obj.sx2.xmirror and (((xmin + xmax) * 0.5) > 0.0) and (pivot_loc[0] < 0.0):
-                    pivot_loc[0] *= -1.0
+                    pivot_world[0] += -2 * pivot_loc[0]
+                    # pivot_loc[0] *= -1.0
                 elif obj.sx2.xmirror and (((xmin + xmax) * 0.5) < 0.0) and (pivot_loc[0] > 0.0):
-                    pivot_loc[0] *= -1.0
+                    pivot_world[0] += -2 * pivot_loc[0]
+                    # pivot_loc[0] *= -1.0
                 if obj.sx2.ymirror and (((ymin + ymax) * 0.5) > 0.0) and (pivot_loc[1] < 0.0):
-                    pivot_loc[1] *= -1.0
+                    pivot_world[1] += -2 * pivot_loc[1]
+                    # pivot_loc[1] *= -1.0
                 elif obj.sx2.ymirror and (((ymin + ymax) * 0.5) < 0.0) and (pivot_loc[1] > 0.0):
-                    pivot_loc[1] *= -1.0
+                    pivot_world[1] += -2 * pivot_loc[1]
+                    # pivot_loc[1] *= -1.0
                 if obj.sx2.zmirror and (((zmin + zmax) * 0.5) > 0.0) and (pivot_loc[2] < 0.0):
-                    pivot_loc[2] *= -1.0
+                    pivot_world[2] += -2 * pivot_loc[2]
+                    # pivot_loc[2] *= -1.0
                 elif obj.sx2.zmirror and (((zmin + zmax) * 0.5) < 0.0) and (pivot_loc[2] > 0.0):
-                    pivot_loc[2] *= -1.0
-                bpy.context.scene.cursor.location = pivot_loc
+                    pivot_world[2] += -2 * pivot_loc[2]
+                    # pivot_loc[2] *= -1.0
+                bpy.context.scene.cursor.location = pivot_world
                 bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
             else:
                 pass
