@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 24, 12),
+    'version': (1, 25, 0),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -6337,6 +6337,10 @@ def expand_element(self, context, element):
     if not getattr(context.scene.sx2, element):
         setattr(context.scene.sx2, element, True)
 
+        for area in context.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
+
 
 def update_curvature_selection(self, context):
     if not sxglobals.curvature_update:
@@ -7491,7 +7495,7 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
     expandlayer: bpy.props.BoolProperty(
         name='Expand Layer Controls',
         default=False)
-
+    
     expandfill: bpy.props.BoolProperty(
         name='Expand Fill',
         default=False)
@@ -7915,18 +7919,12 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
             else:
                 row_shading.prop(sx2, 'shadingmode', expand=True)
 
-                box_layer = layout.box()
-                row_layer = box_layer.row()
-                row_layer.prop(
-                    scene, 'expandlayer',
-                    icon='TRIA_DOWN' if scene.expandlayer else 'TRIA_RIGHT',
-                    icon_only=True, emboss=False)
-
-                split_basics = row_layer.split(factor=0.3)
+                layer_header, layer_panel = layout.panel_prop(scene, 'expandlayer')
+                split_basics = layer_header.split(factor=0.3)
                 split_basics.prop(layer, 'blend_mode', text='')
-                split_basics.prop(layer, 'opacity', slider=True, text='Layer Opacity')
+                split_basics.prop(layer, 'opacity', slider=True, text='Layer Opacity')                
 
-                if scene.expandlayer:
+                if layer_panel:
                     if obj.mode == 'OBJECT':
                         hue_text = 'Layer Hue'
                         saturation_text = 'Layer Saturation'
@@ -7936,7 +7934,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         saturation_text = 'Selection Saturation'
                         lightness_text = 'Selection Lightness'
 
-                    col_hsl = box_layer.column(align=True)
+                    col_hsl = layer_panel.column(align=True)
                     row_hue = col_hsl.row(align=True)
                     row_hue.prop(sx2, 'huevalue', slider=True, text=hue_text)
                     row_sat = col_hsl.row(align=True)
@@ -7945,7 +7943,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     row_lightness.prop(sx2, 'lightnessvalue', slider=True, text=lightness_text)
 
                     if (layer == utils.find_color_layers(obj, 0)) and (layer.opacity < 1.0):
-                        col_culling = box_layer.column(align=True)
+                        col_culling = layer_panel.column(align=True)
                         col_culling.prop(sx2, 'backfaceculling', toggle=True)
 
                     if layer.layer_type in gray_channels:
@@ -7966,7 +7964,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 col_list.operator('sx2.del_layer', text='', icon='REMOVE')
                 col_list.separator()
                 col_list.operator('sx2.layer_up', text='', icon='TRIA_UP')
-                col_list.operator('sx2.layer_down', text='', icon='TRIA_DOWN')
+                col_list.operator('sx2.layer_down', text='', icon='DOWNARROW_HLT')
                 col_list.separator()
                 col_list.operator('sx2.layer_props', text='', icon='OPTIONS')
 
@@ -8006,7 +8004,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 row_fill = box_fill.row()
                 row_fill.prop(
                     scene, 'expandfill',
-                    icon='TRIA_DOWN' if scene.expandfill else 'TRIA_RIGHT',
+                    icon='DOWNARROW_HLT' if scene.expandfill else 'RIGHTARROW',
                     icon_only=True, emboss=False)
                 row_fill.prop(scene, 'toolmode', text='')
                 if scene.toolmode != 'PAL' and scene.toolmode != 'MAT':
@@ -8147,7 +8145,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         row_lib = box_fill.row()
                         row_lib.prop(
                             scene, 'expandpal',
-                            icon='TRIA_DOWN' if scene.expandpal else 'TRIA_RIGHT',
+                            icon='DOWNARROW_HLT' if scene.expandpal else 'RIGHTARROW',
                             icon_only=True, emboss=False)
                         row_lib.label(text='Library')
                         if scene.expandpal:
@@ -8196,7 +8194,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_lib = box_fill.row()
                             row_lib.prop(
                                 scene, 'expandmat',
-                                icon='TRIA_DOWN' if scene.expandmat else 'TRIA_RIGHT',
+                                icon='DOWNARROW_HLT' if scene.expandmat else 'RIGHTARROW',
                                 icon_only=True, emboss=False)
                             row_lib.label(text='Library')
                             if scene.expandmat:
@@ -8232,24 +8230,21 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
             # Modifiers Module ----------------------------------------------
             if prefs.enable_modifiers:
-                box_crease = layout.box()
-                row_crease = box_crease.row()
-                row_crease.prop(
-                    scene, 'expandcrease',
-                    icon='TRIA_DOWN' if scene.expandcrease else 'TRIA_RIGHT',
-                    icon_only=True, emboss=False)
-                row_crease.prop(scene, 'creasemode', expand=True)
-                if scene.creasemode != 'SDS':
-                    if scene.expandcrease:
-                        row_sets = box_crease.row(align=True)
+                modifiers_header, modifiers_panel = layout.panel_prop(scene, 'expandcrease')
+                modifiers_header_row = modifiers_header.row()
+                modifiers_header_row.prop(scene, 'creasemode', expand=True)
+
+                if modifiers_panel:
+                    if scene.creasemode != 'SDS':
+                        row_sets = modifiers_panel.row(align=True)
                         for i in range(4):
                             setbutton = row_sets.operator('sx2.setgroup', text=str(25*(i+1))+'%')
                             setbutton.setmode = scene.creasemode
                             setbutton.setvalue = 0.25 * (i+1)
-                        col_sel = box_crease.column(align=True)
+                        col_sel = modifiers_panel.column(align=True)
                         col_sel.prop(scene, 'curvaturelimit', slider=True, text='Curvature Selector')
                         col_sel.prop(scene, 'curvaturetolerance', slider=True, text='Curvature Tolerance')
-                        col_sets = box_crease.column(align=True)
+                        col_sets = modifiers_panel.column(align=True)
                         if (bpy.context.tool_settings.mesh_select_mode[0]):
                             clear_text = 'Clear Vertex Weights'
                         else:
@@ -8257,31 +8252,30 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         setbutton = col_sets.operator('sx2.setgroup', text=clear_text)
                         setbutton.setmode = scene.creasemode
                         setbutton.setvalue = -1.0
-                elif scene.creasemode == 'SDS':
-                    if scene.expandcrease:
-                        row_mod1 = box_crease.row()
+                    elif scene.creasemode == 'SDS':
+                        row_mod1 = modifiers_panel.row()
                         row_mod1.prop(
                             scene, 'expandmirror',
-                            icon='TRIA_DOWN' if scene.expandmirror else 'TRIA_RIGHT',
+                            icon='DOWNARROW_HLT' if scene.expandmirror else 'RIGHTARROW',
                             icon_only=True, emboss=False)
                         row_mod1.label(text='Mirror Modifier Settings')
                         if scene.expandmirror:
-                            row_mirror = box_crease.row(align=True)
+                            row_mirror = modifiers_panel.row(align=True)
                             row_mirror.label(text='Axis:')
                             row_mirror.prop(sx2, 'xmirror', text='X', toggle=True)
                             row_mirror.prop(sx2, 'ymirror', text='Y', toggle=True)
                             row_mirror.prop(sx2, 'zmirror', text='Z', toggle=True)
-                            row_mirrorobj = box_crease.row()
+                            row_mirrorobj = modifiers_panel.row()
                             row_mirrorobj.prop_search(sx2, 'mirrorobject', context.scene, 'objects')
 
-                        row_mod2 = box_crease.row()
+                        row_mod2 = modifiers_panel.row()
                         row_mod2.prop(
                             scene, 'expandbevel',
-                            icon='TRIA_DOWN' if scene.expandbevel else 'TRIA_RIGHT',
+                            icon='DOWNARROW_HLT' if scene.expandbevel else 'RIGHTARROW',
                             icon_only=True, emboss=False)
                         row_mod2.label(text='Bevel Modifier Settings')
                         if scene.expandbevel:
-                            col2_sds = box_crease.column(align=True)
+                            col2_sds = modifiers_panel.column(align=True)
                             col2_sds.prop(scene, 'autocrease', text='Auto Hard-Crease Bevels')
                             split_sds = col2_sds.split()
                             split_sds.label(text='Max Crease Mode:')
@@ -8292,7 +8286,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             col2_sds.prop(sx2, 'bevelsegments', text='Bevel Segments')
                             col2_sds.prop(sx2, 'bevelwidth', text='Bevel Width')
 
-                        col3_sds = box_crease.column(align=True)
+                        col3_sds = modifiers_panel.column(align=True)
                         col3_sds.prop(sx2, 'subdivisionlevel', text='Subdivision Level')
                         col3_sds.prop(sx2, 'smoothangle', text='Normal Smoothing Angle')
                         col3_sds.prop(sx2, 'weldthreshold', text='Weld Threshold')
@@ -8304,7 +8298,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 row_tris.label(text=modifiers.calculate_triangles(objs))
                         col3_sds.separator()
                         col3_sds.prop(sx2, 'weightednormals', text='Weighted Normals', toggle=True)
-                        col4_sds = box_crease.column(align=True)
+                        col4_sds = modifiers_panel.column(align=True)
                         sxmodifiers = '\t'.join(obj.modifiers.keys())
                         if 'sx' in sxmodifiers:
                             if scene.shift:
@@ -8327,226 +8321,221 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
             # Export Module -------------------------------------------------
             if prefs.enable_export:
-                    box_export = layout.box()          
-                    row_export = box_export.row()
-                    row_export.prop(
-                        scene, 'expandexport',
-                        icon='TRIA_DOWN' if scene.expandexport else 'TRIA_RIGHT',
-                        icon_only=True, emboss=False)
-                    row_export.prop(scene, 'exportmode', expand=True)
+                export_header, export_panel = layout.panel_prop(scene, "expandexport")
+                export_header_row = export_header.row()
+                export_header_row.prop(scene, 'exportmode', expand=True)
+
+                if export_panel:       
                     if scene.exportmode == 'MAGIC':
-                        if scene.expandexport:
-                            col_export = box_export.column(align=True)
-                            row_cat = col_export.row(align=True)
-                            row_cat.label(text='Category:')
-                            row_cat.prop(sx2, 'category', text='')
+                        col_export = export_panel.column(align=True)
+                        row_cat = col_export.row(align=True)
+                        row_cat.label(text='Category:')
+                        row_cat.prop(sx2, 'category', text='')
 
+                        col_export.separator()
+                        col_export.prop(sx2, 'metallicoverride', text='Override Palette Metallic', toggle=True)
+                        if obj.sx2.metallicoverride:
+                            row_override = col_export.row(align=True)
+                            row_override.prop(sx2, 'metallic0', text='Palette Color 0 Metallic')
+                            row_override.prop(sx2, 'metallic1', text='Palette Color 1 Metallic')
+                            row_override.prop(sx2, 'metallic2', text='Palette Color 2 Metallic')
+                            row_override.prop(sx2, 'metallic3', text='Palette Color 3 Metallic')
+                            row_override.prop(sx2, 'metallic4', text='Palette Color 4 Metallic')
+
+                        col_export.separator()
+                        col_export.prop(sx2, 'roughnessoverride', text='Override Palette Roughness', toggle=True)
+                        if obj.sx2.roughnessoverride:
+                            row_override = col_export.row(align=True)
+                            row_override.prop(sx2, 'roughness0', text='Palette Color 0 Roughness')
+                            row_override.prop(sx2, 'roughness1', text='Palette Color 1 Roughness')
+                            row_override.prop(sx2, 'roughness2', text='Palette Color 2 Roughness')
+                            row_override.prop(sx2, 'roughness3', text='Palette Color 3 Roughness')
+                            row_override.prop(sx2, 'roughness4', text='Palette Color 4 Roughness')
+
+                        col_export.separator()
+                        col_export.prop(sx2, 'transmissionoverride', text='Override Transmission / SSS', toggle=True)
+
+                        col_export.separator()
+                        col_export.prop(sx2, 'materialoverride', text='Override Shading Properties', toggle=True)
+                        if obj.sx2.materialoverride:
+                            row_occlusion = col_export.row(align=True)
+                            row_occlusion.label(text='Occlusion Opacity:')
+                            row_occlusion.prop(sx2, 'mat_occlusion', text='')
+                            row_overlay = col_export.row(align=True)
+                            row_overlay.label(text='Overlay Opacity:')
+                            row_overlay.prop(sx2, 'mat_overlay', text='')
+                            row_specular = col_export.row(align=True)
+                            row_specular.label(text='Specular:')
+                            row_specular.prop(sx2, 'mat_specular', text='')
+                            row_anisotropic = col_export.row(align=True)
+                            row_anisotropic.label(text='Anisotropic:')
+                            row_anisotropic.prop(sx2, 'mat_anisotropic', text='')
+                            row_clearcoat = col_export.row(align=True)
+                            row_clearcoat.label(text='Clearcoat:')
+                            row_clearcoat.prop(sx2, 'mat_clearcoat', text='')
+
+                        col_export.separator()
+                        row_static = col_export.row(align=True)
+                        row_static.label(text='Vertex Colors:')
+                        row_static.prop(sx2, 'staticvertexcolors', text='')
+
+                        row_quality = col_export.row(align=True)
+                        row_quality.label(text='Bake Detail:')
+                        row_quality.prop(scene, 'exportquality', text='')
+
+                        row_pivot = col_export.row(align=True)
+                        row_pivot.label(text='Auto-Pivot:')
+                        row_pivot.prop(sx2, 'pivotmode', text='')
+
+                        row_separate = col_export.row(align=True)
+                        row_separate.label(text='Smart Separate on Export:')
+                        row_separate.prop(sx2, 'smartseparate', text='', toggle=False)
+
+                        row_lod = col_export.row(align=True)
+                        row_lod.label(text='Generate LOD Meshes on Export:')
+                        row_lod.prop(sx2, 'lodmeshes', text='', toggle=False)
+
+                        row_emission = col_export.row(align=True)
+                        row_emission.label(text='Generate Emission Meshes on Export:')
+                        row_emission.prop(sx2, 'generateemissionmeshes', text='', toggle=False)
+
+                        row_hulls = col_export.row(align=True)
+                        row_hulls.label(text='Generate Convex Hulls on Export:')
+                        row_hulls.prop(sx2, 'generatehulls', text='', toggle=False)
+
+                        if obj.sx2.generatehulls:
+                            row_cids = col_export.row(align=True)
+                            row_cids.prop(sx2, 'use_cids', text='Use Collider IDs')
+                            if obj.sx2.use_cids:
+                                row_cids.prop(sx2, 'mergefragments', text='Merge CID fragments')
+                            col_export.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
+                            col_export.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Factor', slider=True)
+
+                        if hasattr(bpy.types, bpy.ops.object.vhacd.idname()):
                             col_export.separator()
-                            col_export.prop(sx2, 'metallicoverride', text='Override Palette Metallic', toggle=True)
-                            if obj.sx2.metallicoverride:
-                                row_override = col_export.row(align=True)
-                                row_override.prop(sx2, 'metallic0', text='Palette Color 0 Metallic')
-                                row_override.prop(sx2, 'metallic1', text='Palette Color 1 Metallic')
-                                row_override.prop(sx2, 'metallic2', text='Palette Color 2 Metallic')
-                                row_override.prop(sx2, 'metallic3', text='Palette Color 3 Metallic')
-                                row_override.prop(sx2, 'metallic4', text='Palette Color 4 Metallic')
+                            col_export.prop(scene, 'exportcolliders', text='Generate Mesh Colliders (V-HACD)')
+                            if scene.exportcolliders:
+                                box_colliders = export_panel.box()
+                                col_collideroffset = box_colliders.column(align=True)
+                                col_collideroffset.prop(sx2, 'collideroffset', text='Shrink Collision Mesh')
+                                col_collideroffset.prop(sx2, 'collideroffsetfactor', text='Shrink Factor', slider=True)
+                                row_colliders = box_colliders.row()
+                                row_colliders.prop(
+                                    scene, 'expandcolliders',
+                                    icon='DOWNARROW_HLT' if scene.expandcolliders else 'RIGHTARROW',
+                                    icon_only=True, emboss=False)
+                                row_colliders.label(text='V-HACD Settings')
+                                if scene.expandcolliders:
+                                    col_colliders = box_colliders.column(align=True)
+                                    col_colliders.prop(scene, 'removedoubles', text='Remove Doubles')
+                                    col_colliders.prop(scene, 'sourcesubdivision', text='Source Subdivision')
+                                    col_colliders.prop(scene, 'voxelresolution', text='Voxel Resolution', slider=True)
+                                    col_colliders.prop(scene, 'maxconcavity', text='Maximum Concavity', slider=True)
+                                    col_colliders.prop(scene, 'hulldownsampling', text='Convex Hull Downsampling', slider=True)
+                                    col_colliders.prop(scene, 'planedownsampling', text='Plane Downsampling', slider=True)
+                                    col_colliders.prop(scene, 'collalpha', text='Symmetry Clipping Bias', slider=True)
+                                    col_colliders.prop(scene, 'collbeta', text='Axis Clipping Bias', slider=True)
+                                    col_colliders.prop(scene, 'maxhulls', text='Max Hulls', slider=True)
+                                    col_colliders.prop(scene, 'maxvertsperhull', text='Max Vertices Per Convex Hull', slider=True)
+                                    col_colliders.prop(scene, 'minvolumeperhull', text='Min Volume Per Convex Hull', slider=True)
 
-                            col_export.separator()
-                            col_export.prop(sx2, 'roughnessoverride', text='Override Palette Roughness', toggle=True)
-                            if obj.sx2.roughnessoverride:
-                                row_override = col_export.row(align=True)
-                                row_override.prop(sx2, 'roughness0', text='Palette Color 0 Roughness')
-                                row_override.prop(sx2, 'roughness1', text='Palette Color 1 Roughness')
-                                row_override.prop(sx2, 'roughness2', text='Palette Color 2 Roughness')
-                                row_override.prop(sx2, 'roughness3', text='Palette Color 3 Roughness')
-                                row_override.prop(sx2, 'roughness4', text='Palette Color 4 Roughness')
-
-                            col_export.separator()
-                            col_export.prop(sx2, 'transmissionoverride', text='Override Transmission / SSS', toggle=True)
-
-                            col_export.separator()
-                            col_export.prop(sx2, 'materialoverride', text='Override Shading Properties', toggle=True)
-                            if obj.sx2.materialoverride:
-                                row_occlusion = col_export.row(align=True)
-                                row_occlusion.label(text='Occlusion Opacity:')
-                                row_occlusion.prop(sx2, 'mat_occlusion', text='')
-                                row_overlay = col_export.row(align=True)
-                                row_overlay.label(text='Overlay Opacity:')
-                                row_overlay.prop(sx2, 'mat_overlay', text='')
-                                row_specular = col_export.row(align=True)
-                                row_specular.label(text='Specular:')
-                                row_specular.prop(sx2, 'mat_specular', text='')
-                                row_anisotropic = col_export.row(align=True)
-                                row_anisotropic.label(text='Anisotropic:')
-                                row_anisotropic.prop(sx2, 'mat_anisotropic', text='')
-                                row_clearcoat = col_export.row(align=True)
-                                row_clearcoat.label(text='Clearcoat:')
-                                row_clearcoat.prop(sx2, 'mat_clearcoat', text='')
-
-                            col_export.separator()
-                            row_static = col_export.row(align=True)
-                            row_static.label(text='Vertex Colors:')
-                            row_static.prop(sx2, 'staticvertexcolors', text='')
-
-                            row_quality = col_export.row(align=True)
-                            row_quality.label(text='Bake Detail:')
-                            row_quality.prop(scene, 'exportquality', text='')
-
-                            row_pivot = col_export.row(align=True)
-                            row_pivot.label(text='Auto-Pivot:')
-                            row_pivot.prop(sx2, 'pivotmode', text='')
-
-                            row_separate = col_export.row(align=True)
-                            row_separate.label(text='Smart Separate on Export:')
-                            row_separate.prop(sx2, 'smartseparate', text='', toggle=False)
-
-                            row_lod = col_export.row(align=True)
-                            row_lod.label(text='Generate LOD Meshes on Export:')
-                            row_lod.prop(sx2, 'lodmeshes', text='', toggle=False)
-
-                            row_emission = col_export.row(align=True)
-                            row_emission.label(text='Generate Emission Meshes on Export:')
-                            row_emission.prop(sx2, 'generateemissionmeshes', text='', toggle=False)
-
-                            row_hulls = col_export.row(align=True)
-                            row_hulls.label(text='Generate Convex Hulls on Export:')
-                            row_hulls.prop(sx2, 'generatehulls', text='', toggle=False)
-
-                            if obj.sx2.generatehulls:
-                                row_cids = col_export.row(align=True)
-                                row_cids.prop(sx2, 'use_cids', text='Use Collider IDs')
-                                if obj.sx2.use_cids:
-                                    row_cids.prop(sx2, 'mergefragments', text='Merge CID fragments')
-                                col_export.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
-                                col_export.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Factor', slider=True)
-
-                            if hasattr(bpy.types, bpy.ops.object.vhacd.idname()):
-                                col_export.separator()
-                                col_export.prop(scene, 'exportcolliders', text='Generate Mesh Colliders (V-HACD)')
-                                if scene.exportcolliders:
-                                    box_colliders = box_export.box()
-                                    col_collideroffset = box_colliders.column(align=True)
-                                    col_collideroffset.prop(sx2, 'collideroffset', text='Shrink Collision Mesh')
-                                    col_collideroffset.prop(sx2, 'collideroffsetfactor', text='Shrink Factor', slider=True)
-                                    row_colliders = box_colliders.row()
-                                    row_colliders.prop(
-                                        scene, 'expandcolliders',
-                                        icon='TRIA_DOWN' if scene.expandcolliders else 'TRIA_RIGHT',
-                                        icon_only=True, emboss=False)
-                                    row_colliders.label(text='V-HACD Settings')
-                                    if scene.expandcolliders:
-                                        col_colliders = box_colliders.column(align=True)
-                                        col_colliders.prop(scene, 'removedoubles', text='Remove Doubles')
-                                        col_colliders.prop(scene, 'sourcesubdivision', text='Source Subdivision')
-                                        col_colliders.prop(scene, 'voxelresolution', text='Voxel Resolution', slider=True)
-                                        col_colliders.prop(scene, 'maxconcavity', text='Maximum Concavity', slider=True)
-                                        col_colliders.prop(scene, 'hulldownsampling', text='Convex Hull Downsampling', slider=True)
-                                        col_colliders.prop(scene, 'planedownsampling', text='Plane Downsampling', slider=True)
-                                        col_colliders.prop(scene, 'collalpha', text='Symmetry Clipping Bias', slider=True)
-                                        col_colliders.prop(scene, 'collbeta', text='Axis Clipping Bias', slider=True)
-                                        col_colliders.prop(scene, 'maxhulls', text='Max Hulls', slider=True)
-                                        col_colliders.prop(scene, 'maxvertsperhull', text='Max Vertices Per Convex Hull', slider=True)
-                                        col_colliders.prop(scene, 'minvolumeperhull', text='Min Volume Per Convex Hull', slider=True)
-
-                            col_export.separator()
-                            remove_generated = False
-                            if ('ExportObjects' in bpy.data.collections.keys()) and (len(bpy.data.collections['ExportObjects'].objects) > 0):
-                                remove_generated = True
-                            if ('SXColliders' in bpy.data.collections.keys()) and (len(bpy.data.collections['SXColliders'].objects) > 0):
-                                remove_generated = True
-                            if remove_generated:
-                                col_export.operator('sx2.removeexports', text='Remove Generated Objects')
-                            col_export.separator()
-                            if scene.shift:
-                                col_export.operator('sx2.revertobjects', text='Revert to Control Cages')
-                            else:
-                                col_export.operator('sx2.macro', text='Magic Button')
+                        col_export.separator()
+                        remove_generated = False
+                        if ('ExportObjects' in bpy.data.collections.keys()) and (len(bpy.data.collections['ExportObjects'].objects) > 0):
+                            remove_generated = True
+                        if ('SXColliders' in bpy.data.collections.keys()) and (len(bpy.data.collections['SXColliders'].objects) > 0):
+                            remove_generated = True
+                        if remove_generated:
+                            col_export.operator('sx2.removeexports', text='Remove Generated Objects')
+                        col_export.separator()
+                        if scene.shift:
+                            col_export.operator('sx2.revertobjects', text='Revert to Control Cages')
+                        else:
+                            col_export.operator('sx2.macro', text='Magic Button')
 
                     elif scene.exportmode == 'UTILS':
-                        if scene.expandexport:
-                            col_utils = box_export.column(align=False)
-                            if scene.shift:
-                                group_text = 'Group Under World Origin'
-                                pivot_text = 'Set Pivots to Bbox Center'
-                            elif scene.ctrl:
-                                group_text = 'Group Selected Objects'
-                                pivot_text = 'Set Pivots to Bbox Base'
-                            elif scene.alt:
-                                group_text = 'Group Selected Objects'
-                                pivot_text = 'Set Pivots to Origin'
-                            else:
-                                group_text = 'Group Selected Objects'
-                                pivot_text = 'Set Pivots to Center of Mass'
-                            col_utils.operator('sx2.setpivots', text=pivot_text)
-                            col_utils.operator('sx2.groupobjects', text=group_text)
-                            col_utils.operator('sx2.zeroverts', text='Snap Vertices to Mirror Axis')
-                            row_debug = box_export.row()
-                            row_debug.prop(
-                                scene, 'expanddebug',
-                                icon='TRIA_DOWN' if scene.expanddebug else 'TRIA_RIGHT',
-                                icon_only=True, emboss=False)
-                            row_debug.label(text='Debug Tools')
-                            if scene.expanddebug:
-                                col_debug = box_export.column(align=True)
-                                col_debug.operator('sx2.sxtosx2')
-                                col_debug.operator('sx2.smart_separate', text='Debug: Smart Separate')
-                                col_debug.operator('sx2.generatehulls', text='Debug: Generate Convex Hulls')
-                                col_debug.operator('sx2.generateemissionmeshes', text='Debug: Generate Emission Meshes')
-                                col_debug.operator('sx2.create_sxcollection', text='Debug: Update SXCollection')
-                                col_debug.operator('sx2.applymodifiers', text='Debug: Apply Modifiers')
-                                col_debug.operator('sx2.generatemasks', text='Debug: Generate Masks')
-                                col_debug.operator('sx2.createuv0', text='Debug: Create Reserved UV Sets')
-                                col_debug.operator('sx2.bytestofloats', text='Debug: Convert to Float Colors')
-                                col_debug.operator('sx2.generatelods', text='Debug: Create LOD Meshes')
-                                col_debug.operator('sx2.resetscene', text='Debug: Reset scene (warning!)')
-                                col_debug.operator('sx2.testbutton', text='Debug: Test button')
+                        col_utils = export_panel.column(align=False)
+                        if scene.shift:
+                            group_text = 'Group Under World Origin'
+                            pivot_text = 'Set Pivots to Bbox Center'
+                        elif scene.ctrl:
+                            group_text = 'Group Selected Objects'
+                            pivot_text = 'Set Pivots to Bbox Base'
+                        elif scene.alt:
+                            group_text = 'Group Selected Objects'
+                            pivot_text = 'Set Pivots to Origin'
+                        else:
+                            group_text = 'Group Selected Objects'
+                            pivot_text = 'Set Pivots to Center of Mass'
+                        col_utils.operator('sx2.setpivots', text=pivot_text)
+                        col_utils.operator('sx2.groupobjects', text=group_text)
+                        col_utils.operator('sx2.zeroverts', text='Snap Vertices to Mirror Axis')
+                        row_debug = export_panel.row()
+                        row_debug.prop(
+                            scene, 'expanddebug',
+                            icon='DOWNARROW_HLT' if scene.expanddebug else 'RIGHTARROW',
+                            icon_only=True, emboss=False)
+                        row_debug.label(text='Debug Tools')
+                        if scene.expanddebug:
+                            col_debug = export_panel.column(align=True)
+                            col_debug.operator('sx2.sxtosx2')
+                            col_debug.operator('sx2.smart_separate', text='Debug: Smart Separate')
+                            col_debug.operator('sx2.generatehulls', text='Debug: Generate Convex Hulls')
+                            col_debug.operator('sx2.generateemissionmeshes', text='Debug: Generate Emission Meshes')
+                            col_debug.operator('sx2.create_sxcollection', text='Debug: Update SXCollection')
+                            col_debug.operator('sx2.applymodifiers', text='Debug: Apply Modifiers')
+                            col_debug.operator('sx2.generatemasks', text='Debug: Generate Masks')
+                            col_debug.operator('sx2.createuv0', text='Debug: Create Reserved UV Sets')
+                            col_debug.operator('sx2.bytestofloats', text='Debug: Convert to Float Colors')
+                            col_debug.operator('sx2.generatelods', text='Debug: Create LOD Meshes')
+                            col_debug.operator('sx2.resetscene', text='Debug: Reset scene (warning!)')
+                            col_debug.operator('sx2.testbutton', text='Debug: Test button')
 
                     elif scene.exportmode == 'EXPORT':
-                        if scene.expandexport:
-                            row_exporttype = box_export.row(align=True)
-                            row_exporttype.prop(scene, 'exporttype', expand=True)
-                            if len(prefs.cataloguepath) > 0:
-                                row_batchexport = box_export.row()
-                                row_batchexport.prop(
-                                    scene, 'expandbatchexport',
-                                    icon='TRIA_DOWN' if scene.expandbatchexport else 'TRIA_RIGHT',
-                                    icon_only=True, emboss=False)
-                                row_batchexport.label(text='Batch Export Settings')
-                                if scene.expandbatchexport:
-                                    col_batchexport = box_export.column(align=True)
-                                    col_cataloguebuttons = box_export.column(align=True)
-                                    groups = utils.find_groups()
-                                    if not groups:
-                                        col_batchexport.label(text='No Groups Selected')
-                                    else:
-                                        col_batchexport.label(text='Groups to Batch Process:')
-                                        for group in groups:
-                                            row_group = col_batchexport.row(align=True)
-                                            row_group.prop(group.sx2, 'exportready', text='')
-                                            row_group.label(text='  ' + group.name)
+                        row_exporttype = export_panel.row(align=True)
+                        row_exporttype.prop(scene, 'exporttype', expand=True)
+                        if len(prefs.cataloguepath) > 0:
+                            row_batchexport = export_panel.row()
+                            row_batchexport.prop(
+                                scene, 'expandbatchexport',
+                                icon='DOWNARROW_HLT' if scene.expandbatchexport else 'RIGHTARROW',
+                                icon_only=True, emboss=False)
+                            row_batchexport.label(text='Batch Export Settings')
+                            if scene.expandbatchexport:
+                                col_batchexport = export_panel.column(align=True)
+                                col_cataloguebuttons = export_panel.column(align=True)
+                                groups = utils.find_groups()
+                                if not groups:
+                                    col_batchexport.label(text='No Groups Selected')
+                                else:
+                                    col_batchexport.label(text='Groups to Batch Process:')
+                                    for group in groups:
+                                        row_group = col_batchexport.row(align=True)
+                                        row_group.prop(group.sx2, 'exportready', text='')
+                                        row_group.label(text='  ' + group.name)
 
-                                    col_cataloguebuttons.operator('sx2.catalogue_add', text='Add to Catalogue', icon='ADD')
-                                    col_cataloguebuttons.operator('sx2.catalogue_remove', text='Remove from Catalogue', icon='REMOVE')
-                                    col_cataloguebuttons.enabled = any(group.sx2.exportready for group in groups)
+                                col_cataloguebuttons.operator('sx2.catalogue_add', text='Add to Catalogue', icon='ADD')
+                                col_cataloguebuttons.operator('sx2.catalogue_remove', text='Remove from Catalogue', icon='REMOVE')
+                                col_cataloguebuttons.enabled = any(group.sx2.exportready for group in groups)
 
-                            col2_export = box_export.column(align=True)
-                            col2_export.label(text='Export Folder:')
-                            col2_export.prop(scene, 'exportfolder', text='')
+                        col2_export = export_panel.column(align=True)
+                        col2_export.label(text='Export Folder:')
+                        col2_export.prop(scene, 'exportfolder', text='')
 
-                            split_export = box_export.split(factor=0.1)
-                            split_export.operator('sx2.checklist', text='', icon='INFO')
+                        split_export = export_panel.split(factor=0.1)
+                        split_export.operator('sx2.checklist', text='', icon='INFO')
 
-                            if scene.shift:
-                                exp_text = 'Export All'
-                            else:
-                                exp_text = 'Export Selected'
-                            if scene.exporttype == 'VERTEX':
-                                split_export.operator('sx2.exportfiles', text=exp_text)
-                            else:
-                                split_export.operator('sx2.exportatlases', text=exp_text)
+                        if scene.shift:
+                            exp_text = 'Export All'
+                        else:
+                            exp_text = 'Export Selected'
+                        if scene.exporttype == 'VERTEX':
+                            split_export.operator('sx2.exportfiles', text=exp_text)
+                        else:
+                            split_export.operator('sx2.exportatlases', text=exp_text)
 
-                            if (mode == 'EDIT') or (len(scene.exportfolder) == 0):
-                                split_export.enabled = False
+                        if (mode == 'EDIT') or (len(scene.exportfolder) == 0):
+                            split_export.enabled = False
 
         elif (len(context.view_layer.objects.selected) > 0) and (context.view_layer.objects.selected[0].type == 'EMPTY') and (context.view_layer.objects.selected[0].sx2.exportready):
             col = layout.column()
@@ -8952,7 +8941,13 @@ class SXTOOLS2_OT_layerinfo(bpy.types.Operator):
 
 
     def invoke(self, context, event):
-        message_box('SPECIAL LAYERS:\nGradient1, Gradient2\nGrayscale layers that receive color from Palette Color 3 and 4\n\nOcclusion, Metallic, Roughness, Transmission, Emission\nGrayscale layers, filled with the luminance of the selected color.')
+        message_box('SPECIAL LAYERS:\n' +
+                    'Gradient1, Gradient2\n' +
+                    'Grayscale layers that receive color from selected palette indices\n\n' +
+                    'Occlusion, Metallic, Roughness, Transmission, Emission\n' +
+                    'Grayscale layers, filled with the luminance of the selected color.\n\n' +
+                    'Collision IDs\n' +
+                    'An RGB layer for marking convex regions of the mesh for collider generation')
         return {'FINISHED'}
 
 
