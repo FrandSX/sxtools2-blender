@@ -3465,7 +3465,6 @@ class SXTOOLS2_export(object):
                                 elif ((xmin + xmax) * 0.5 < ref_pivot[0]) and (abs(((xmin + xmax) * 0.5) - abs(ref_pivot[0])) > 0.01):
                                     right.append(sep_obj)
                                 else:
-                                    print('center')
                                     center_x.append(sep_obj)
 
                             elif new_obj.sx2.ymirror:
