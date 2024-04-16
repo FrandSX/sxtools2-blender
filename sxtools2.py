@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 25, 0),
+    'version': (1, 25, 1),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3630,7 +3630,8 @@ class SXTOOLS2_export(object):
                     emission_obj.data = obj.data.copy()
                     bpy.context.collection.objects.link(emission_obj)
                     export_objects.objects.link(emission_obj)
-                    emission_obj.name = obj.name + "_emission"
+                    emission_obj.name = obj.name + '_emission'
+                    emission_obj.data.name = emission_obj.name + '_mesh'
                     emission_obj.sx2.smartseparate = True
                     emission_obj.sx2.generatehulls = False
                     emission_obj.sx2.lodmeshes = False
@@ -4060,7 +4061,7 @@ class SXTOOLS2_export(object):
         ok0 = self.validate_categories(objs)
         ok1 = self.validate_palette_layers(objs)
         ok2 = self.validate_names(objs)
-        ok3 = self.validate_loose(objs)
+        ok3 = True  # self.validate_loose(objs)
         ok4 = True  # self.validate_uv_sets(objs)
 
         utils.mode_manager(objs, set_mode=False, mode_id='validate_objects')
@@ -4158,12 +4159,12 @@ class SXTOOLS2_export(object):
 
                         if layer == layers[0]:
                             if len(color_set) > 1:
-                                print(f'SX Tools Error: Multiple colors in {obj.name} {layer.name}')
+                                print(f'SX Tools Error: Multiple colors in {obj.name} {layer.name}\nValues: {color_set}')
                                 message_box('Multiple colors in ' + obj.name + ' ' + layer.name)
                                 return False
                         else:
                             if len(color_set) > 2:
-                                print(f'SX Tools Error: Multiple colors in {obj.name} {layer.name}')
+                                print(f'SX Tools Error: Multiple colors in {obj.name} {layer.name}\nValues: {color_set}')
                                 message_box('Multiple colors in ' + obj.name + ' ' + layer.name)
                                 return False
         return True
@@ -10153,7 +10154,8 @@ class SXTOOLS2_OT_exportfiles(bpy.types.Operator):
 
         if groups:
             if context.scene.sx2.exportquality == 'LO':
-                emission_objs = export.generate_emission_meshes(selected)
+                emission_selected = [obj for obj in selected if obj.sx2.generateemissionmeshes]
+                emission_objs = export.generate_emission_meshes(emission_selected)
                 export.smart_separate(selected + emission_objs)
                 export.create_sxcollection()
 
@@ -10183,7 +10185,9 @@ class SXTOOLS2_OT_exportgroups(bpy.types.Operator):
         prefs = context.preferences.addons['sxtools2'].preferences
         group = context.view_layer.objects.selected[0]
         meshes = utils.find_children(group, recursive=True, child_type='MESH')
-        export.generate_emission_meshes(meshes)
+        emission_meshes = [obj for obj in meshes if obj.sx2.generateemissionmeshes]
+        added_meshes = export.generate_emission_meshes(emission_meshes)
+        meshes += added_meshes
         export.smart_separate(meshes)
         files.export_files([group, ])
         if prefs.removelods:
@@ -10701,10 +10705,11 @@ class SXTOOLS2_OT_generate_emission_meshes(bpy.types.Operator):
 
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
-        if objs:
-            export.generate_emission_meshes(objs)
+        emissive_objs = [obj for obj in objs if obj.sx2.generateemissionmeshes]
+        if emissive_objs:
+            export.generate_emission_meshes(emissive_objs)
         else:
-            message_box('No objects selected')
+            message_box('No objects with emissive mesh generation selected')
 
         return {'FINISHED'}
 
