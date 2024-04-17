@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 25, 1),
+    'version': (1, 25, 2),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -710,14 +710,16 @@ class SXTOOLS2_utils(object):
         return bbx[0][0], bbx[0][1], bbx[1][0], bbx[1][1], bbx[2][0], bbx[2][1]
 
 
-    def get_object_bounding_box(self, objs, local=False):
+    def get_object_bounding_box(self, objs, mode='world'):
         bbx_x = []
         bbx_y = []
         bbx_z = []
         for obj in objs:
-            if local:
+            if (mode == 'local'):
                 corners = [Vector(corner) for corner in obj.bound_box]
-            else:
+            elif (mode == 'parent'):
+                corners = [obj.matrix_local @ Vector(corner) for corner in obj.bound_box]
+            elif (mode == 'world'):
                 corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
 
             for corner in corners:
@@ -780,7 +782,7 @@ class SXTOOLS2_utils(object):
             if obj.sx2.tiling:
                 vert_dict = generate.vertex_data_dict(obj)
                 if vert_dict:
-                    xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box([obj, ], local=True)
+                    xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box([obj, ], mode='local')
                     for vert_id in vert_dict:
                         vertLoc = Vector(vert_dict[vert_id][0])
 
@@ -1145,7 +1147,7 @@ class SXTOOLS2_generate(object):
                     curv_obj.modifiers.update()
                     bpy.context.view_layer.update()
 
-                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([curv_obj, ], local=True)
+                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([curv_obj, ], mode='local')
                 tiling_props = [('tile_neg_x', 'tile_pos_x'), ('tile_neg_y', 'tile_pos_y'), ('tile_neg_z', 'tile_pos_z')]
                 axis_vectors = [(Vector((-1.0, 0.0, 0.0)), Vector((1.0, 0.0, 0.0))), (Vector((0.0, -1.0, 0.0)), Vector((0.0, 1.0, 0.0))), (Vector((0.0, 0.0, -1.0)), Vector((0.0, 0.0, 1.0)))]
                 bounds = [(xmin, xmax), (ymin, ymax), (zmin, zmax)]
@@ -1390,7 +1392,7 @@ class SXTOOLS2_generate(object):
         if obj.sx2.tiling:
             blend = 0.0
             groundplane = False
-            xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], local=True)
+            xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], mode='local')
             dist = 2.0 * min(xmax-xmin, ymax-ymin, zmax-zmin)
             if not 'sxTiler' in obj.modifiers:
                 modifiers.add_modifiers([obj, ])
@@ -1551,7 +1553,7 @@ class SXTOOLS2_generate(object):
             face_colors = calculate_face_colors(obj)
             original_emissive_vertex_colors = {}
             original_emissive_vertex_face_count = [0 for _ in obj.data.vertices]
-            dist = max(utils.get_object_bounding_box([obj, ], local=True)) * 5
+            dist = max(utils.get_object_bounding_box([obj, ], mode='local')) * 5
             bias = 0.001
 
             for face in obj.data.polygons:
@@ -3915,7 +3917,7 @@ class SXTOOLS2_export(object):
             elif mode == 6:
                 pivot_world = obj.matrix_world.to_translation()
                 pivot_loc = obj.matrix_local.to_translation()
-                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], local=True)
+                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], mode='parent')
                 if obj.sx2.xmirror and (((xmin + xmax) * 0.5) > 0.0) and (pivot_loc[0] < 0.0):
                     pivot_world[0] += -2 * pivot_loc[0]
                     # pivot_loc[0] *= -1.0
