@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 25, 2),
+    'version': (1, 25, 6),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1058,7 +1058,7 @@ class SXTOOLS2_generate(object):
             sum_color = Vector((0.0, 0.0, 0.0, 0.0))
             for color in colors:
                 sum_color += color
-            return (sum_color / len(colors))
+            return (sum_color / len(colors)) if colors else sum_color
 
 
         color_dict = {}
@@ -1082,16 +1082,21 @@ class SXTOOLS2_generate(object):
             if num_connected > 0:
                 edge_weights = [(edge.other_vert(vert).co - vert.co).length for edge in vert.link_edges]
                 max_weight = max(edge_weights)
+                if (max_weight == 0):
+                    vert_blur_dict[vert.index] = color_dict[vert.index]
+                    continue
+                else:
+                    edge_weights = [weight if (weight > 0) else max_weight for weight in edge_weights]
 
-                # weights are inverted so near colors are more important
-                edge_weights = [int((1.1 - (weight / max_weight)) * 10) for weight in edge_weights]
+                    # weights are inverted so near colors are more important
+                    edge_weights = [int((1.1 - (weight / max_weight)) * 10) for weight in edge_weights]
 
-                neighbor_colors = [Vector(color_dict[vert.index])] * 20
-                for i, edge in enumerate(vert.link_edges):
-                    for j in range(edge_weights[i]):
-                        neighbor_colors.append(Vector(color_dict[edge.other_vert(vert).index]))
+                    neighbor_colors = [Vector(color_dict[vert.index])] * 20
+                    for i, edge in enumerate(vert.link_edges):
+                        for j in range(edge_weights[i]):
+                            neighbor_colors.append(Vector(color_dict[edge.other_vert(vert).index]))
 
-                vert_blur_dict[vert.index] = average_color(neighbor_colors)
+                    vert_blur_dict[vert.index] = average_color(neighbor_colors)
             else:
                 vert_blur_dict[vert.index] = color_dict[vert.index]
 
@@ -4588,17 +4593,26 @@ class SXTOOLS2_magic(object):
                     layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
 
 
-    def apply_occlusion(self, objs, masklayername=None, blend=0.5, rays=250, groundplane=True, distance=10.0):
+    def apply_occlusion(self, objs, masklayername=None, blend=0.5, rays=50, groundplane=True, distance=10.0):
         for obj in objs:
             layer = obj.sx2layers['Occlusion']
+            masklayer = obj.sx2layers[masklayername] if masklayername else None
             colors = generate.occlusion_list(obj, rays, blend, distance, groundplane)
-            if masklayername is not None:
-                mask = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), obj.sx2layers[masklayername])
+            if masklayer:
+                mask = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), masklayer)
+                colors = tools.blend_values(mask, colors, 'ALPHA', 1.0)
+            layers.set_layer(obj, colors, layer)
+
+            blur_colors = generate.blur_list(obj, layer, masklayer)
+
+            colors = tools.blend_values(blur_colors, colors, 'ALPHA', 0.3)
+            if masklayer:
+                mask = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), masklayer)
                 colors = tools.blend_values(mask, colors, 'ALPHA', 1.0)
             layers.set_layer(obj, colors, layer)
 
             obj.sx2layers['Occlusion'].opacity = obj.sx2.mat_occlusion
-    
+
 
     def apply_curvature_overlay(self, objs, convex=True, concave=True, noise=0.0):
         scene = bpy.context.scene.sx2
