@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 25, 7),
+    'version': (1, 26, 0),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -8349,46 +8349,71 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         row_cat.prop(sx2, 'category', text='')
 
                         col_export.separator()
-                        col_export.prop(sx2, 'metallicoverride', text='Override Palette Metallic', toggle=True)
-                        if obj.sx2.metallicoverride:
-                            row_override = col_export.row(align=True)
-                            row_override.prop(sx2, 'metallic0', text='Palette Color 0 Metallic')
-                            row_override.prop(sx2, 'metallic1', text='Palette Color 1 Metallic')
-                            row_override.prop(sx2, 'metallic2', text='Palette Color 2 Metallic')
-                            row_override.prop(sx2, 'metallic3', text='Palette Color 3 Metallic')
-                            row_override.prop(sx2, 'metallic4', text='Palette Color 4 Metallic')
 
-                        col_export.separator()
-                        col_export.prop(sx2, 'roughnessoverride', text='Override Palette Roughness', toggle=True)
-                        if obj.sx2.roughnessoverride:
-                            row_override = col_export.row(align=True)
-                            row_override.prop(sx2, 'roughness0', text='Palette Color 0 Roughness')
-                            row_override.prop(sx2, 'roughness1', text='Palette Color 1 Roughness')
-                            row_override.prop(sx2, 'roughness2', text='Palette Color 2 Roughness')
-                            row_override.prop(sx2, 'roughness3', text='Palette Color 3 Roughness')
-                            row_override.prop(sx2, 'roughness4', text='Palette Color 4 Roughness')
+                        met_ovr_header, met_ovr_panel = col_export.panel('met_ovr_id', default_closed=True)
+                        met_ovr_header.prop(sx2, 'metallicoverride', text='Override Palette Metallic', toggle=True)
+                        if met_ovr_panel:
+                            col_met_ovr = met_ovr_panel.column(align=True)
+                            row_met_0 = col_met_ovr.row(align=True)
+                            row_met_0.label(text='Palette Color 0 Metallic')
+                            row_met_0.prop(sx2, 'metallic0', text='')
+                            row_met_1 = col_met_ovr.row(align=True)
+                            row_met_1.label(text='Palette Color 1 Metallic')
+                            row_met_1.prop(sx2, 'metallic1', text='')
+                            row_met_2 = col_met_ovr.row(align=True)
+                            row_met_2.label(text='Palette Color 2 Metallic')
+                            row_met_2.prop(sx2, 'metallic2', text='')
+                            row_met_3 = col_met_ovr.row(align=True)
+                            row_met_3.label(text='Palette Color 3 Metallic')
+                            row_met_3.prop(sx2, 'metallic3', text='')
+                            row_met_4 = col_met_ovr.row(align=True)
+                            row_met_4.label(text='Palette Color 4 Metallic')
+                            row_met_4.prop(sx2, 'metallic4', text='')
+                            col_met_ovr.enabled = sx2.metallicoverride
 
-                        col_export.separator()
-                        col_export.prop(sx2, 'transmissionoverride', text='Override Transmission / SSS', toggle=True)
+                        rgh_ovr_header, rgh_ovr_panel = col_export.panel('rgh_ovr_id', default_closed=True)
+                        rgh_ovr_header.prop(sx2, 'roughnessoverride', text='Override Palette Roughness', toggle=True)
+                        if rgh_ovr_panel:
+                            col_rgh_ovr = rgh_ovr_panel.column(align=True)
+                            row_rgh_0 = col_rgh_ovr.row(align=True)
+                            row_rgh_0.label(text='Palette Color 0 Roughness')
+                            row_rgh_0.prop(sx2, 'roughness0', text='')
+                            row_rgh_1 = col_rgh_ovr.row(align=True)
+                            row_rgh_1.label(text='Palette Color 1 Roughness')
+                            row_rgh_1.prop(sx2, 'roughness1', text='')
+                            row_rgh_2 = col_rgh_ovr.row(align=True)
+                            row_rgh_2.label(text='Palette Color 2 Roughness')
+                            row_rgh_2.prop(sx2, 'roughness2', text='')
+                            row_rgh_3 = col_rgh_ovr.row(align=True)
+                            row_rgh_3.label(text='Palette Color 3 Roughness')
+                            row_rgh_3.prop(sx2, 'roughness3', text='')
+                            row_rgh_4 = col_rgh_ovr.row(align=True)
+                            row_rgh_4.label(text='Palette Color 4 Roughness')
+                            row_rgh_4.prop(sx2, 'roughness4', text='')
+                            col_rgh_ovr.enabled = sx2.roughnessoverride
 
-                        col_export.separator()
-                        col_export.prop(sx2, 'materialoverride', text='Override Shading Properties', toggle=True)
-                        if obj.sx2.materialoverride:
-                            row_occlusion = col_export.row(align=True)
+                        mat_ovr_header, mat_ovr_panel = col_export.panel('mat_ovr_id', default_closed=True)
+                        mat_ovr_header.prop(sx2, 'materialoverride', text='Override Shading Properties', toggle=True)
+                        if mat_ovr_panel:
+                            col_mat_ovr = mat_ovr_panel.column(align=True)
+                            row_occlusion = col_mat_ovr.row(align=True)
                             row_occlusion.label(text='Occlusion Opacity:')
                             row_occlusion.prop(sx2, 'mat_occlusion', text='')
-                            row_overlay = col_export.row(align=True)
+                            row_overlay = col_mat_ovr.row(align=True)
                             row_overlay.label(text='Overlay Opacity:')
                             row_overlay.prop(sx2, 'mat_overlay', text='')
-                            row_specular = col_export.row(align=True)
+                            row_specular = col_mat_ovr.row(align=True)
                             row_specular.label(text='Specular:')
                             row_specular.prop(sx2, 'mat_specular', text='')
-                            row_anisotropic = col_export.row(align=True)
+                            row_anisotropic = col_mat_ovr.row(align=True)
                             row_anisotropic.label(text='Anisotropic:')
                             row_anisotropic.prop(sx2, 'mat_anisotropic', text='')
-                            row_clearcoat = col_export.row(align=True)
+                            row_clearcoat = col_mat_ovr.row(align=True)
                             row_clearcoat.label(text='Clearcoat:')
                             row_clearcoat.prop(sx2, 'mat_clearcoat', text='')
+                            col_mat_ovr.enabled = sx2.materialoverride
+                            mat_ovr_panel.separator()
+                            mat_ovr_panel.prop(sx2, 'transmissionoverride', text='Preserve Transmission / SSS', toggle=True)
 
                         col_export.separator()
                         row_static = col_export.row(align=True)
@@ -8403,57 +8428,64 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         row_pivot.label(text='Auto-Pivot:')
                         row_pivot.prop(sx2, 'pivotmode', text='')
 
-                        row_separate = col_export.row(align=True)
-                        row_separate.label(text='Smart Separate on Export:')
-                        row_separate.prop(sx2, 'smartseparate', text='', toggle=False)
+                        col_export.separator()
 
-                        row_lod = col_export.row(align=True)
-                        row_lod.label(text='Generate LOD Meshes on Export:')
-                        row_lod.prop(sx2, 'lodmeshes', text='', toggle=False)
+                        export_mesh_header, export_mesh_panel = col_export.panel('export_mesh_id', default_closed=True)
+                        export_mesh_header.label(text='Export Mesh Generation')
+                        if export_mesh_panel:
+                            col_export_mesh = export_mesh_panel.column(align=True)
 
-                        row_emission = col_export.row(align=True)
-                        row_emission.label(text='Generate Emission Meshes on Export:')
-                        row_emission.prop(sx2, 'generateemissionmeshes', text='', toggle=False)
+                            row_separate = col_export_mesh.row(align=True)
+                            row_separate.label(text='Smart Separate on Export:')
+                            row_separate.prop(sx2, 'smartseparate', text='', toggle=False)
 
-                        row_hulls = col_export.row(align=True)
-                        row_hulls.label(text='Generate Convex Hulls on Export:')
-                        row_hulls.prop(sx2, 'generatehulls', text='', toggle=False)
+                            row_lod = col_export_mesh.row(align=True)
+                            row_lod.label(text='Generate LOD Meshes on Export:')
+                            row_lod.prop(sx2, 'lodmeshes', text='', toggle=False)
 
-                        if obj.sx2.generatehulls:
-                            row_cids = col_export.row(align=True)
+                            row_emission = col_export_mesh.row(align=True)
+                            row_emission.label(text='Generate Emission Meshes on Export:')
+                            row_emission.prop(sx2, 'generateemissionmeshes', text='', toggle=False)
+
+                            row_hulls = col_export_mesh.row(align=True)
+                            row_hulls.label(text='Generate Convex Hulls on Export:')
+                            row_hulls.prop(sx2, 'generatehulls', text='', toggle=False)
+                            col_hulls = col_export_mesh.column(align=True)
+                            row_cids = col_hulls.row(align=True)
                             row_cids.prop(sx2, 'use_cids', text='Use Collider IDs')
                             if obj.sx2.use_cids:
                                 row_cids.prop(sx2, 'mergefragments', text='Merge CID fragments')
-                            col_export.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
-                            col_export.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Factor', slider=True)
+                            col_hulls.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
+                            col_hulls.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Factor', slider=True)
+                            col_hulls.enabled = sx2.generatehulls
 
-                        if hasattr(bpy.types, bpy.ops.object.vhacd.idname()):
-                            col_export.separator()
-                            col_export.prop(scene, 'exportcolliders', text='Generate Mesh Colliders (V-HACD)')
-                            if scene.exportcolliders:
-                                box_colliders = export_panel.box()
-                                col_collideroffset = box_colliders.column(align=True)
-                                col_collideroffset.prop(sx2, 'collideroffset', text='Shrink Collision Mesh')
-                                col_collideroffset.prop(sx2, 'collideroffsetfactor', text='Shrink Factor', slider=True)
-                                row_colliders = box_colliders.row()
-                                row_colliders.prop(
-                                    scene, 'expandcolliders',
-                                    icon='DOWNARROW_HLT' if scene.expandcolliders else 'RIGHTARROW',
-                                    icon_only=True, emboss=False)
-                                row_colliders.label(text='V-HACD Settings')
-                                if scene.expandcolliders:
-                                    col_colliders = box_colliders.column(align=True)
-                                    col_colliders.prop(scene, 'removedoubles', text='Remove Doubles')
-                                    col_colliders.prop(scene, 'sourcesubdivision', text='Source Subdivision')
-                                    col_colliders.prop(scene, 'voxelresolution', text='Voxel Resolution', slider=True)
-                                    col_colliders.prop(scene, 'maxconcavity', text='Maximum Concavity', slider=True)
-                                    col_colliders.prop(scene, 'hulldownsampling', text='Convex Hull Downsampling', slider=True)
-                                    col_colliders.prop(scene, 'planedownsampling', text='Plane Downsampling', slider=True)
-                                    col_colliders.prop(scene, 'collalpha', text='Symmetry Clipping Bias', slider=True)
-                                    col_colliders.prop(scene, 'collbeta', text='Axis Clipping Bias', slider=True)
-                                    col_colliders.prop(scene, 'maxhulls', text='Max Hulls', slider=True)
-                                    col_colliders.prop(scene, 'maxvertsperhull', text='Max Vertices Per Convex Hull', slider=True)
-                                    col_colliders.prop(scene, 'minvolumeperhull', text='Min Volume Per Convex Hull', slider=True)
+                            if hasattr(bpy.types, bpy.ops.object.vhacd.idname()):
+                                col_export_mesh.separator()
+                                col_export_mesh.prop(scene, 'exportcolliders', text='Generate Mesh Colliders (V-HACD)')
+                                if scene.exportcolliders:
+                                    box_colliders = col_export_mesh.box()
+                                    col_collideroffset = box_colliders.column(align=True)
+                                    col_collideroffset.prop(sx2, 'collideroffset', text='Shrink Collision Mesh')
+                                    col_collideroffset.prop(sx2, 'collideroffsetfactor', text='Shrink Factor', slider=True)
+                                    row_colliders = box_colliders.row()
+                                    row_colliders.prop(
+                                        scene, 'expandcolliders',
+                                        icon='DOWNARROW_HLT' if scene.expandcolliders else 'RIGHTARROW',
+                                        icon_only=True, emboss=False)
+                                    row_colliders.label(text='V-HACD Settings')
+                                    if scene.expandcolliders:
+                                        col_colliders = box_colliders.column(align=True)
+                                        col_colliders.prop(scene, 'removedoubles', text='Remove Doubles')
+                                        col_colliders.prop(scene, 'sourcesubdivision', text='Source Subdivision')
+                                        col_colliders.prop(scene, 'voxelresolution', text='Voxel Resolution', slider=True)
+                                        col_colliders.prop(scene, 'maxconcavity', text='Maximum Concavity', slider=True)
+                                        col_colliders.prop(scene, 'hulldownsampling', text='Convex Hull Downsampling', slider=True)
+                                        col_colliders.prop(scene, 'planedownsampling', text='Plane Downsampling', slider=True)
+                                        col_colliders.prop(scene, 'collalpha', text='Symmetry Clipping Bias', slider=True)
+                                        col_colliders.prop(scene, 'collbeta', text='Axis Clipping Bias', slider=True)
+                                        col_colliders.prop(scene, 'maxhulls', text='Max Hulls', slider=True)
+                                        col_colliders.prop(scene, 'maxvertsperhull', text='Max Vertices Per Convex Hull', slider=True)
+                                        col_colliders.prop(scene, 'minvolumeperhull', text='Min Volume Per Convex Hull', slider=True)
 
                         col_export.separator()
                         remove_generated = False
