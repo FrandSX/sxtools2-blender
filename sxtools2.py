@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 26, 0),
+    'version': (1, 26, 1),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -715,12 +715,14 @@ class SXTOOLS2_utils(object):
         bbx_y = []
         bbx_z = []
         for obj in objs:
+            edg = bpy.context.evaluated_depsgraph_get()
+            obj_eval = obj.evaluated_get(edg)
             if (mode == 'local'):
-                corners = [Vector(corner) for corner in obj.bound_box]
+                corners = [Vector(corner) for corner in obj_eval.bound_box]
             elif (mode == 'parent'):
-                corners = [obj.matrix_local @ Vector(corner) for corner in obj.bound_box]
+                corners = [obj.matrix_local @ Vector(corner) for corner in obj_eval.bound_box]
             elif (mode == 'world'):
-                corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+                corners = [obj.matrix_world @ Vector(corner) for corner in obj_eval.bound_box]
 
             for corner in corners:
                 bbx_x.append(corner[0])
