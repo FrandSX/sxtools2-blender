@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (1, 25, 6),
+    'version': (1, 25, 7),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -8861,8 +8861,11 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
                     sxglobals.prev_selection = selection[:]
                     if (selection is not None) and (len(selection) > 0) and (len(context.view_layer.objects[selection[0]].sx2layers) > 0) and (layer_validator(self, context)):
                         # match selected layer on all selected objects
-                        # property update propagates the selection 
-                        objs[0].sx2.selectedlayer = objs[0].sx2.selectedlayer
+                        # property update propagates the selection
+                        if (objs[0].sx2.selectedlayer < len(objs[0].sx2layers)):
+                            objs[0].sx2.selectedlayer = objs[0].sx2.selectedlayer
+                        else:
+                            objs[0].sx2.selectedlayer = 0
                     return {'PASS_THROUGH'}
                 else:
                     return {'PASS_THROUGH'}
