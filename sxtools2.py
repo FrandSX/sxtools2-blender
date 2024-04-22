@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 0, 0),
+    'version': (2, 0, 1),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -10713,7 +10713,24 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
 
                 if sxglobals.export_in_progress:
                     sxglobals.refresh_in_progress = True
-                    export.generate_hulls(objs)
+
+                    source_objs = [obj for obj in objs if obj.sx2.generatehulls]
+
+                    groups = utils.find_groups(source_objs)
+                    processed_objs = []
+                    if groups:
+                        for group in groups:
+                            children = utils.find_children(group, recursive=True, child_type='MESH')
+                            hull_objs = [child for child in children if child in source_objs]
+                            processed_objs += hull_objs
+                            export.generate_hulls(hull_objs, group)
+                        
+                        groupless = [obj for obj in source_objs if obj not in processed_objs]
+                        if groupless:
+                            export.generate_hulls(groupless)
+                    else:
+                        export.generate_hulls(source_objs)
+
                     bpy.ops.object.select_all(action='DESELECT')
                     for obj in objs:
                         obj.select_set(True)
