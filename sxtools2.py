@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 0, 1),
+    'version': (2, 0, 2),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1953,8 +1953,9 @@ class SXTOOLS2_layers(object):
                 if alpha_mat_count == 1:
                     obj.data.attributes.remove(obj.data.attributes[obj.sx2layers[layer_name].color_attribute])
             else:
-                if obj.sx2layers[layer_name].color_attribute in obj.data.color_attributes.keys():
-                    obj.data.color_attributes.remove(obj.data.color_attributes[obj.sx2layers[layer_name].color_attribute])
+                variants = [color_attribute.name for color_attribute in obj.data.color_attributes if obj.sx2layers[layer_name].color_attribute.split('_var')[0] in color_attribute.name]
+                for variant in variants:
+                    obj.data.color_attributes.remove(obj.data.color_attributes[variant])
             idx = utils.find_layer_index_by_name(obj, layer_name)
             obj.sx2layers.remove(idx)
 
