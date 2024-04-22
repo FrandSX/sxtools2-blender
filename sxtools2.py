@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 0, 2),
+    'version': (2, 0, 3),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -9729,8 +9729,6 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     message_box('Layer already exists!')
                     return {'FINISHED'}
 
-            layer.variants = self.layer_variants
-
             # max layer count needs to account for layers not used in compositing
             cmp_exists = False
             cid_exists = False
@@ -9769,7 +9767,7 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     name = self.layer_name
 
                 for sx2layer in obj.sx2layers:
-                    if (name == sx2layer.name):
+                    if (name == sx2layer.name) and (layer.variants == self.layer_variants):
                         message_box(f'Layer name {name} already in use!')
                         return {'FINISHED'}
 
@@ -9813,6 +9811,8 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                         layers.set_layer(obj, source_colors, layer)
 
                 utils.sort_stack_indices(obj)
+
+            layer.variants = self.layer_variants
 
         setup.update_sx2material(context)
 
