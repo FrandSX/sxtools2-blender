@@ -8372,6 +8372,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_met_4.label(text='Palette Color 4 Metallic')
                             row_met_4.prop(sx2, 'metallic4', text='')
                             col_met_ovr.enabled = sx2.metallicoverride
+                            met_ovr_panel.separator()
 
                         rgh_ovr_header, rgh_ovr_panel = col_export.panel('rgh_ovr_id', default_closed=True)
                         rgh_ovr_header.prop(sx2, 'roughnessoverride', text='Override Palette Roughness', toggle=True)
@@ -8393,6 +8394,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_rgh_4.label(text='Palette Color 4 Roughness')
                             row_rgh_4.prop(sx2, 'roughness4', text='')
                             col_rgh_ovr.enabled = sx2.roughnessoverride
+                            rgh_ovr_panel.separator()
 
                         mat_ovr_header, mat_ovr_panel = col_export.panel('mat_ovr_id', default_closed=True)
                         mat_ovr_header.prop(sx2, 'materialoverride', text='Override Shading Properties', toggle=True)
