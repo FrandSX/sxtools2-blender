@@ -2309,6 +2309,10 @@ class SXTOOLS2_tools(object):
                     for j in range(3):
                         base[j] *= top[j] * a + (1 - a)
 
+                # Screen: (A+B) - (A*B)
+                # elif blendmode == 'SCR':
+                #     base = (base + top * a) - (base * top * a)
+
                 elif blendmode == 'OVR':
                     over = Vector([0.0, 0.0, 0.0, top[3]])
                     b = over[3] * blendvalue
@@ -7778,10 +7782,20 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
 
     palette_index: bpy.props.IntProperty(
         name='Palette Color Index',
-        min = 0,
-        max = 4,
+        min=0,
+        max=4,
         default=0,
         update=lambda self, context: update_layer_props(self, context, 'palette_index'))
+
+    variant_count: bpy.props.IntProperty(
+        name='Variant Layer Count',
+        min=0,
+        default=0)
+
+    variant_index: bpy.props.IntProperty(
+        name='Variant Layer Index',
+        min = 0,
+        default=0)
 
 
 class SXTOOLS2_masterpalette(bpy.types.PropertyGroup):
@@ -7982,7 +7996,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 col_list.operator('sx2.del_layer', text='', icon='REMOVE')
                 col_list.separator()
                 col_list.operator('sx2.layer_up', text='', icon='TRIA_UP')
-                col_list.operator('sx2.layer_down', text='', icon='DOWNARROW_HLT')
+                col_list.operator('sx2.layer_down', text='', icon='TRIA_DOWN')
                 col_list.separator()
                 col_list.operator('sx2.layer_props', text='', icon='OPTIONS')
 
@@ -8612,11 +8626,13 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             row_item = layout.row(align=True)
 
+            # Layer list element 1: Visibility toggle
             if objs[0].sx2.shadingmode == 'FULL':
                 row_item.prop(item, 'visibility', text='', icon=hide_icon[item.visibility])
             else:
                 row_item.label(icon=hide_icon[(utils.find_layer_index_by_name(objs[0], item.name) == objs[0].sx2.selectedlayer)])
 
+            # Layer list element 2: Lock transparency
             if (scene.toolmode == 'PAL') or (scene.toolmode == 'MAT'):
                 row_item.label(text='', icon='LOCKED')
             else:
@@ -8627,6 +8643,10 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
             if ((item.layer_type == 'COLOR') or (item.layer_type == 'EMI') or (item.layer_type == 'SSS')) and (scene.toolmode == 'PAL'):
                 row_item.prop(item, 'paletted', text='', icon=paletted_icon[item.paletted])
                 row_item.prop(item, 'palette_index', text='')
+            elif (item.variant_count > 0):
+                row_item.operator('sx2.prev_variant', text='', icon='TRIA_LEFT')
+                row_item.operator('sx2.next_variant', text='', icon='TRIA_RIGHT')
+                # row_item.prop(item, 'variant_index', text='')
 
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
@@ -9600,6 +9620,9 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
 
 
     def draw(self, context):
+        objs = mesh_selection_validator(self, context)
+        idx = objs[0].sx2.selectedlayer
+
         layout = self.layout
         row_name = layout.row()
         row_name.prop(self, 'layer_name', text='Layer Name')
@@ -9607,6 +9630,10 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
         row_type.prop(self, 'layer_type', text='Layer Type')
         if self.layer_type != 'COLOR':
             row_name.enabled = False
+        row_variants = layout.row(align=True)
+        row_variants.label(text='Layer Variant Count: ' + str(objs[0].sx2layers[idx].variant_count))
+        row_variants.operator('sx2.add_variant', text='', icon='ADD')
+        row_variants.operator('sx2.del_variant', text='', icon='REMOVE')
         return None
 
 
@@ -9705,6 +9732,138 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                 utils.sort_stack_indices(obj)
 
         setup.update_sx2material(context)
+
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_add_variant(bpy.types.Operator):
+    bl_idname = 'sx2.add_variant'
+    bl_label = 'Add Variant Layer'
+    bl_description = 'Add a new variant layer'
+    bl_options = {'UNDO'}
+
+
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        objs = context.view_layer.objects.selected
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
+
+        if len(mesh_objs[0].data.color_attributes) < 14:
+            enabled = True
+
+        return enabled
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        utils.mode_manager(objs, set_mode=True, mode_id='add_layer')
+        # for obj in objs:
+        #     if not obj.sx2layers:
+        #         export.create_reserved_uvsets([obj, ])
+        layers.add_layer(objs)
+        setup.update_sx2material(context)
+        utils.mode_manager(objs, set_mode=False, mode_id='add_layer')
+        refresh_swatches(self, context)
+
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_del_variant(bpy.types.Operator):
+    bl_idname = 'sx2.del_variant'
+    bl_label = 'Remove Variant Layer'
+    bl_description = 'Remove a variant layer'
+    bl_options = {'UNDO'}
+
+
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        objs = context.view_layer.objects.selected
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
+
+        if mesh_objs[0].sx2layers:
+            enabled = True
+
+        return enabled
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if objs:
+            utils.mode_manager(objs, set_mode=True, mode_id='del_layer')
+            layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            layers.del_layer(objs, layer.name)
+            setup.update_sx2material(context)
+            utils.mode_manager(objs, set_mode=False, mode_id='del_layer')
+            if objs[0].sx2layers:
+                refresh_swatches(self, context)
+
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_prev_variant(bpy.types.Operator):
+    bl_idname = 'sx2.prev_variant'
+    bl_label = 'Previous Variant Layer'
+    bl_description = 'Select previous variant layer'
+    bl_options = {'UNDO'}
+
+
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        objs = context.view_layer.objects.selected
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
+
+        if mesh_objs[0].sxlayers and (mesh_objs[0].sx2.variant_count > 0) and (mesh_objs[0].sx2.variant_index > 0):
+            enabled = True
+
+        return enabled
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if objs:
+            utils.mode_manager(objs, set_mode=True, mode_id='del_layer')
+            layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            layers.del_layer(objs, layer.name)
+            setup.update_sx2material(context)
+            utils.mode_manager(objs, set_mode=False, mode_id='del_layer')
+            if objs[0].sx2layers:
+                refresh_swatches(self, context)
+
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_next_variant(bpy.types.Operator):
+    bl_idname = 'sx2.next_variant'
+    bl_label = 'Next Variant Layer'
+    bl_description = 'Select next variant layer'
+    bl_options = {'UNDO'}
+
+
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        objs = context.view_layer.objects.selected
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
+
+        if mesh_objs[0].sxlayers and (mesh_objs[0].sx2.variant_count > 0) and (mesh_objs[0].sx2.variant_index < mesh_objs[0].sx2.variant_count):
+            enabled = True
+
+        return enabled
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if objs:
+            utils.mode_manager(objs, set_mode=True, mode_id='del_layer')
+            layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            layers.del_layer(objs, layer.name)
+            setup.update_sx2material(context)
+            utils.mode_manager(objs, set_mode=False, mode_id='del_layer')
+            if objs[0].sx2layers:
+                refresh_swatches(self, context)
 
         return {'FINISHED'}
 
@@ -11118,6 +11277,10 @@ core_classes = (
     SXTOOLS2_OT_layer_up,
     SXTOOLS2_OT_layer_down,
     SXTOOLS2_OT_layer_props,
+    SXTOOLS2_OT_add_variant,
+    SXTOOLS2_OT_del_variant,
+    SXTOOLS2_OT_prev_variant,
+    SXTOOLS2_OT_next_variant,
     SXTOOLS2_OT_mergeup,
     SXTOOLS2_OT_mergedown,
     SXTOOLS2_OT_copylayer,
@@ -11248,6 +11411,7 @@ if __name__ == '__main__':
 
 
 # TODO:
+# BUG: Allow color attributes outside the scope of SX Tools (attribute count checks)
 # BUG: Grouping of objs with armatures
 # BUG: Check decimation angle changes with hull and emission mesh generation
 # FEAT: match existing layers when loading category
