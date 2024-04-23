@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 0, 5),
+    'version': (2, 1, 0),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4774,7 +4774,8 @@ class SXTOOLS2_magic(object):
         for obj in objs:
             colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
             # Static colors layer is rough
-            colors1 = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), utils.find_color_layers(obj, 5))
+            rgh_value = (obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness)
+            colors1 = generate.color_list(obj, rgh_value, utils.find_color_layers(obj, 5))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             # Combine with roughness from PBR material
             colors1 = generate.color_list(obj, palette[2], utils.find_color_layers(obj, 6))
@@ -4831,7 +4832,8 @@ class SXTOOLS2_magic(object):
         for obj in objs:
             colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
             # Static colors layer is rough
-            colors1 = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), utils.find_color_layers(obj, 5))
+            rgh_value = (obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness)
+            colors1 = generate.color_list(obj, rgh_value, utils.find_color_layers(obj, 5))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             # Combine with roughness from PBR material
             colors1 = generate.color_list(obj, palette[2], utils.find_color_layers(obj, 6))
@@ -4920,7 +4922,8 @@ class SXTOOLS2_magic(object):
         for obj in objs:
             colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
             # Static colors layer is rough
-            colors1 = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), utils.find_color_layers(obj, 5))
+            rgh_value = (obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness)
+            colors1 = generate.color_list(obj, rgh_value, utils.find_color_layers(obj, 5))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             # Combine with roughness from PBR material
             colors1 = generate.color_list(obj, palette[2], utils.find_color_layers(obj, 6))
@@ -4998,7 +5001,8 @@ class SXTOOLS2_magic(object):
             # Get roughness base
             colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
             # Static colors layer is rough
-            colors1 = generate.color_list(obj, (1.0, 1.0, 1.0, 1.0), utils.find_color_layers(obj, 5))
+            rgh_value = (obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness)
+            colors1 = generate.color_list(obj, rgh_value, utils.find_color_layers(obj, 5))
             colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
             colors1 = generate.noise_list(obj, 0.01, True)
             colors = tools.blend_values(colors1, colors, 'OVR', 1.0)
@@ -6950,6 +6954,15 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         default=0.0,
         update=lambda self, context: update_obj_props(self, context, 'metallic4'))
 
+    static_metallic: bpy.props.FloatProperty(
+        name='Static Layer Base Metallic',
+        description='Metallic value applied to category-defined single static color layer',
+        min=0.0,
+        max=1.0,
+        precision=2,
+        default=0.0,
+        update=lambda self, context: update_obj_props(self, context, 'static_metallic'))
+
     roughnessoverride: bpy.props.BoolProperty(
         name='Palette Roughness Override',
         description='Apply roughness per palette color',
@@ -6995,6 +7008,15 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         precision=2,
         default=0.0,
         update=lambda self, context: update_obj_props(self, context, 'roughness4'))
+
+    static_roughness: bpy.props.FloatProperty(
+        name='Static Layer Base Roughness',
+        description='Roughness value applied to category-defined single static color layer',
+        min=0.0,
+        max=1.0,
+        precision=2,
+        default=0.0,
+        update=lambda self, context: update_obj_props(self, context, 'static_roughness'))
 
     materialoverride: bpy.props.BoolProperty(
         name='Material Property Override',
@@ -8451,6 +8473,9 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_met_4 = col_met_ovr.row(align=True)
                             row_met_4.label(text='Palette Color 4 Metallic')
                             row_met_4.prop(sx2, 'metallic4', text='')
+                            row_static_met = met_ovr_panel.row(align=True)
+                            row_static_met.label(text='Static Layer Metallic')
+                            row_static_met.prop(sx2, 'static_metallic', text='')
                             col_met_ovr.enabled = sx2.metallicoverride
                             met_ovr_panel.separator()
 
@@ -8473,6 +8498,9 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_rgh_4 = col_rgh_ovr.row(align=True)
                             row_rgh_4.label(text='Palette Color 4 Roughness')
                             row_rgh_4.prop(sx2, 'roughness4', text='')
+                            row_static_rgh = rgh_ovr_panel.row(align=True)
+                            row_static_rgh.label(text='Static Layer Roughness')
+                            row_static_rgh.prop(sx2, 'static_roughness', text='')
                             col_rgh_ovr.enabled = sx2.roughnessoverride
                             rgh_ovr_panel.separator()
 
