@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 1, 0),
+    'version': (2, 1, 2),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -599,7 +599,7 @@ class SXTOOLS2_utils(object):
     # The index parameter returns the nth color layer in the stack
     def find_color_layers(self, obj, index=None, staticvertexcolors=True):
         if obj.sx2layers:
-            color_layers = [layer for layer in obj.sx2layers if layer.layer_type == 'COLOR']
+            color_layers = [layer for layer in obj.sx2layers if (layer.layer_type == 'COLOR') and (layer.name != 'Flattened')]
 
             if not staticvertexcolors:
                 filtered = [layer for layer in color_layers if ('Gradient' not in layer.name and 'Overlay' not in layer.name)]
@@ -1912,34 +1912,39 @@ class SXTOOLS2_layers(object):
                 layercount = max([obj.sx2.layercount for obj in objs])
 
             for obj in objs:
-                layer = obj.sx2layers.add()
-                layer.name = 'Layer ' + str(layercount) if name is None else name
-                if layer_type not in alpha_mats:
-                    layer.color_attribute = color_attribute if color_attribute is not None else layer.name
+                if name and name not in obj.sx2layers.keys():
+                    layer = obj.sx2layers.add()
+                    layer.name = 'Layer ' + str(layercount) if name is None else name
+                    if layer_type not in alpha_mats:
+                        layer.color_attribute = color_attribute if color_attribute is not None else layer.name
+                    else:
+                        layer.color_attribute = 'Alpha Materials'
+                    layer.layer_type = 'COLOR' if layer_type is None else layer_type
+                    layer.default_color = sxglobals.default_colors[layer.layer_type]
+                    # item.paletted is False by default
+
+                    if layer_type not in alpha_mats:
+                        if color_attribute not in obj.data.color_attributes.keys():
+                            obj.data.color_attributes.new(name=layer.name, type=data_types[prefs.layerdatatype], domain='CORNER')
+                    elif ('Alpha Materials' not in obj.data.color_attributes.keys()) and (layer_type in alpha_mats):
+                        obj.data.color_attributes.new(name='Alpha Materials', type=data_types[prefs.layerdatatype], domain='CORNER')
+
+                    if layer_type == 'CMP':
+                        layer.index = utils.insert_layer_at_index(obj, layer, 0)
+                    else:
+                        layer.index = utils.insert_layer_at_index(obj, layer, obj.sx2layers[obj.sx2.selectedlayer].index + 1)
+
+                    if clear:
+                        colors = generate.color_list(obj, layer.default_color)
+                        layers.set_layer(obj, colors, obj.sx2layers[len(obj.sx2layers) - 1])
+                    layer_dict[obj] = layer
+                    obj.sx2.layercount = layercount + 1
+                    # obj.sx2.selectedlayer = utils.find_layer_index_by_name(obj, layer.name)
                 else:
-                    layer.color_attribute = 'Alpha Materials'
-                layer.layer_type = 'COLOR' if layer_type is None else layer_type
-                layer.default_color = sxglobals.default_colors[layer.layer_type]
-                # item.paletted is False by default
-
-                if layer_type not in alpha_mats:
-                    if color_attribute not in obj.data.color_attributes.keys():
-                        obj.data.color_attributes.new(name=layer.name, type=data_types[prefs.layerdatatype], domain='CORNER')
-                elif ('Alpha Materials' not in obj.data.color_attributes.keys()) and (layer_type in alpha_mats):
-                    obj.data.color_attributes.new(name='Alpha Materials', type=data_types[prefs.layerdatatype], domain='CORNER')
-
-                if layer_type == 'CMP':
-                    layer.index = utils.insert_layer_at_index(obj, layer, 0)
-                else:
-                    layer.index = utils.insert_layer_at_index(obj, layer, obj.sx2layers[obj.sx2.selectedlayer].index + 1)
-
-                if clear:
-                    colors = generate.color_list(obj, layer.default_color)
-                    layers.set_layer(obj, colors, obj.sx2layers[len(obj.sx2layers) - 1])
-                layer_dict[obj] = layer
-                obj.sx2.layercount = layercount + 1
+                    print(f'SX Tools Error: {obj.name} layer {name} already exists')
 
             # selectedlayer needs to point to an existing layer on all objs
+            # NOTE: Potential bug here! Objects with less layers?
             objs[0].sx2.selectedlayer = len(objs[0].sx2layers) - 1
 
         return layer_dict
@@ -2221,23 +2226,23 @@ class SXTOOLS2_layers(object):
             for obj in objs:
                 clear_layer(obj, obj.sx2layers[targetlayer.name])
 
-
+    # NOTE: Active commented!
     def blend_layers(self, objs, topLayerList, baseLayer, resultLayer, single_as_alpha=False):
-        active = bpy.context.view_layer.objects.active
-        bpy.context.view_layer.objects.active = objs[0]
+        # active = bpy.context.view_layer.objects.active
+        # bpy.context.view_layer.objects.active = objs[0]
+        top_layers = [layer.name for layer in topLayerList]
 
         for obj in objs:
             basecolors = self.get_layer(obj, baseLayer, single_as_alpha=single_as_alpha)
-
-            for layer in topLayerList:
-                if getattr(obj.sx2layers[layer.name], 'visibility'):
-                    blendmode = getattr(obj.sx2layers[layer.name], 'blend_mode')
-                    layeralpha = getattr(obj.sx2layers[layer.name], 'opacity')
-                    topcolors = self.get_layer(obj, obj.sx2layers[layer.name], single_as_alpha=single_as_alpha)
+            for layer_name in top_layers:
+                if getattr(obj.sx2layers[layer_name], 'visibility'):
+                    blendmode = getattr(obj.sx2layers[layer_name], 'blend_mode')
+                    layeralpha = getattr(obj.sx2layers[layer_name], 'opacity')
+                    topcolors = self.get_layer(obj, obj.sx2layers[layer_name], single_as_alpha=single_as_alpha)
                     basecolors = tools.blend_values(topcolors, basecolors, blendmode, layeralpha)
 
             self.set_layer(obj, basecolors, resultLayer)
-        bpy.context.view_layer.objects.active = active
+        # bpy.context.view_layer.objects.active = active
 
 
     def merge_layers(self, objs, toplayer, baselayer, targetlayer):
@@ -9404,9 +9409,6 @@ class SXTOOLS2_OT_addmaterial(bpy.types.Operator):
     def execute(self, context):
         scene = context.scene.sx2
         materialName = self.materialName.replace(" ", "")
-        print(materialName)
-        print(context.scene.sx2materials.keys())
-        print(materialName in context.scene.sx2materials.keys())
         if materialName in context.scene.sx2materials.keys():
             message_box('Material Name Already in Use!')
         else:
@@ -9537,7 +9539,7 @@ class SXTOOLS2_OT_add_layer(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if (len(mesh_objs[0].data.color_attributes) - len([attribute for attribute in mesh_objs[0].data.color_attributes if '_var' in attribute.name])) < 14:
+        if mesh_objs and (len(mesh_objs[0].data.color_attributes) - len([attribute for attribute in mesh_objs[0].data.color_attributes if '_var' in attribute.name])) < 14:
             enabled = True
 
         return enabled
@@ -9570,7 +9572,7 @@ class SXTOOLS2_OT_del_layer(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if mesh_objs[0].sx2layers:
+        if mesh_objs and mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -9603,7 +9605,7 @@ class SXTOOLS2_OT_layer_up(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if mesh_objs[0].sx2layers:
+        if mesh_objs and mesh_objs[0].sx2layers:
             layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
             if (layer.index < (len(sxglobals.layer_stack_dict.get(mesh_objs[0].name, [])) - 1)):
                 enabled = True
@@ -9643,7 +9645,7 @@ class SXTOOLS2_OT_layer_down(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if mesh_objs[0].sx2layers:
+        if mesh_objs and mesh_objs[0].sx2layers:
             layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
             if (layer.index > 0):
                 enabled = True
@@ -9704,7 +9706,7 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if mesh_objs[0].sx2layers:
+        if mesh_objs and mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -9864,7 +9866,7 @@ class SXTOOLS2_OT_add_variant(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if mesh_objs[0].sx2layers:
+        if mesh_objs and mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -9894,10 +9896,10 @@ class SXTOOLS2_OT_del_variant(bpy.types.Operator):
         enabled = False
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
-        layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-
-        if (mesh_objs[0].sx2layers) and (layer.variant_count > 0):
-            enabled = True
+        if mesh_objs and mesh_objs[0].sx2layers:
+            layer = mesh_objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            if (layer.variant_count > 0):
+                enabled = True
 
         return enabled
 
@@ -9928,10 +9930,10 @@ class SXTOOLS2_OT_prev_variant(bpy.types.Operator):
         enabled = False
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
-        layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-
-        if mesh_objs[0].sx2layers and (layer.variant_count > 0) and (layer.variant_index > 0):
-            enabled = True
+        if mesh_objs and mesh_objs[0].sx2layers:
+            layer = mesh_objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            if (layer.variant_count > 0) and (layer.variant_index > 0):
+                enabled = True
 
         return enabled
 
@@ -9962,10 +9964,10 @@ class SXTOOLS2_OT_next_variant(bpy.types.Operator):
         enabled = False
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
-        layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-
-        if mesh_objs[0].sx2layers and (layer.variant_count > 0) and (layer.variant_index < layer.variant_count):
-            enabled = True
+        if mesh_objs and mesh_objs[0].sx2layers:
+            layer = mesh_objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            if (layer.variant_count > 0) and (layer.variant_index < layer.variant_count):
+                enabled = True
 
         return enabled
 
@@ -10043,7 +10045,7 @@ class SXTOOLS2_OT_mergedown(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if mesh_objs[0].sx2layers:
+        if mesh_objs and mesh_objs[0].sx2layers:
             layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
             if layer.layer_type == 'CMP':
                 enabled = False
@@ -10083,7 +10085,7 @@ class SXTOOLS2_OT_copylayer(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if mesh_objs[0].sx2layers:
+        if mesh_objs and mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -10113,7 +10115,7 @@ class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if mesh_objs[0].sx2layers:
+        if mesh_objs and mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -10154,7 +10156,7 @@ class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if mesh_objs[0].sx2layers:
+        if mesh_objs and mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -10165,21 +10167,31 @@ class SXTOOLS2_OT_clearlayers(bpy.types.Operator):
         if objs:
             utils.mode_manager(objs, set_mode=True, mode_id='clearlayers')
             if event.ctrl:
+                sxglobals.magic_in_progress = True
+                sxglobals.refresh_in_progress = True
+                for obj in objs:
+                    layers.add_layer([obj, ], name='Flattened', layer_type='COLOR')
+                    comp_layers = utils.find_color_layers(obj)
+                    if comp_layers:
+                        layers.blend_layers([obj, ], comp_layers, comp_layers[0], obj.sx2layers['Flattened'])
+                    else:
+                        message_box('No layers to flatten')
+
                 for obj in objs:
                     comp_layers = utils.find_color_layers(obj)
                     layer_attributes = [(layer.color_attribute, layer.name) for layer in comp_layers]
-
-                    layers.add_layer([obj, ], name='Flattened', layer_type='COLOR')
-                    layers.blend_layers([obj, ], comp_layers, comp_layers[0], obj.sx2layers['Flattened'])
-
-                    for attribute in layer_attributes:
-                        obj.data.attributes.remove(obj.data.attributes[attribute[0]])
-                        idx = utils.find_layer_index_by_name(obj, attribute[1])
+                    for color_attribute, layer_name in layer_attributes:
+                        idx = utils.find_layer_index_by_name(obj, layer_name)
                         obj.sx2layers.remove(idx)
+                    for color_attribute, layer_name in layer_attributes:
+                        obj.data.attributes.remove(obj.data.attributes[color_attribute])
 
                     utils.sort_stack_indices(obj)
 
-                objs[0].sx2.selectedlayer = len(objs[0].sx2layers) - 1
+                sxglobals.magic_in_progress = False
+                sxglobals.refresh_in_progress = False
+
+                objs[0].sx2.selectedlayer = utils.find_layer_index_by_name(objs[0], 'Flattened')
                 setup.update_sx2material(context)
             else:
                 if event.shift:
@@ -10207,7 +10219,7 @@ class SXTOOLS2_OT_selmask(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if mesh_objs[0].sx2layers:
+        if mesh_objs and mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -10675,7 +10687,7 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if mesh_objs[0].sx2layers:
+        if mesh_objs and mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
@@ -11548,4 +11560,3 @@ if __name__ == '__main__':
 # BUG: Check decimation angle changes with hull and emission mesh generation
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
-# FEAT: Delete variants when source layer is deleted
