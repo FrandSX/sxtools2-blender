@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 0, 3),
+    'version': (2, 0, 5),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1983,7 +1983,7 @@ class SXTOOLS2_layers(object):
         if clear:
             colors = generate.color_list(obj, layer.default_color)
         else:
-            colors = layers.get_colors(obj, layer.name)
+            colors = layers.get_colors(obj, layer.color_attribute)
 
         layers.set_colors(obj, name, colors)
         layer.variant_index = layer.variant_count
@@ -2011,7 +2011,7 @@ class SXTOOLS2_layers(object):
         if index == 0:
             layer.color_attribute = layer.color_attribute.split('_var')[0]
         else:
-            layer.color_attribute = layer.name + '_var' + str(index)
+            layer.color_attribute = layer.color_attribute + '_var' + str(index)
 
 
     def sort_variant_layers(self, obj, layer):
@@ -9377,10 +9377,8 @@ class SXTOOLS2_OT_addmaterial(bpy.types.Operator):
         print(context.scene.sx2materials.keys())
         print(materialName in context.scene.sx2materials.keys())
         if materialName in context.scene.sx2materials.keys():
-            print('Bloop')
             message_box('Material Name Already in Use!')
         else:
-            print('Bleep')
             for category_dict in sxglobals.material_list:
                 for category in category_dict.keys():
                     if category.casefold() == context.scene.sx2.materialcategories.casefold():
@@ -9721,6 +9719,11 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
         data_types = {'FLOAT': 'FLOAT_COLOR', 'BYTE': 'BYTE_COLOR'}
         alpha_mats = ['OCC', 'MET', 'RGH', 'TRN']
         objs = mesh_selection_validator(self, context)
+
+        if (objs[0].sx2layers[objs[0].sx2.selectedlayer].variants != self.layer_variants):
+            objs[0].sx2layers[objs[0].sx2.selectedlayer].variants = self.layer_variants
+            return {'FINISHED'}
+
         for obj in objs:
             layer = obj.sx2layers[obj.sx2.selectedlayer]
 
@@ -9812,8 +9815,6 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
 
                 utils.sort_stack_indices(obj)
 
-            layer.variants = self.layer_variants
-
         setup.update_sx2material(context)
 
         return {'FINISHED'}
@@ -9832,7 +9833,7 @@ class SXTOOLS2_OT_add_variant(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if (len(mesh_objs[0].data.color_attributes) - len([attribute for attribute in mesh_objs[0].data.color_attributes if '_var' in attribute.name])) < 14:
+        if mesh_objs[0].sx2layers:
             enabled = True
 
         return enabled
