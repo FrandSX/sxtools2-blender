@@ -8712,10 +8712,13 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
                 row_item.prop(item, 'paletted', text='', icon=paletted_icon[item.paletted])
                 row_item.prop(item, 'palette_index', text='')
             elif (item.variants):
-                row_item.operator('sx2.prev_variant', text='', icon='TRIA_LEFT')
-                row_item.operator('sx2.next_variant', text='', icon='TRIA_RIGHT')
-                row_item.operator('sx2.add_variant', text='', icon='ADD')
-                row_item.operator('sx2.del_variant', text='', icon='REMOVE')
+                if (utils.find_layer_index_by_name(objs[0], item.name) == objs[0].sx2.selectedlayer):
+                    row_item.operator('sx2.prev_variant', text='', icon='TRIA_LEFT')
+                    row_item.operator('sx2.next_variant', text='', icon='TRIA_RIGHT')
+                    row_item.operator('sx2.add_variant', text='', icon='ADD')
+                    row_item.operator('sx2.del_variant', text='', icon='REMOVE')
+                else:
+                    row_item.label(text='', icon='DOT')
                 # row_item.prop(item, 'variant_index', text='')
 
         elif self.layout_type in {'GRID'}:
