@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 1, 7),
+    'version': (2, 2, 0),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -8767,20 +8767,34 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
             else:
                 row_item.prop(item, 'locked', text='', icon=lock_icon[item.locked])
 
-            row_item.label(text='   ' + item.name + '   ')
-
             if ((item.layer_type == 'COLOR') or (item.layer_type == 'EMI') or (item.layer_type == 'SSS')) and (scene.toolmode == 'PAL'):
-                row_item.prop(item, 'paletted', text='', icon=paletted_icon[item.paletted])
-                row_item.prop(item, 'palette_index', text='')
-            elif (item.variants):
+                row_split = row_item.split(factor=0.6)
+                row_split.label(text='   ' + item.name + '   ')
+
+                row_palette = row_split.row(align=True)
+                row_palette.prop(item, 'paletted', text='', icon=paletted_icon[item.paletted])
                 if (utils.find_layer_index_by_name(objs[0], item.name) == objs[0].sx2.selectedlayer):
-                    row_item.operator('sx2.prev_variant', text='', icon='TRIA_LEFT')
-                    row_item.operator('sx2.next_variant', text='', icon='TRIA_RIGHT')
-                    row_item.operator('sx2.add_variant', text='', icon='ADD')
-                    row_item.operator('sx2.del_variant', text='', icon='REMOVE')
+                    row_palette.operator('sx2.prev_palette', text='', icon='TRIA_LEFT')
+                    row_palette.prop(scene, 'newpalette'+str(item.palette_index), text='')  # text=str(item.palette_index))
+                    row_palette.operator('sx2.next_palette', text='', icon='TRIA_RIGHT')
+                    # row_item.prop(item, 'palette_index', text='')
                 else:
-                    row_item.label(text='', icon='DOT')
-                # row_item.prop(item, 'variant_index', text='')
+                    row_palette.label(text='', icon='DOT')
+                    row_palette.prop(scene, 'newpalette'+str(item.palette_index), text='')  # text=str(item.palette_index))
+                    row_palette.label(text='', icon='DOT')
+                    # row_item.prop(item, 'palette_index', text='')
+
+            else:
+                row_item.label(text='   ' + item.name + '   ')
+                if (item.variants):
+                    if (utils.find_layer_index_by_name(objs[0], item.name) == objs[0].sx2.selectedlayer):
+                        row_item.operator('sx2.prev_variant', text='', icon='TRIA_LEFT')
+                        row_item.operator('sx2.next_variant', text='', icon='TRIA_RIGHT')
+                        row_item.operator('sx2.add_variant', text='', icon='ADD')
+                        row_item.operator('sx2.del_variant', text='', icon='REMOVE')
+                    else:
+                        row_item.label(text='', icon='DOT')
+                    # row_item.prop(item, 'variant_index', text='')
 
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
@@ -10010,6 +10024,72 @@ class SXTOOLS2_OT_next_variant(bpy.types.Operator):
             setup.update_sx2material(context)
             utils.mode_manager(objs, set_mode=False, mode_id='next_variant')
             refresh_swatches(self, context)
+
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_prev_palette(bpy.types.Operator):
+    bl_idname = 'sx2.prev_palette'
+    bl_label = 'Previous Palette Index'
+    bl_description = 'Select previous palette index'
+    bl_options = {'UNDO'}
+
+
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        objs = context.view_layer.objects.selected
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
+        if mesh_objs and mesh_objs[0].sx2layers:
+            layer = mesh_objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            if (layer.palette_index > 0) and (layer.palette_index <= 4):
+                enabled = True
+
+        return enabled
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if objs:
+            utils.mode_manager(objs, set_mode=True, mode_id='prev_variant')
+            layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            layer.palette_index -= 1
+            # setup.update_sx2material(context)
+            utils.mode_manager(objs, set_mode=False, mode_id='prev_variant')
+            # refresh_swatches(self, context)
+
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_next_palette(bpy.types.Operator):
+    bl_idname = 'sx2.next_palette'
+    bl_label = 'Next Palette Index'
+    bl_description = 'Select next palette index'
+    bl_options = {'UNDO'}
+
+
+    @classmethod
+    def poll(cls, context):
+        enabled = False
+        objs = context.view_layer.objects.selected
+        mesh_objs = [obj for obj in objs if obj.type == 'MESH']
+        if mesh_objs and mesh_objs[0].sx2layers:
+            layer = mesh_objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            if (layer.palette_index >= 0) and (layer.variant_index < 4):
+                enabled = True
+
+        return enabled
+
+
+    def invoke(self, context, event):
+        objs = mesh_selection_validator(self, context)
+        if objs:
+            utils.mode_manager(objs, set_mode=True, mode_id='next_palette')
+            layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
+            layer.palette_index += 1
+            # setup.update_sx2material(context)
+            utils.mode_manager(objs, set_mode=False, mode_id='next_palette')
+            # refresh_swatches(self, context)
 
         return {'FINISHED'}
 
@@ -11454,6 +11534,8 @@ core_classes = (
     SXTOOLS2_OT_del_variant,
     SXTOOLS2_OT_prev_variant,
     SXTOOLS2_OT_next_variant,
+    SXTOOLS2_OT_prev_palette,
+    SXTOOLS2_OT_next_palette,
     SXTOOLS2_OT_mergeup,
     SXTOOLS2_OT_mergedown,
     SXTOOLS2_OT_copylayer,
