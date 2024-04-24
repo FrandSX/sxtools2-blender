@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 1, 2),
+    'version': (2, 1, 7),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3416,7 +3416,7 @@ class SXTOOLS2_export(object):
                         colliders.objects.link(new_obj)
 
                         # New meshes local to origin
-                        # Proceed to smart separate and move to correct location
+                        # Proceed to smart separate manually and move to correct location
                         new_obj.sx2.smartseparate = False
                         new_obj.location = color_ref_obj[color][0]
                         new_obj.parent = group
@@ -3524,6 +3524,7 @@ class SXTOOLS2_export(object):
                 separated_objs = []
                 for new_obj in new_cid_objs:
                     bpy.ops.object.select_all(action='DESELECT')
+                    view_layer.objects.active = new_obj
                     sep_objs = self.smart_separate([new_obj, ], override=True, parent=False)
                     
                     if new_obj.sx2.mergefragments:
@@ -3567,10 +3568,19 @@ class SXTOOLS2_export(object):
                             if len(bucket) > 1:
                                 bpy.ops.object.select_all(action='DESELECT')
                                 view_layer.objects.active = bucket[0]
+                                cleanup = []
                                 for bucket_object in bucket:
+                                    cleanup.append(bucket_object.data)
                                     bucket_object.select_set(True)
+
+                                for i, bucket_object in enumerate(bucket, start=1):
+                                    sep_objs.remove(bucket_object)
+
                                 # print('Bucket:', bucket)
                                 bpy.ops.object.join()
+
+                                for i, cleanup_mesh in enumerate(cleanup, start=1):
+                                    bpy.data.meshes.remove(cleanup_mesh)
 
                     sep_objs = [sep_obj for sep_obj in sep_objs if sep_obj.name in view_layer.objects]
                     if sep_objs:
@@ -3593,6 +3603,15 @@ class SXTOOLS2_export(object):
                 for new_obj in new_objs:
                     shrink_colliders(new_obj)
 
+                    if new_obj.name not in bpy.context.scene.collection.objects:
+                        bpy.context.scene.collection.objects.link(new_obj)
+
+                    if new_obj.name not in bpy.context.view_layer.objects:
+                        bpy.context.view_layer.objects.link(new_obj)
+
+                    if new_obj.name not in colliders.objects:
+                        colliders.objects.link(new_obj)
+
                     # Clear sx2layers
                     new_obj.sx2layers.clear()
                     new_obj.select_set(False)
@@ -3600,7 +3619,7 @@ class SXTOOLS2_export(object):
                 for obj in org_objs:
                     obj.select_set(True)
 
-                bpy.context.view_layer.objects.active = active_obj
+                view_layer.objects.active = active_obj
                 if not bpy.app.background:
                     setup.update_sx2material(bpy.context)
 
@@ -3751,16 +3770,24 @@ class SXTOOLS2_export(object):
     def remove_exports(self):
         if 'ExportObjects' in bpy.data.collections:
             export_objects = bpy.data.collections['ExportObjects'].objects
+            print('Export Objects:', export_objects.keys())
             for obj in export_objects:
+                mesh = obj.data
                 bpy.data.objects.remove(obj, do_unlink=True)
+                bpy.data.meshes.remove(mesh)
 
         if 'SXColliders' in bpy.data.collections:
             collider_objects = bpy.data.collections['SXColliders'].objects
+            print('Collider Objects:', collider_objects.keys())
             for obj in collider_objects:
+                mesh = obj.data
                 bpy.data.objects.remove(obj, do_unlink=True)
+                bpy.data.meshes.remove(mesh)
 
         if 'SourceObjects' in bpy.data.collections:
             source_objects = bpy.data.collections['SourceObjects'].objects
+            print('Source Objects:', source_objects.keys())
+            self.set_pivots(source_objects)
             tags = sxglobals.keywords
             for obj in source_objects:
                 if obj.type == 'MESH':
@@ -4089,6 +4116,7 @@ class SXTOOLS2_export(object):
     def revert_objects(self, objs):
         sxglobals.magic_in_progress = True
         modifiers.remove_modifiers(objs)
+        prefs = bpy.context.preferences.addons['sxtools2'].preferences
 
         for obj in objs:
             if obj.sx2.category != 'DEFAULT':
@@ -7108,7 +7136,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
 
     mergefragments: bpy.props.BoolProperty(
         name='Merge fragments',
-        description='Merge hull fragments by pivot. Useful for CIDs that are not continuous.',
+        description='Merge hull fragments by pivot. Useful for CIDs that are not continuous.\n(Meaning faces with same collider color that are separate islands.)',
         default=True,
         update=lambda self, context: update_obj_props(self, context, 'mergefragments'))
 
@@ -8827,8 +8855,8 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
         default='SMOOTH')
 
     removelods: bpy.props.BoolProperty(
-        name='Remove LOD Meshes After Export',
-        description='Remove LOD meshes from the scene after exporting',
+        name='Remove Generated Meshes After Export',
+        description='Remove generated meshes from the scene after exporting',
         default=True)
 
     lodoffset: bpy.props.FloatProperty(
@@ -8883,7 +8911,7 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
         layout_split5.label(text='LOD Mesh Preview Z-Offset')
         layout_split5.prop(self, 'lodoffset', text='')
         layout_split6 = layout.split()
-        layout_split6.label(text='Clear LOD Meshes After Export')
+        layout_split6.label(text='Clear Generated Meshes After Export:')
         layout_split6.prop(self, 'removelods', text='')
         layout_split7 = layout.split()
         layout_split7.label(text='Reverse Smart Mirror Naming:')
@@ -8891,7 +8919,7 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
         layout_split8.prop(self, 'flipsmartx', text='X-Axis')
         layout_split8.prop(self, 'flipsmarty', text='Y-Axis')
         layout_split9 = layout.split()
-        layout_split9.label(text='Use Absolute Paths')
+        layout_split9.label(text='Use Absolute Paths:')
         layout_split9.prop(self, 'absolutepaths', text='')
         layout_split10 = layout.split()
         layout_split10.label(text='Library Folder:')
@@ -10562,8 +10590,8 @@ class SXTOOLS2_OT_setpivots(bpy.types.Operator):
 
 class SXTOOLS2_OT_removeexports(bpy.types.Operator):
     bl_idname = 'sx2.removeexports'
-    bl_label = 'Remove LODs and Separated Parts'
-    bl_description = 'Deletes generated LOD meshes\nand smart separations'
+    bl_label = 'Remove LODs, collision meshes, and separated parts'
+    bl_description = 'Deletes generated export meshes'
     bl_options = {'UNDO'}
 
 
