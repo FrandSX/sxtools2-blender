@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 3, 5),
+    'version': (2, 5, 0),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2099,14 +2099,15 @@ class SXTOOLS2_layers(object):
             self.set_colors(obj, 'Alpha Materials', target_values)
 
 
-    def get_layer_mask(self, obj, sourcelayer):
+    def get_layer_mask(self, obj, sourcelayer, channel='A'):
         rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP', 'CID']
         alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
+        channel_targets = {'R': 0, 'G': 1, 'B': 2, 'A': 3}
         layer_type = sourcelayer.layer_type
 
         if layer_type in rgba_targets:
             colors = self.get_colors(obj, sourcelayer.color_attribute)
-            values = colors[3::4]
+            values = colors[channel_targets[channel]::4]
         elif layer_type in alpha_targets:
             colors = self.get_colors(obj, sourcelayer.color_attribute)
             values = colors[alpha_targets[layer_type]::4]
@@ -2140,6 +2141,17 @@ class SXTOOLS2_layers(object):
         target_colors = obj.data.color_attributes[target].data
         target_colors.foreach_set('color', colors)
         obj.data.update()  
+
+
+    def set_channel(self, obj, target, values, channel):
+        channel_dict = {'R': 0, 'G': 1, 'B': 2, 'A': 3}
+        source_index = channel_dict[channel]
+        colors = self.get_colors(obj, target)
+        for i, value in enumerate(values):
+            colors[i*4+source_index] = value
+        target_colors = obj.data.color_attributes[target].data
+        target_colors.foreach_set('color', colors)
+        obj.data.update() 
 
 
     def get_luminances(self, obj, sourcelayer=None, colors=None, as_rgba=False, as_alpha=False):
@@ -2418,7 +2430,7 @@ class SXTOOLS2_tools(object):
 
 
     # NOTE: Make sure color parameter is always provided in linear color space!
-    def apply_tool(self, objs, targetlayer, masklayer=None, invertmask=False, color=None, apply_to_alpha=False):
+    def apply_tool(self, objs, targetlayer, masklayer=None, invertmask=False, color=None, channel=None):
         if sxglobals.benchmark_tool:
             then = time.perf_counter()
 
@@ -2469,14 +2481,15 @@ class SXTOOLS2_tools(object):
                     bpy.context.tool_settings.mesh_select_mode[2] = False
                     mask, empty = generate.get_selection_mask(obj)
 
-                if apply_to_alpha:
+                if channel:
                     grayscales = convert.colors_to_values(colors, as_rgba=True)
-                    values = layers.get_layer_mask(obj, targetlayer)[0]
+                    values = layers.get_layer_mask(obj, targetlayer, channel)[0]
                     target_grayscales = convert.values_to_colors(values)
+
                     target_grayscales = self.blend_values(grayscales, target_grayscales, blendmode, blendvalue, selectionmask=mask)
 
                     target_values = convert.colors_to_values(target_grayscales)
-                    layers.set_alphas(obj, targetlayer.color_attribute, target_values)
+                    layers.set_channel(obj, targetlayer.color_attribute, target_values, channel)
                 else:
                     target_colors = layers.get_layer(obj, targetlayer)
                     colors = self.blend_values(colors, target_colors, blendmode, blendvalue, selectionmask=mask)
@@ -2592,7 +2605,7 @@ class SXTOOLS2_tools(object):
         for obj in objs:
             if objs[0].sx2.shadingmode == 'FULL':
                 colors = layers.get_layer(obj, obj.sx2layers['Composite'])
-            elif objs[0].sx2.shadingmode == 'ALPHA':
+            elif objs[0].sx2.shadingmode == 'CHANNEL':
                 values = layers.get_layer_mask(obj, obj.sx2layers[obj.sx2.selectedlayer])[0]
                 colors = convert.values_to_colors(values)
             else:
@@ -5776,7 +5789,7 @@ class SXTOOLS2_setup(object):
                         if prev_alpha is not None:
                             connect_nodes(prev_alpha, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Alpha'])
 
-                elif (obj.sx2.shadingmode == 'DEBUG') or (obj.sx2.shadingmode == 'ALPHA'):
+                elif (obj.sx2.shadingmode == 'DEBUG') or (obj.sx2.shadingmode == 'CHANNEL'):
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs[12].default_value = 0.0
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs[27].default_value = 1
                     
@@ -5825,7 +5838,8 @@ class SXTOOLS2_setup(object):
                         opacity_and_alpha.location = (-800, -400)
 
                         connect_nodes(layer_opacity.outputs[2], opacity_and_alpha.inputs[0])
-                        connect_nodes(base_color.outputs['Alpha'], opacity_and_alpha.inputs[1])
+                        if obj.sx2.shadingmode == 'DEBUG':
+                            connect_nodes(base_color.outputs['Alpha'], opacity_and_alpha.inputs[1])
                         connect_nodes(opacity_and_alpha.outputs[0], debug_blend.inputs[0])
 
                     else:
@@ -5835,7 +5849,19 @@ class SXTOOLS2_setup(object):
                         if obj.sx2.shadingmode == 'DEBUG':
                             output = base_color.outputs['Color']
                         else:
-                            output = base_color.outputs['Alpha'] 
+                            rgb_split = sxmaterial.node_tree.nodes.new(type='ShaderNodeSeparateXYZ')
+                            rgb_split.name = 'RBG Split'
+                            rgb_split.label = 'RGB Split'
+                            rgb_split.location = (-800, 150)
+                            connect_nodes(base_color.outputs['Color'], rgb_split.inputs['Vector'])
+                            if obj.sx2.debugmode == 'R':
+                                output = rgb_split.outputs['X']
+                            elif obj.sx2.debugmode == 'G':
+                                output = rgb_split.outputs['Y']
+                            elif obj.sx2.debugmode == 'B':
+                                output = rgb_split.outputs['Z']
+                            else:
+                                output = base_color.outputs['Alpha'] 
                     elif layer.layer_type == 'OCC':
                         output = source_alphas.outputs['X']
                     elif layer.layer_type == 'MET':
@@ -6463,7 +6489,7 @@ def update_fillcolor(self, context):
     layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
 
     gray_types = ['MET', 'RGH', 'OCC', 'TRN']
-    if (layer.layer_type in gray_types) or (objs[0].sx2.shadingmode == 'ALPHA'):
+    if (layer.layer_type in gray_types) or (objs[0].sx2.shadingmode == 'CHANNEL'):
         color = scene.fillcolor[:]
         hsl = convert.rgb_to_hsl(color)
         hsl = [0.0, 0.0, hsl[2]]
@@ -6525,7 +6551,7 @@ def update_obj_props(self, context, prop):
                 if getattr(obj.sx2, prop) != value:
                     setattr(obj.sx2, prop, value)
 
-        mat_upd_props = ['shadingmode', 'backfaceculling', 'mat_specular', 'mat_anisotropic', 'mat_clearcoat']
+        mat_upd_props = ['shadingmode', 'debugmode', 'backfaceculling', 'mat_specular', 'mat_anisotropic', 'mat_clearcoat']
         if prop in mat_upd_props:
             setup.update_sx2material(context)
             refresh_swatches(self, context)
@@ -6738,9 +6764,20 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
             ('FULL', 'Full', ''),
             ('XRAY', 'X-Ray', ''),
             ('DEBUG', 'Debug', ''),
-            ('ALPHA', 'Alpha', '')],
+            ('CHANNEL', 'Channel', '')],
         default='FULL',
         update=lambda self, context: update_obj_props(self, context, 'shadingmode'))
+
+    debugmode: bpy.props.EnumProperty(
+        name='Debug Isolation Mode',
+        description='View R/G/B/A channels in isolation',
+        items=[
+            ('R', 'Red', ''),
+            ('G', 'Green', ''),
+            ('B', 'Blue', ''),
+            ('A', 'Alpha', '')],
+        default='A',
+        update=lambda self, context: update_obj_props(self, context, 'debugmode'))
 
     palettedshading: bpy.props.FloatProperty(
         name='Paletted Shading',
@@ -8108,23 +8145,26 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         saturation_text = 'Selection Saturation'
                         lightness_text = 'Selection Lightness'
 
-                    col_hsl = layer_panel.column(align=True)
-                    row_hue = col_hsl.row(align=True)
-                    row_hue.prop(sx2, 'huevalue', slider=True, text=hue_text)
-                    row_sat = col_hsl.row(align=True)
-                    row_sat.prop(sx2, 'saturationvalue', slider=True, text=saturation_text)
-                    row_lightness = col_hsl.row(align=True)
-                    row_lightness.prop(sx2, 'lightnessvalue', slider=True, text=lightness_text)
+                    if (obj.sx2.shadingmode != 'CHANNEL'):
+                        col_hsl = layer_panel.column(align=True)
+                        row_hue = col_hsl.row(align=True)
+                        row_hue.prop(sx2, 'huevalue', slider=True, text=hue_text)
+                        row_sat = col_hsl.row(align=True)
+                        row_sat.prop(sx2, 'saturationvalue', slider=True, text=saturation_text)
+                        row_lightness = col_hsl.row(align=True)
+                        row_lightness.prop(sx2, 'lightnessvalue', slider=True, text=lightness_text)
 
                     if ((layer == utils.find_color_layers(obj, 0)) and (layer.opacity < 1.0)) or (obj.sx2.shadingmode == 'XRAY'):
                         col_culling = layer_panel.column(align=True)
                         col_culling.prop(sx2, 'backfaceculling', toggle=True)
 
+                    if (obj.sx2.shadingmode == 'CHANNEL'):
+                        row_isolation = layer_panel.row(align=True)
+                        row_isolation.prop(sx2, 'debugmode', expand=True)
+
                     if layer.layer_type in gray_channels:
                         row_hue.enabled = False
                         row_sat.enabled = False
-
-                    col_hsl.enabled = not (obj.sx2.shadingmode == 'ALPHA')
 
                 row_palette = layout.row(align=True)
                 for i in range(8):
@@ -8157,7 +8197,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     paste_text = 'Paste'
                 elif scene.ctrl:
                     clr_text = 'Flatten'
-                    if obj.sx2.shadingmode == 'ALPHA':
+                    if obj.sx2.shadingmode == 'CHANNEL':
                         sel_text = 'Select Value'
                     else:
                         sel_text = 'Select Color'
@@ -8182,8 +8222,9 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     icon_only=True, emboss=False)
                 row_fill.prop(scene, 'toolmode', text='')
                 if scene.toolmode != 'PAL' and scene.toolmode != 'MAT':
-                    if (obj.sx2.shadingmode == 'ALPHA') and (layer.layer_type not in gray_channels):
-                        apply_text = 'Apply to Alpha'
+                    if (obj.sx2.shadingmode == 'CHANNEL') and (layer.layer_type not in gray_channels):
+                        channels = {'R': 'Red', 'G': 'Green', 'B': 'Blue', 'A': 'Alpha'}
+                        apply_text = 'Apply to ' + channels[obj.sx2.debugmode]
                     else:
                         apply_text = 'Apply'
                     row_fill.operator('sx2.applytool', text=apply_text)
@@ -8191,7 +8232,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 # Color Tool --------------------------------------------------------
                 if scene.toolmode == 'COL':
                     split1_fill = box_fill.split(factor=0.33)
-                    if ((layer is None) or (layer.layer_type == 'COLOR') or (layer.layer_type == 'EMI') or (layer.layer_type == 'SSS')) and (obj.sx2.shadingmode != 'ALPHA'):
+                    if ((layer is None) or (layer.layer_type == 'COLOR') or (layer.layer_type == 'EMI') or (layer.layer_type == 'SSS')) and (obj.sx2.shadingmode != 'CHANNEL'):
                         fill_text = 'Fill Color'
                     else:
                         fill_text = 'Fill Value'
@@ -9569,7 +9610,7 @@ class SXTOOLS2_OT_applytool(bpy.types.Operator):
                 setup.update_sx2material(context)
 
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
-            if objs[0].sx2.shadingmode != 'ALPHA':
+            if objs[0].sx2.shadingmode != 'CHANNEL':
                 fillcolor = convert.srgb_to_linear(context.scene.sx2.fillcolor)
             else:
                 fillcolor = context.scene.sx2.fillcolor
@@ -9577,13 +9618,16 @@ class SXTOOLS2_OT_applytool(bpy.types.Operator):
             if objs[0].mode == 'EDIT':
                 context.scene.sx2.rampalpha = True
 
-            apply_alpha = (objs[0].sx2.shadingmode == 'ALPHA')
+            if (objs[0].sx2.shadingmode == 'CHANNEL'):
+                apply_channel = objs[0].sx2.debugmode
+            else:
+                apply_channel = None
 
             if context.scene.sx2.toolmode == 'COL':
-                tools.apply_tool(objs, layer, color=fillcolor, apply_to_alpha=apply_alpha)
+                tools.apply_tool(objs, layer, color=fillcolor, channel=apply_channel)
                 tools.update_recent_colors(fillcolor)
             else:
-                tools.apply_tool(objs, layer, apply_to_alpha=apply_alpha)
+                tools.apply_tool(objs, layer, channel=apply_channel)
 
             refresh_swatches(self, context)
         return {'FINISHED'}
