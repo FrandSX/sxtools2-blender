@@ -7048,7 +7048,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
         precision=2,
-        default=0.0,
+        default=1.0,
         update=lambda self, context: update_obj_props(self, context, 'static_roughness'))
 
     materialoverride: bpy.props.BoolProperty(
