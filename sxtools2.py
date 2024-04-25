@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 2, 0),
+    'version': (2, 3, 1),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2572,6 +2572,9 @@ class SXTOOLS2_tools(object):
     def select_color_mask(self, objs, color, invertmask=False):
         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
         utils.clear_component_selection(objs)
+
+        if objs[0].sx2.shadingmode == 'XRAY':
+            objs[0].sx2.shadingmode = 'FULL'
 
         if objs[0].sx2.shadingmode == 'FULL':
             export.composite_color_layers(objs)
@@ -5481,7 +5484,7 @@ class SXTOOLS2_setup(object):
                 sxmaterial.node_tree.nodes['Principled BSDF'].location = (1000, 0)
                 sxmaterial.node_tree.nodes['Material Output'].location = (1300, 0)
 
-                if obj.sx2.shadingmode == 'FULL':
+                if (obj.sx2.shadingmode == 'FULL') or (obj.sx2.shadingmode == 'XRAY'):
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Anisotropic'].default_value = obj.sx2.mat_anisotropic
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs[18].default_value = obj.sx2.mat_clearcoat
                     prev_color = None
@@ -5522,8 +5525,11 @@ class SXTOOLS2_setup(object):
                         connect_nodes(input_vector.outputs['Vector'], input_splitter.inputs['Vector'])
 
                     # Set shader blend method
-                    if (len(color_layers) > 0) and (obj.sx2layers[color_layers[0][0]].opacity < 1.0):
-                        sxmaterial.blend_method = 'BLEND'
+                    if ((len(color_layers) > 0) and (obj.sx2layers[color_layers[0][0]].opacity < 1.0)) or (obj.sx2.shadingmode == 'XRAY'):
+                        if obj.sx2.backfaceculling:
+                            sxmaterial.blend_method = 'BLEND'
+                        else:
+                            sxmaterial.blend_method = 'HASHED'
                         sxmaterial.use_backface_culling = obj.sx2.backfaceculling
                         sxmaterial.show_transparent_back = not obj.sx2.backfaceculling
                     else:
@@ -5564,7 +5570,7 @@ class SXTOOLS2_setup(object):
                             opacity_and_alpha.label = 'Opacity ' + str(i)
                             opacity_and_alpha.operation = 'MULTIPLY'
                             opacity_and_alpha.use_clamp = True
-                            opacity_and_alpha.inputs[0].default_value = 1
+                            opacity_and_alpha.inputs[0].default_value = 0
                             opacity_and_alpha.location = (-800, i*400+400)
 
                             layer_blend = sxmaterial.node_tree.nodes.new(type='ShaderNodeMixRGB')
@@ -5754,8 +5760,11 @@ class SXTOOLS2_setup(object):
                     if prev_color is not None:
                         connect_nodes(prev_color,  sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color'])
 
-                    if prev_alpha is not None:
-                        connect_nodes(prev_alpha, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Alpha'])
+                    if obj.sx2.shadingmode == 'XRAY':
+                        sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Alpha'].default_value = 0.5
+                    else:
+                        if prev_alpha is not None:
+                            connect_nodes(prev_alpha, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Alpha'])
 
                 elif (obj.sx2.shadingmode == 'DEBUG') or (obj.sx2.shadingmode == 'ALPHA'):
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs[12].default_value = 0.0
@@ -6060,7 +6069,7 @@ def update_paletted_layers(self, context, index):
     for obj in objs:
         # If update_paletted_layers is called during object category change, materials may not exist
         mat_name = utils.find_sx2material_name(obj)
-        if (mat_name is not None) and (obj.sx2.shadingmode == 'FULL'):
+        if (mat_name is not None) and ((obj.sx2.shadingmode == 'FULL') or (obj.sx2.shadingmode == 'XRAY')):
             for layer in obj.sx2layers:
                 if layer.paletted:
                     color = getattr(scene, 'newpalette'+str(layer.palette_index))
@@ -6140,7 +6149,7 @@ def update_selected_layer(self, context):
                     if space.shading.type not in shading_types:
                         space.shading.type = 'MATERIAL'
 
-        if objs[0].sx2.shadingmode != 'FULL':
+        if not ((objs[0].sx2.shadingmode == 'FULL') or (objs[0].sx2.shadingmode == 'XRAY')):
             setup.update_sx2material(context)
 
         if 'SXToolMaterial' not in bpy.data.materials:
@@ -6717,6 +6726,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         description='Full: Composited shading with all channels enabled\nDebug: Display selected layer only, with alpha as black\nAlpha: Display layer alpha in grayscale',
         items=[
             ('FULL', 'Full', ''),
+            ('XRAY', 'X-Ray', ''),
             ('DEBUG', 'Debug', ''),
             ('ALPHA', 'Alpha', '')],
         default='FULL',
@@ -8075,7 +8085,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 layer_header, layer_panel = layout.panel_prop(scene, 'expandlayer')
                 split_basics = layer_header.split(factor=0.3)
                 split_basics.prop(layer, 'blend_mode', text='')
-                split_basics.prop(layer, 'opacity', slider=True, text='Layer Opacity')                
+                split_basics.prop(layer, 'opacity', slider=True, text='Layer Opacity')
+                split_basics.enabled = bool(obj.sx2.shadingmode != 'XRAY')
 
                 if layer_panel:
                     if obj.mode == 'OBJECT':
@@ -8095,7 +8106,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     row_lightness = col_hsl.row(align=True)
                     row_lightness.prop(sx2, 'lightnessvalue', slider=True, text=lightness_text)
 
-                    if (layer == utils.find_color_layers(obj, 0)) and (layer.opacity < 1.0):
+                    if ((layer == utils.find_color_layers(obj, 0)) and (layer.opacity < 1.0)) or (obj.sx2.shadingmode == 'XRAY'):
                         col_culling = layer_panel.column(align=True)
                         col_culling.prop(sx2, 'backfaceculling', toggle=True)
 
@@ -8756,7 +8767,7 @@ class SXTOOLS2_UL_layerlist(bpy.types.UIList):
             row_item = layout.row(align=True)
 
             # Layer list element 1: Visibility toggle
-            if objs[0].sx2.shadingmode == 'FULL':
+            if (objs[0].sx2.shadingmode == 'FULL') or (objs[0].sx2.shadingmode == 'XRAY'):
                 row_item.prop(item, 'visibility', text='', icon=hide_icon[item.visibility])
             else:
                 row_item.label(icon=hide_icon[(utils.find_layer_index_by_name(objs[0], item.name) == objs[0].sx2.selectedlayer)])
