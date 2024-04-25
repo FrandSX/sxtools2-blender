@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 3, 1),
+    'version': (2, 3, 3),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1912,9 +1912,21 @@ class SXTOOLS2_layers(object):
                 layercount = max([obj.sx2.layercount for obj in objs])
 
             for obj in objs:
-                if name and name not in obj.sx2layers.keys():
+                if name and name in obj.sx2layers.keys():
+                    print(f'SX Tools Error: {obj.name} layer {name} already exists')
+                    break
+                else:
+                    if name and name not in obj.sx2layers.keys():
+                        layer_name = name
+                    else:
+                        index = 1
+                        layer_name = 'Layer ' + str(layercount)
+                        while layer_name in obj.sx2layers.keys():
+                            layer_name = 'Layer ' + str(layercount + index)
+                            index += 1
+
                     layer = obj.sx2layers.add()
-                    layer.name = 'Layer ' + str(layercount) if name is None else name
+                    layer.name = layer_name
                     if layer_type not in alpha_mats:
                         layer.color_attribute = color_attribute if color_attribute is not None else layer.name
                     else:
@@ -1940,8 +1952,6 @@ class SXTOOLS2_layers(object):
                     layer_dict[obj] = layer
                     obj.sx2.layercount = layercount + 1
                     # obj.sx2.selectedlayer = utils.find_layer_index_by_name(obj, layer.name)
-                else:
-                    print(f'SX Tools Error: {obj.name} layer {name} already exists')
 
             # selectedlayer needs to point to an existing layer on all objs
             # NOTE: Potential bug here! Objects with less layers?
