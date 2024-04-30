@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 5, 0),
+    'version': (2, 5, 1),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1015,7 +1015,7 @@ class SXTOOLS2_convert(object):
         if invert:
             values = self.invert_values(values)
 
-        count = len(values) 
+        count = len(values)
         colors = [None] * count * 4
         for i in range(count):
             if as_alpha:
@@ -1304,7 +1304,7 @@ class SXTOOLS2_generate(object):
     def ground_plane(self, size, pos):
         size *= 0.5
         vert_list = [
-            (pos[0]-size,pos[1]-size, pos[2]),
+            (pos[0]-size, pos[1]-size, pos[2]),
             (pos[0]+size, pos[1]-size, pos[2]),
             (pos[0]-size, pos[1]+size, pos[2]),
             (pos[0]+size, pos[1]+size, pos[2])]
@@ -1401,7 +1401,7 @@ class SXTOOLS2_generate(object):
             groundplane = False
             xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], mode='local')
             dist = 2.0 * min(xmax-xmin, ymax-ymin, zmax-zmin)
-            if not 'sxTiler' in obj.modifiers:
+            if 'sxTiler' not in obj.modifiers:
                 modifiers.add_modifiers([obj, ])
             obj.modifiers['sxTiler'].show_viewport = True
 
@@ -1512,7 +1512,7 @@ class SXTOOLS2_generate(object):
 
             if sxglobals.benchmark_ao:
                 now = time.perf_counter()
-                print(f'SX Tools: {obj.name} AO rendered in {round(now-then, 4)} seconds') 
+                print(f'SX Tools: {obj.name} AO rendered in {round(now-then, 4)} seconds')
 
             return result
 
@@ -2140,7 +2140,7 @@ class SXTOOLS2_layers(object):
             colors[(0+i*4):(4+i*4)] = color
         target_colors = obj.data.color_attributes[target].data
         target_colors.foreach_set('color', colors)
-        obj.data.update()  
+        obj.data.update()
 
 
     def set_channel(self, obj, target, values, channel):
@@ -2151,7 +2151,7 @@ class SXTOOLS2_layers(object):
             colors[i*4+source_index] = value
         target_colors = obj.data.color_attributes[target].data
         target_colors.foreach_set('color', colors)
-        obj.data.update() 
+        obj.data.update()
 
 
     def get_luminances(self, obj, sourcelayer=None, colors=None, as_rgba=False, as_alpha=False):
@@ -2694,17 +2694,17 @@ class SXTOOLS2_modifiers(object):
             bpy.context.view_layer.objects.active = obj
             mesh = obj.data
 
-            if not 'crease_vert' in mesh.attributes:
+            if 'crease_vert' not in mesh.attributes:
                 mesh.vertex_creases_ensure()
-            if not 'crease_edge' in mesh.attributes:
+            if 'crease_edge' not in mesh.attributes:
                 mesh.edge_creases_ensure()
-            if not 'bevel_weight_vert' in mesh.attributes:
+            if 'bevel_weight_vert' not in mesh.attributes:
                 mesh.attributes.new(name='bevel_weight_vert', type='FLOAT', domain='POINT')
-            if not 'bevel_weight_edge' in mesh.attributes:
+            if 'bevel_weight_edge' not in mesh.attributes:
                 mesh.attributes.new(name='bevel_weight_edge', type='FLOAT', domain='EDGE')
-            if not 'sharp_edge' in mesh.attributes:
+            if 'sharp_edge' not in mesh.attributes:
                 mesh.attributes.new(name='sharp_edge', type='BOOLEAN', domain='EDGE')
-            if not 'sharp_face' in mesh.attributes:
+            if 'sharp_face' not in mesh.attributes:
                 mesh.attributes.new(name='sharp_face', type='BOOLEAN', domain='FACE')
 
             if (mode == 'EDIT'):
@@ -3433,7 +3433,7 @@ class SXTOOLS2_export(object):
                         new_bm.faces.index_update()
 
                         name = f'{color_ref_obj[color][3]}_hull_{i}'
-                        mesh_data = bpy.data.meshes.new(name+f'_mesh')
+                        mesh_data = bpy.data.meshes.new(name+'_mesh')
                         new_bm.to_mesh(mesh_data)
                         new_bm.free()
 
@@ -3782,7 +3782,7 @@ class SXTOOLS2_export(object):
                             to_delete.append(face)
 
                     # Delete unselected faces
-                    bmesh.ops.delete(bm, geom=to_delete, context='FACES')     
+                    bmesh.ops.delete(bm, geom=to_delete, context='FACES')
 
                     bm.to_mesh(mesh)
                     bm.free()
@@ -3900,7 +3900,7 @@ class SXTOOLS2_export(object):
                     else:
                         values = [value * layer.opacity for value in values]
 
-                    if (prefs.exportroughness =='SMOOTH') and (layer.layer_type == 'RGH'):
+                    if (prefs.exportroughness == 'SMOOTH') and (layer.layer_type == 'RGH'):
                         values = convert.invert_values(values)
                     layers.set_uvs(obj, uvmap, values, target_channel)
 
@@ -4216,7 +4216,7 @@ class SXTOOLS2_export(object):
         try:
             sxtoolmaterial = bpy.data.materials['SXToolMaterial'].node_tree
         except:
-            print(f'SX Tools Error: Missing SXToolMaterial.\nPerforming SXToolMaterial reset.')
+            print('SX Tools Error: Missing SXToolMaterial.\nPerforming SXToolMaterial reset.')
             setup.create_sxtoolmaterial()
 
 
@@ -4334,7 +4334,7 @@ class SXTOOLS2_export(object):
                 obj_layers = [layer for layer in obj.sx2layers if layer.name != 'Collider IDs']
                 if len(cat_layers) == len(obj_layers):
                     for cat_layer, layer in zip(cat_layers, obj_layers):
-                        if (cat_layer[0] != layer.name) or (cat_layer[1] !=layer.layer_type):
+                        if (cat_layer[0] != layer.name) or (cat_layer[1] != layer.layer_type):
                             print(f'SX Tools Error: {obj.name} {layer.name} does not match the selected category')
                             message_box(f'{obj.name}: {layer.name} and {cat_layer[0]} do not match the selected category')
                             return False
@@ -4488,7 +4488,7 @@ class SXTOOLS2_magic(object):
         subdivision_list = [obj.sx2.subdivisionlevel for obj in objs]
         for obj in objs:
             if ('sxSubdivision' in obj.modifiers) and (obj.sx2.subdivisionlevel > 1):
-                    obj.modifiers['sxSubdivision'].levels = 1
+                obj.modifiers['sxSubdivision'].levels = 1
 
         if sxglobals.benchmark_magic:
             now = time.perf_counter()
@@ -5137,7 +5137,7 @@ class SXTOOLS2_setup(object):
         connect_nodes(group_in.outputs['Geometry'], nodetree.nodes['bbx'].inputs['Geometry'])
         connect_nodes(group_in.outputs['Geometry'], nodetree.nodes['flip'].inputs['Mesh'])
 
-        for i in range(2): 
+        for i in range(2):
             # bbx offset multipliers for mirror objects
             multiply = nodetree.nodes.new(type='ShaderNodeVectorMath')
             multiply.name = 'multiply'+str(i)
@@ -5392,7 +5392,7 @@ class SXTOOLS2_setup(object):
         ground_transform = nodetree.nodes.new(type='GeometryNodeTransform')
         ground_transform.name = 'ground_transform'
         ground_transform.location = (0, -200)
-        ground_transform.hide = True     
+        ground_transform.hide = True
 
         join = nodetree.nodes.new(type='GeometryNodeJoinGeometry')
         join.name = 'join'
@@ -5430,7 +5430,7 @@ class SXTOOLS2_setup(object):
             random_rot.location = (600, i * 100 + 400)
             random_rot.rotation_type = 'EULER_XYZ'
             random_rot.inputs[4].default_value = hemisphere[i]
-            random_rot.hide =True
+            random_rot.hide = True
 
             raycast = nodetree.nodes.new(type='GeometryNodeRaycast')
             raycast.name = 'raycast'
@@ -5861,7 +5861,7 @@ class SXTOOLS2_setup(object):
                             elif obj.sx2.debugmode == 'B':
                                 output = rgb_split.outputs['Z']
                             else:
-                                output = base_color.outputs['Alpha'] 
+                                output = base_color.outputs['Alpha']
                     elif layer.layer_type == 'OCC':
                         output = source_alphas.outputs['X']
                     elif layer.layer_type == 'MET':
@@ -7886,7 +7886,7 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
 
     layer_set: bpy.props.IntProperty(
         name='Layer Set Index',
-        min = 0,
+        min=0,
         default=0)
 
     index: bpy.props.IntProperty(
@@ -7972,7 +7972,7 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
 
     variant_index: bpy.props.IntProperty(
         name='Variant Layer Index',
-        min = 0,
+        min=0,
         default=0)
 
 
@@ -8540,7 +8540,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                 export_header_row = export_header.row()
                 export_header_row.prop(scene, 'exportmode', expand=True)
 
-                if export_panel:       
+                if export_panel:
                     if scene.exportmode == 'MAGIC':
                         col_export = export_panel.column(align=True)
                         row_cat = col_export.row(align=True)
@@ -8904,7 +8904,7 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
         items=[
             ('FBX', 'FBX', ''),
             ('GLTF', 'glTF', '')],
-            default='FBX')
+        default='FBX')
 
     exportspace: bpy.props.EnumProperty(
         name='Color Space for Exports',
@@ -9768,7 +9768,7 @@ class SXTOOLS2_OT_layer_down(bpy.types.Operator):
             for obj in objs:
                 if obj.sx2layers:
                     utils.mode_manager(objs, set_mode=True, mode_id='layer_down')
-                    new_index = obj.sx2layers[idx].index - 1 if obj.sx2layers[idx].index -1 >= 0 else 0
+                    new_index = obj.sx2layers[idx].index - 1 if obj.sx2layers[idx].index - 1 >= 0 else 0
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
                     updated = True
                     utils.mode_manager(objs, set_mode=False, mode_id='layer_down')
@@ -9786,11 +9786,11 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
     bl_options = {'UNDO'}
 
     layer_name: bpy.props.StringProperty(
-        name = 'Ramp Name')
+        name='Ramp Name')
 
     layer_type: bpy.props.EnumProperty(
-        name = 'Layer Type',
-        items = [
+        name='Layer Type',
+        items=[
             ('COLOR', 'Color', ''),
             ('OCC', 'Occlusion', ''),
             ('MET', 'Metallic', ''),
@@ -9800,11 +9800,11 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
             ('EMI', 'Emission', ''),
             ('CMP', 'Composite', ''),
             ('CID', 'Collider IDs', '')],
-        default = 'COLOR')
+        default='COLOR')
 
     layer_variants: bpy.props.BoolProperty(
-        name = 'Layer Variants',
-        default = False)
+        name='Layer Variants',
+        default=False)
 
 
     @classmethod
@@ -11490,7 +11490,7 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
             offset = 1.0/grid * 0.5
             j = -1
             for i, color in enumerate(palette):
-                a = i%grid
+                a = i % grid
                 if a == 0:
                     j += 1
                 u = a*offset*2 + offset
@@ -11504,7 +11504,7 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
             face_colors = True
             for obj in objs:
                 colors = layers.get_layer(obj, obj.sx2layers['Composite'], as_tuple=True)
-                uvs = layers.get_uvs(obj,'UVSet0')
+                uvs = layers.get_uvs(obj, 'UVSet0')
 
                 for i, color in enumerate(colors):
                     for key in color_uv_coords.keys():
