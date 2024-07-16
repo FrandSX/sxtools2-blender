@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 5, 1),
+    'version': (2, 5, 2),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -85,7 +85,7 @@ class SXTOOLS2_sxglobals(object):
         # Keywords used by Smart Separate. Avoid using these in regular object names
         self.keywords = ['_org', '_LOD0', '_top', '_bottom', '_front', '_rear', '_left', '_right']
 
-        self.version, _, _ = bpy.app.version
+        self.version, self.minorversion, _ = bpy.app.version
 
     def __del__(self):
         print('SX Tools: Exiting sxglobals')
@@ -2934,7 +2934,7 @@ class SXTOOLS2_modifiers(object):
 
             if 'sxSmoothNormals' not in obj.modifiers:
                 root = os.path.dirname(bpy.app.binary_path)
-                blend_file_path = os.path.join(root, '4.1', 'datafiles', 'assets', 'geometry_nodes', 'smooth_by_angle.blend')
+                blend_file_path = os.path.join(root, f'{sxglobals.version}.{sxglobals.minorversion}', 'datafiles', 'assets', 'geometry_nodes', 'smooth_by_angle.blend')
                 node_group_name = "Smooth by Angle"
                 node_group = bpy.data.node_groups.get(node_group_name)
                 if not node_group:
