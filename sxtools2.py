@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 5, 2),
+    'version': (2, 5, 3),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4797,8 +4797,14 @@ class SXTOOLS2_magic(object):
                 tools.apply_tool(objs, obj.sx2layers['Metallic'], masklayer=obj.sx2layers['Gradient1'], color=(1.0, 1.0, 1.0, 1.0))
                 tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Gradient1'], color=(0.0, 0.0, 0.0, 1.0))
 
+        # Emissive road paint
+        for obj in objs:
+            colors = layers.get_layer(obj, obj.sx2layers['Layer 2 - Paint'])
+            if colors is not None:
+                layers.set_layer(obj, colors, obj.sx2layers['Emission'])
+
         # Emissives are smooth
-        tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Emission'], color=(0.0, 0.0, 0.0, 1.0))
+        # tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Emission'], color=(0.0, 0.0, 0.0, 1.0))
 
         # Tone down Gradient1 contribution
         for obj in objs:
