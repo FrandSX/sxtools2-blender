@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 5, 3),
+    'version': (2, 5, 4),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -10178,7 +10178,7 @@ class SXTOOLS2_OT_mergeup(bpy.types.Operator):
         objs = context.view_layer.objects.selected
         mesh_objs = [obj for obj in objs if obj.type == 'MESH']
 
-        if mesh_objs[0].sx2layers:
+        if mesh_objs and mesh_objs[0].sx2layers:
             layer = mesh_objs[0].sx2layers[mesh_objs[0].sx2.selectedlayer]
             if layer.layer_type == 'CMP':
                 enabled = False
