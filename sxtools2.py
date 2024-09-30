@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 5, 6),
+    'version': (2, 5, 7),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -7220,7 +7220,8 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
         step=0.01,
-        default=0.25,
+        precision=3,
+        default=0.01,
         update=lambda self, context: update_obj_props(self, context, 'collideroffsetfactor'))
 
     generateemissionmeshes: bpy.props.BoolProperty(
