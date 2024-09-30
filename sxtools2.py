@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 5, 4),
+    'version': (2, 5, 6),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -836,15 +836,12 @@ class SXTOOLS2_utils(object):
 
     # uses raycheck to calculate safe distance for shrinking mesh colliders
     def find_safe_mesh_offset(self, obj):
-        bias = 0.0001
+        bias = 0.005
 
         mesh = obj.data
-        bm = bmesh.new()
-        bm.from_mesh(mesh)
-
         safe_distance = None
 
-        for vert in bm.verts:
+        for vert in mesh.vertices:
             vert_loc = vert.co
             inv_normal = -vert.normal.normalized()
             bias_vec = inv_normal * bias
@@ -857,7 +854,6 @@ class SXTOOLS2_utils(object):
                 if (safe_distance is None) or (dist < safe_distance):
                     safe_distance = dist
 
-        bm.free()
         return safe_distance if safe_distance is not None else 0
 
 
@@ -3284,6 +3280,7 @@ class SXTOOLS2_export(object):
 
             # Shrink hull according to factor
             if collider_obj.sx2.collideroffsetfactor > 0.0:
+                bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
                 offset = -1.0 * min(collider_obj.sx2.collideroffsetfactor, utils.find_safe_mesh_offset(collider_obj))
                 bpy.ops.object.mode_set(mode='EDIT', toggle=False)
                 bpy.context.tool_settings.mesh_select_mode = (True, False, False)
@@ -3452,6 +3449,7 @@ class SXTOOLS2_export(object):
                         new_obj.sx2.ymirror = view_layer.objects[color_ref_obj[color][3]].sx2.ymirror
                         new_obj.sx2.zmirror = view_layer.objects[color_ref_obj[color][3]].sx2.zmirror
                         new_obj.sx2.mergefragments = view_layer.objects[color_ref_obj[color][3]].sx2.mergefragments
+                        new_obj.sx2.collideroffsetfactor = view_layer.objects[color_ref_obj[color][3]].sx2.collideroffsetfactor
                         new_obj.sx2.pivotmode = 'CID'
 
                         # Set pivots manually for split convex hulls
@@ -3676,6 +3674,7 @@ class SXTOOLS2_export(object):
 
             new_obj.parent = bpy.context.view_layer.objects[obj.parent.name]
             new_obj.sx2.subdivisionlevel = scene.sourcesubdivision
+            new_obj.sx2.collideroffsetfactor = obj.sx2.collideroffsetfactor
 
             new_objs.append(new_obj)
 
