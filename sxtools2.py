@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 5, 7),
+    'version': (2, 6, 2),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3177,15 +3177,6 @@ class SXTOOLS2_export(object):
             bpy.ops.object.mode_set(mode=mode)
             return separated_objs
 
-
-    # LOD levels:
-    # If subdivision enabled:
-    #   LOD0 - Maximum subdivision and bevels
-    #   LOD1 - Subdiv 1, bevels
-    #   LOD2 - Control cage
-    # If bevels only:
-    #   LOD0 - Maximum bevel segments
-    #   LOD1 - Control cage
     # NOTE: In case of bevels, prefer even-numbered segment counts!
     #       Odd-numbered bevels often generate incorrect vertex colors
     def generate_lods(self, objs):
@@ -3203,60 +3194,50 @@ class SXTOOLS2_export(object):
         export_objects = utils.create_collection('ExportObjects')
         source_objects = utils.create_collection('SourceObjects')
 
-        lodCount = 1
-        for obj in org_obj_list:
-            name_list.append((obj.name[:], obj.data.name[:]))
-            if obj.sx2.subdivisionlevel >= 1:
-                lodCount = min(3, obj.sx2.subdivisionlevel + 1)
-            elif (obj.sx2.subdivisionlevel == 0) and ((obj.sx2.bevelsegments) > 0):
-                lodCount = 2
+        name_list = [(obj.name[:], obj.data.name[:]) for obj in org_obj_list]
 
-        if lodCount > 1:
-            for i in range(lodCount):
-                print(f'SX Tools: Generating LOD {i}')
-                if i == 0:
-                    for obj in org_obj_list:
-                        obj.data.name = obj.data.name + '_LOD' + str(i)
-                        obj.name = obj.name + '_LOD' + str(i)
-                        new_obj_list.append(obj)
-                        if scene.exportquality == 'LO':
-                            source_objects.objects.link(obj)
-                else:
-                    for j, obj in enumerate(org_obj_list):
-                        new_obj = obj.copy()
-                        new_obj.data = obj.data.copy()
+        for i in range(3):
+            print(f'SX Tools: Generating LOD {i}')
+            if i == 0:
+                for obj in org_obj_list:
+                    obj.data.name = obj.data.name + '_LOD' + str(i)
+                    obj.name = obj.name + '_LOD' + str(i)
+                    new_obj_list.append(obj)
+                    if scene.exportquality == 'LO':
+                        source_objects.objects.link(obj)
+            else:
+                for j, obj in enumerate(org_obj_list):
+                    lod_values = [(obj.sx2.lod1_bevels, obj.sx2.lod1_subdiv), (obj.sx2.lod2_bevels, obj.sx2.lod2_subdiv)]
+                    new_obj = obj.copy()
+                    new_obj.data = obj.data.copy()
 
-                        new_obj.data.name = name_list[j][1] + '_LOD' + str(i)
-                        new_obj.name = name_list[j][0] + '_LOD' + str(i)
+                    new_obj.data.name = name_list[j][1] + '_LOD' + str(i)
+                    new_obj.name = name_list[j][0] + '_LOD' + str(i)
 
-                        new_obj.location += Vector((0.0, 0.0, (bbxheight+prefs.lodoffset)*i))
+                    new_obj.location += Vector((0.0, 0.0, (bbxheight+prefs.lodoffset)*i))
 
-                        bpy.context.scene.collection.objects.link(new_obj)
-                        export_objects.objects.link(new_obj)
+                    bpy.context.scene.collection.objects.link(new_obj)
+                    export_objects.objects.link(new_obj)
 
-                        new_obj.parent = bpy.context.view_layer.objects[obj.parent.name]
+                    new_obj.parent = bpy.context.view_layer.objects[obj.parent.name]
 
-                        bpy.ops.object.select_all(action='DESELECT')
-                        new_obj.select_set(True)
-                        bpy.context.view_layer.objects.active = new_obj
+                    bpy.ops.object.select_all(action='DESELECT')
+                    new_obj.select_set(True)
+                    bpy.context.view_layer.objects.active = new_obj
 
-                        if i == 1:
-                            if obj.sx2.subdivisionlevel > 0:
-                                new_obj.sx2.subdivisionlevel = 1
-                                if obj.sx2.bevelsegments > 0:
-                                    new_obj.sx2.bevelsegments = obj.sx2.bevelsegments
-                                else:
-                                    new_obj.sx2.bevelsegments = 0
-                            elif obj.sx2.subdivisionlevel == 0:
-                                new_obj.sx2.subdivisionlevel = 0
-                                new_obj.sx2.bevelsegments = 0
-                                new_obj.sx2.weldthreshold = 0
-                        else:
-                            new_obj.sx2.subdivisionlevel = 0
-                            new_obj.sx2.bevelsegments = 0
-                            new_obj.sx2.weldthreshold = 0
+                    if obj.sx2.subdivisionlevel > lod_values[i-1][1]:
+                        new_obj.sx2.subdivisionlevel = lod_values[i-1][1]
+                        new_obj.modifiers['sxSubdivision'].levels = lod_values[i-1][1]
 
-                        new_obj_list.append(new_obj)
+                    if obj.sx2.bevelsegments > lod_values[i-1][0]:
+                        new_obj.sx2.bevelsegments = lod_values[i-1][0]
+                        new_obj.modifiers['sxBevel'].segments = lod_values[i-1][0]
+                    
+                    if new_obj.sx2.subdivisionlevel == 0:
+                        new_obj.sx2.weldthreshold = 0
+                        new_obj.modifiers['sxWeld'].merge_threshold = 0
+
+                    new_obj_list.append(new_obj)
 
         # active_obj.select_set(True)
         bpy.context.view_layer.objects.active = active_obj
@@ -3508,7 +3489,7 @@ class SXTOOLS2_export(object):
                         parent_pivot = new_obj.parent.matrix_world.to_translation() if new_obj.parent else (0.0, 0.0, 0.0)
                         pivot_ref[new_obj] = new_obj.sx2.mirrorobject.matrix_world.to_translation() if new_obj.sx2.mirrorobject else parent_pivot
 
-                        new_obj.sx2.lodmeshes = False
+                        new_obj.sx2.generatelodmeshes = False
                         new_obj.sx2.generateemissionmeshes = False
                         new_obj.sx2.weldthreshold = 0.0
                         new_obj.sx2.decimation = 0.0
@@ -3534,7 +3515,7 @@ class SXTOOLS2_export(object):
                             new_obj.modifiers['sxSubdivision'].levels = 1 if org_subdiv > 1 else org_subdiv
 
                         new_obj.sx2.smartseparate = obj.sx2.smartseparate
-                        new_obj.sx2.lodmeshes = False
+                        new_obj.sx2.generatelodmeshes = False
                         new_obj.sx2.generateemissionmeshes = False
                         new_obj.sx2.weldthreshold = 0.0
                         new_obj.sx2.decimation = 0.0
@@ -3758,7 +3739,7 @@ class SXTOOLS2_export(object):
                     emission_obj.data.name = emission_obj.name + '_mesh'
                     emission_obj.sx2.smartseparate = True
                     emission_obj.sx2.generatehulls = False
-                    emission_obj.sx2.lodmeshes = False
+                    emission_obj.sx2.generatelodmeshes = False
                     emission_obj.sx2.generateemissionmeshes = False
                     emission_objs.append(emission_obj)
 
@@ -4469,7 +4450,7 @@ class SXTOOLS2_magic(object):
                 bpy.context.scene.collection.objects.link(new_obj)
                 export_objects.objects.link(new_obj)
 
-                if obj.sx2.lodmeshes:
+                if obj.sx2.generatelodmeshes:
                     lod_objs.append(new_obj)
                 else:
                     new_objs.append(new_obj)
@@ -4545,7 +4526,7 @@ class SXTOOLS2_magic(object):
                     group_objs = utils.find_children(group, category_objs, recursive=True, child_type='MESH')
                     viewlayer.objects.active = group_objs[0]
                     for obj in group_objs:
-                        if obj.sx2.lodmeshes:
+                        if obj.sx2.generatelodmeshes:
                             createLODs = True
                         obj.hide_viewport = False
                         obj.select_set(True)
@@ -4633,7 +4614,7 @@ class SXTOOLS2_magic(object):
         if scene.exportquality == 'LO':
             non_lod_objs = []
             for obj in objs:
-                if obj.sx2.lodmeshes is True:
+                if obj.sx2.generatelodmeshes:
                     if '_LOD' not in obj.name:
                         non_lod_objs.append(obj)
                 else:
@@ -4659,19 +4640,16 @@ class SXTOOLS2_magic(object):
             # self.apply_modifiers(objs)
 
         # Restore tool settings
-        scene.toolmode = org_toolmode
-        scene.toolopacity = org_toolopacity
-        scene.toolblend = org_toolblend
-        scene.rampmode = org_rampmode
-        scene.ramplist = org_ramplist
-        load_ramp(self, bpy.context, org_ramp)
-        scene.dirAngle = org_dirangle
-        scene.dirInclination = org_dirinclination
-        scene.dirCone = org_dircone
-
-        # Enable modifier stack for LODs
-        # for obj in objs:
-        #     obj.sx2.modifiervisibility = True
+        if not bpy.app.background:
+            scene.toolmode = org_toolmode
+            scene.toolopacity = org_toolopacity
+            scene.toolblend = org_toolblend
+            scene.rampmode = org_rampmode
+            scene.ramplist = org_ramplist
+            load_ramp(self, bpy.context, org_ramp)
+            scene.dirAngle = org_dirangle
+            scene.dirInclination = org_dirinclination
+            scene.dirCone = org_dircone
 
         now = time.perf_counter()
         print(f'SX Tools: Magic process duration: {round(now-then, 4)} seconds')
@@ -7165,11 +7143,43 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         default=False,
         update=lambda self, context: update_obj_props(self, context, 'transmissionoverride'))
 
-    lodmeshes: bpy.props.BoolProperty(
+    generatelodmeshes: bpy.props.BoolProperty(
         name='Generate LOD Meshes',
         description='NOTE: Subdivision and Bevel settings affect the end result',
         default=False,
-        update=lambda self, context: update_obj_props(self, context, 'lodmeshes'))
+        update=lambda self, context: update_obj_props(self, context, 'generatelodmeshes'))
+
+    lod1_bevels: bpy.props.IntProperty(
+        name='LOD1 Bevel Segments',
+        description='Bevel segment count for LOD1',
+        min=0,
+        max=10,
+        default=1,
+        update=lambda self, context: update_obj_props(self, context, 'lod1_bevels'))
+
+    lod2_bevels: bpy.props.IntProperty(
+        name='LOD2 Bevel Segments',
+        description='Bevel segment count for LOD2',
+        min=0,
+        max=10,
+        default=0,
+        update=lambda self, context: update_obj_props(self, context, 'lod2_bevels'))
+
+    lod1_subdiv: bpy.props.IntProperty(
+        name='LOD1 Subdiv Level',
+        description='Subdiv level for LOD1',
+        min=0,
+        max=4,
+        default=1,
+        update=lambda self, context: update_obj_props(self, context, 'lod1_subdiv'))
+
+    lod2_subdiv: bpy.props.IntProperty(
+        name='LOD2 Subdiv Level',
+        description='Subdiv level for LOD2',
+        min=0,
+        max=4,
+        default=0,
+        update=lambda self, context: update_obj_props(self, context, 'lod2_subdiv'))
 
     pivotmode: bpy.props.EnumProperty(
         name='Pivot Mode',
@@ -8654,7 +8664,13 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
 
                             row_lod = col_export_mesh.row(align=True)
                             row_lod.label(text='Generate LOD Meshes on Export:')
-                            row_lod.prop(sx2, 'lodmeshes', text='', toggle=False)
+                            row_lod.prop(sx2, 'generatelodmeshes', text='', toggle=False)
+                            if obj.sx2.generatelodmeshes:
+                                col_lods = col_export_mesh.column(align=True)
+                                col_lods.prop(sx2, 'lod1_bevels', text='LOD1 Bevels')
+                                col_lods.prop(sx2, 'lod1_subdiv', text='LOD1 Subdiv')
+                                col_lods.prop(sx2, 'lod2_bevels', text='LOD2 Bevels')
+                                col_lods.prop(sx2, 'lod2_subdiv', text='LOD2 Subdiv')
 
                             row_emission = col_export_mesh.row(align=True)
                             row_emission.label(text='Generate Emission Meshes on Export:')
@@ -11317,7 +11333,7 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     obj.sx2.smartseparate = obj['sxtools'].get('smartseparate', False)
                     pivot_dict = {0: 'OFF', 1: 'MASS', 2: 'BBOX', 3: 'ROOT', 4: 'ORG', 5: 'PAR', 6: 'CID'}
                     obj.sx2.pivotmode = pivot_dict[obj['sxtools'].get('pivotmode', 0)]
-                    obj.sx2.lodmeshes = obj['sxtools'].get('lodmeshes', False)
+                    obj.sx2.generatelodmeshes = obj['sxtools'].get('lodmeshes', False)
                     obj.sx2.xmirror = obj['sxtools'].get('xmirror', False)
                     obj.sx2.ymirror = obj['sxtools'].get('ymirror', False)
                     obj.sx2.zmirror = obj['sxtools'].get('zmirror', False)
