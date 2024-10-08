@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 6, 2),
+    'version': (2, 6, 3),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -7154,7 +7154,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         description='Bevel segment count for LOD1',
         min=0,
         max=10,
-        default=1,
+        default=0,
         update=lambda self, context: update_obj_props(self, context, 'lod1_bevels'))
 
     lod2_bevels: bpy.props.IntProperty(
