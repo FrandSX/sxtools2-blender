@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 6, 3),
+    'version': (2, 6, 4),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -7227,6 +7227,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
 
     collideroffsetfactor: bpy.props.FloatProperty(
         name='Auto-Offset Factor',
+        description='Requested shrink distance in world units, default shrink 0.01 is 1cm.\nRequested distance is capped by internally calculated max safe shrink to prevent mesh inversion.',
         min=0.0,
         max=1.0,
         step=0.01,
@@ -8685,7 +8686,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             if obj.sx2.use_cids:
                                 row_cids.prop(sx2, 'mergefragments', text='Merge CID fragments')
                             col_hulls.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
-                            col_hulls.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Factor', slider=True)
+                            col_hulls.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Distance', slider=True)
                             col_hulls.enabled = sx2.generatehulls
 
                             if hasattr(bpy.types, bpy.ops.object.vhacd.idname()):
