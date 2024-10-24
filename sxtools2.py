@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 6, 4),
+    'version': (2, 6, 5),
     'blender': (4, 1, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3042,11 +3042,13 @@ class SXTOOLS2_modifiers(object):
     def calculate_triangles(self, objs):
         count = 0
         edg = bpy.context.evaluated_depsgraph_get()
+        utils.mode_manager(objs, set_mode=True, mode_id='calculate_triangles')
         for obj in objs:
             if obj.type == 'MESH':
                 eval_data = obj.evaluated_get(edg).data
                 for face in eval_data.polygons:
                     count += len(face.vertices) - 2
+        utils.mode_manager(objs, set_mode=False, mode_id='calculate_triangles')
 
         return str(count)
 
@@ -3274,6 +3276,10 @@ class SXTOOLS2_export(object):
                 # collider_obj.modifiers.new(type='WELD', name='hullWeld')
                 # collider_obj.modifiers["hullWeld"].merge_threshold = min(collider_obj.dimensions) * 0.15
                 # bpy.ops.object.modifier_apply(modifier='hullWeld')
+
+            if sxglobals.benchmark_cvx:
+                print(f'SX Tools: {collider_obj.name} Pre-Optimized Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
+
 
             if int(modifiers.calculate_triangles([collider_obj, ])) > collider_obj.sx2.hulltrimax:
                 # Decimate until below tri count limit
@@ -11754,6 +11760,7 @@ if __name__ == '__main__':
 
 
 # TODO:
+# BUG: Update modal check
 # BUG: Grouping of objs with armatures
 # BUG: Check decimation angle changes with hull and emission mesh generation
 # FEAT: match existing layers when loading category
