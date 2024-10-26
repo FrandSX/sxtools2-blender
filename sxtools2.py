@@ -1,8 +1,8 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 6, 5),
-    'blender': (4, 1, 0),
+    'version': (2, 6, 6),
+    'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
     'doc_url': 'https://secretexit.notion.site/SX-Tools-2-for-Blender-Documentation-1681c68851fb4d018d1f9ec762e5aec9',
@@ -139,7 +139,7 @@ class SXTOOLS2_files(object):
                 print(f'SX Tools Error: {mode} file not found!')
                 return False
         else:
-            print(f'SX Tools: No {mode} file found')
+            print(f'SX Tools: No {mode} file found - set Library Folder location in SX Tools 2 Preferences')
             return False
 
         if mode == 'palettes':
@@ -11742,7 +11742,9 @@ def unregister():
     bpy.app.handlers.save_post.remove(save_post_handler)
 
     if not bpy.app.background:
-        bpy.types.SpaceView3D.draw_handler_remove(start_modal, 'WINDOW')
+        modal_list = [op.name for op in bpy.context.window.modal_operators]
+        if ('SX2_OT_selectionmonitor' in modal_list) or ('SX2_OT_keymonitor' in modal_list):
+            bpy.types.SpaceView3D.draw_handler_remove(start_modal, 'WINDOW')
 
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
@@ -11760,8 +11762,6 @@ if __name__ == '__main__':
 
 
 # TODO:
-# BUG: Update modal check
 # BUG: Grouping of objs with armatures
-# BUG: Check decimation angle changes with hull and emission mesh generation
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
