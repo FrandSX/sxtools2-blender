@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 6, 6),
+    'version': (2, 6, 9),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5758,16 +5758,15 @@ class SXTOOLS2_setup(object):
                                 connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Roughness'])
 
                             if material_layers[i][2] == 'TRN':
-                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs[17])
+                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Transmission Weight'])
 
                             if material_layers[i][2] == 'SSS':
                                 connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface'])
                                 connect_nodes(palette_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Subsurface Color'])
 
                             if material_layers[i][2] == 'EMI':
-                                sxmaterial.node_tree.nodes['Principled BSDF'].inputs[27].default_value = 10
-                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26])
-                                bpy.context.scene.eevee.use_bloom = True
+                                sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 10
+                                connect_nodes(output, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Color'])
 
                     if prev_color is not None:
                         connect_nodes(prev_color,  sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color'])
@@ -5779,9 +5778,7 @@ class SXTOOLS2_setup(object):
                             connect_nodes(prev_alpha, sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Alpha'])
 
                 elif (obj.sx2.shadingmode == 'DEBUG') or (obj.sx2.shadingmode == 'CHANNEL'):
-                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs[12].default_value = 0.0
-                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs[27].default_value = 1
-                    
+                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Specular IOR Level'].default_value = 0.0
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 1
                     alpha_mats = ['OCC', 'MET', 'RGH', 'TRN']
                     layer = obj.sx2layers[obj.sx2.selectedlayer]
@@ -5861,7 +5858,7 @@ class SXTOOLS2_setup(object):
                         output = base_color.outputs['Alpha']
 
                     connect_nodes(output, debug_blend.inputs['Color2'])
-                    connect_nodes(debug_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26])
+                    connect_nodes(debug_blend.outputs['Color'], sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Emission Color'])
 
 
     def update_sx2material(self, context):
