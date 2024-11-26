@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 7, 1),
+    'version': (2, 7, 3),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3299,10 +3299,36 @@ class SXTOOLS2_export(object):
                 collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
                 collider_obj.modifiers['hullDecimate'].use_dissolve_boundaries = False
 
-                while (int(modifiers.calculate_triangles([collider_obj, ])) > collider_obj.sx2.hulltrimax) and (angle < 180.0):
-                    angle += 0.5
-                    collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
+                # Clunky iterator
+                # while (int(modifiers.calculate_triangles([collider_obj, ])) > collider_obj.sx2.hulltrimax) and (angle < 180.0):
+                #     angle += 1.5   # 0.5
+                #     collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
 
+                # Use binary search approach for decimation angle
+                lower_bound = collider_obj.sx2.hulltrimax * 0.7  # adjust acceptable lower bound as necessary
+
+                # Initialize search range
+                low_angle = 0.0
+                high_angle = 180.0
+                best_angle = high_angle
+                epsilon = 0.1
+
+                while high_angle - low_angle > epsilon:
+                    mid_angle = (low_angle + high_angle) / 2.0
+                    collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(mid_angle)
+                    triangle_count = int(modifiers.calculate_triangles([collider_obj]))
+
+                    # print(f"Low: {low_angle}, High: {high_angle}, Mid: {mid_angle}, Triangles: {triangle_count}")
+
+                    if triangle_count > collider_obj.sx2.hulltrimax:
+                        low_angle = mid_angle
+                    elif triangle_count >= lower_bound:
+                        best_angle = mid_angle
+                        high_angle = mid_angle
+                    else:
+                        high_angle = mid_angle
+
+                collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(best_angle)
                 bpy.ops.object.modifier_apply(modifier='hullDecimate')
 
                 if sxglobals.benchmark_cvx:
@@ -3333,6 +3359,11 @@ class SXTOOLS2_export(object):
             org_objs = []
             hull_objs = [obj for obj in objs if (obj.sx2.generatehulls and not obj.sx2.use_cids)]
             cid_objs = [obj for obj in objs if (obj.sx2.generatehulls and obj.sx2.use_cids)]
+
+            if sxglobals.benchmark_cvx:
+                then = time.perf_counter()
+                print(f'SX Tools: Convex hull generation starting')
+
             if (hull_objs or cid_objs):
                 new_objs = []
                 new_cid_objs = []
@@ -3400,6 +3431,10 @@ class SXTOOLS2_export(object):
                             
                             bm.free()
                             obj.evaluated_get(edg).to_mesh_clear()
+
+                    if sxglobals.benchmark_cvx:
+                        now = time.perf_counter()
+                        print(f'SX Tools: Convex hull generation: faces mapped to color regions. Time: {now-then}')
 
                     # Create a new bmesh and mesh for each color group
                     for i, (color, faces) in enumerate(color_to_faces.items()):
@@ -3517,6 +3552,10 @@ class SXTOOLS2_export(object):
                         new_obj.sx2.weldthreshold = 0.0
                         new_obj.sx2.decimation = 0.0
                         new_cid_objs.append(new_obj)
+
+                    if sxglobals.benchmark_cvx:
+                        now = time.perf_counter()
+                        print(f'SX Tools: Convex hull generation: collision ID objects created. Time: {now-then}')
                         
                 if hull_objs:
                     org_objs = hull_objs[:]
@@ -3548,6 +3587,10 @@ class SXTOOLS2_export(object):
 
                         # Clear existing modifier stacks
                         modifiers.apply_modifiers([new_obj, ])
+
+                    if sxglobals.benchmark_cvx:
+                        now = time.perf_counter()
+                        print(f'SX Tools: Convex hull generation: hull objects created. Time: {now-then}')
 
                 # Split mirrored collider source objects
                 separated_objs = []
@@ -3617,6 +3660,10 @@ class SXTOOLS2_export(object):
                         sep_objs = [sep_obj for sep_obj in sep_objs if sep_obj.name in view_layer.objects]
                         if sep_objs:
                             separated_objs += sep_objs
+
+                if sxglobals.benchmark_cvx:
+                    now = time.perf_counter()
+                    print(f'SX Tools: Convex hull generation: fragment merging done. Time: {now-then}')
 
                 for new_obj in new_hull_objs:
                     bpy.ops.object.select_all(action='DESELECT')
