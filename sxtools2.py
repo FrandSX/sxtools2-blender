@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 7, 3),
+    'version': (2, 7, 6),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3310,25 +3310,39 @@ class SXTOOLS2_export(object):
                 # Initialize search range
                 low_angle = 0.0
                 high_angle = 180.0
-                best_angle = high_angle
-                epsilon = 0.1
+                angle = high_angle
+                fallback_angle = high_angle
+                best_result = collider_obj.sx2.hulltrimax
+                fallback_result = 0
+                epsilon = 0.5
+                best_found = False
 
                 while high_angle - low_angle > epsilon:
                     mid_angle = (low_angle + high_angle) / 2.0
                     collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(mid_angle)
                     triangle_count = int(modifiers.calculate_triangles([collider_obj]))
 
-                    # print(f"Low: {low_angle}, High: {high_angle}, Mid: {mid_angle}, Triangles: {triangle_count}")
+                    if sxglobals.benchmark_cvx:
+                        print(f'SX Tools: Low: {low_angle}, High: {high_angle}, Mid: {mid_angle}, Triangles: {triangle_count}')
 
                     if triangle_count > collider_obj.sx2.hulltrimax:
                         low_angle = mid_angle
-                    elif triangle_count >= lower_bound:
-                        best_angle = mid_angle
+                    elif (best_result > triangle_count >= lower_bound):
+                        best_found = True
+                        angle = mid_angle
+                        best_result = triangle_count
+                        high_angle = mid_angle
+                    elif (lower_bound > triangle_count > fallback_result):
+                        fallback_angle = mid_angle
+                        fallback_result = triangle_count
                         high_angle = mid_angle
                     else:
                         high_angle = mid_angle
 
-                collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(best_angle)
+                if not best_found:
+                    angle = fallback_angle
+
+                collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
                 bpy.ops.object.modifier_apply(modifier='hullDecimate')
 
                 if sxglobals.benchmark_cvx:
