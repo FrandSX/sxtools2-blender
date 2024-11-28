@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 7, 6),
+    'version': (2, 7, 10),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3260,8 +3260,13 @@ class SXTOOLS2_export(object):
             collider_obj.select_set(True)
             collider_obj.sx2.smartseparate = False
             view_layer.objects.active = collider_obj
+            if sxglobals.benchmark_cvx:
+                print(f'SX Tools: {collider_obj.name} Initial Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-            bpy.ops.mesh.convex_hull(use_existing_faces=True, face_threshold=math.radians(15.0), shape_threshold=math.radians(15.0))
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.mesh.convex_hull(use_existing_faces=True, face_threshold=math.radians(40.0), shape_threshold=math.radians(40.0), sharp=True)
+            if sxglobals.benchmark_cvx:
+                print(f'SX Tools: {collider_obj.name} Convex Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
             tri_opt = False
             shrink_opt = False
             angle = 0.0
@@ -3299,7 +3304,7 @@ class SXTOOLS2_export(object):
                 collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
                 collider_obj.modifiers['hullDecimate'].use_dissolve_boundaries = False
 
-                # Clunky iterator
+                # Slow iterator
                 # while (int(modifiers.calculate_triangles([collider_obj, ])) > collider_obj.sx2.hulltrimax) and (angle < 180.0):
                 #     angle += 1.5   # 0.5
                 #     collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
@@ -3360,7 +3365,7 @@ class SXTOOLS2_export(object):
 
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
             bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.decimate(ratio=0.5)
+            bpy.ops.mesh.decimate(ratio=0.7)
             bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
             bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
@@ -3428,8 +3433,8 @@ class SXTOOLS2_export(object):
                                         local_coord_first_obj = first_obj_matrix_world_inv @ world_coord
                                         transformed_face_verts.append(tuple(local_coord_first_obj))
 
-                                    # In case of single mesh, check face centroid against mirror axes
-                                    if obj.sx2.singlemesh:
+                                    # In case of preserved borders, check face centroid against mirror axes
+                                    if obj.sx2.preserveborders:
                                         centroid = sum((Vector(vert) for vert in transformed_face_verts), Vector((0, 0, 0))) / len(transformed_face_verts)
                                         signs = [
                                                 sign(centroid[0]) if obj.sx2.xmirror else 1,
@@ -3500,7 +3505,7 @@ class SXTOOLS2_export(object):
                         new_obj.sx2.ymirror = view_layer.objects[color_ref_obj[color][3]].sx2.ymirror
                         new_obj.sx2.zmirror = view_layer.objects[color_ref_obj[color][3]].sx2.zmirror
                         new_obj.sx2.mergefragments = view_layer.objects[color_ref_obj[color][3]].sx2.mergefragments
-                        new_obj.sx2.singlemesh = view_layer.objects[color_ref_obj[color][3]].sx2.singlemesh
+                        new_obj.sx2.preserveborders = view_layer.objects[color_ref_obj[color][3]].sx2.preserveborders
                         new_obj.sx2.collideroffsetfactor = view_layer.objects[color_ref_obj[color][3]].sx2.collideroffsetfactor
                         new_obj.sx2.pivotmode = 'CID'
                         new_obj['group_id'] = view_layer.objects[color_ref_obj[color][3]].parent.name
@@ -3609,7 +3614,7 @@ class SXTOOLS2_export(object):
                 # Split mirrored collider source objects
                 separated_objs = []
                 for new_obj in new_cid_objs:
-                    if new_obj.sx2.singlemesh:
+                    if new_obj.sx2.preserveborders:
                         new_objs.append(new_obj)
                     else:
                         bpy.ops.object.select_all(action='DESELECT')
@@ -7287,7 +7292,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
 
     use_cids: bpy.props.BoolProperty(
         name='Use Collider ID',
-        description='Add a Collider ID layer and paint unique face colors for each convex submesh.\nFaces with (0.0, 0.0, 0.0, 0.0) color are discarded',
+        description='Add a Collider ID layer and paint unique face colors for each convex submesh.\nFaces with (0.0, 0.0, 0.0, 0.0) color are discarded.\nSmart separates collider loose parts to individual convex hulls.',
         default=False,
         update=lambda self, context: update_obj_props(self, context, 'use_cids'))
 
@@ -7297,11 +7302,11 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         default=True,
         update=lambda self, context: update_obj_props(self, context, 'mergefragments'))
 
-    singlemesh: bpy.props.BoolProperty(
-        name='Treat as single mesh',
-        description='Use for mirrored single meshes.',
+    preserveborders: bpy.props.BoolProperty(
+        name='Preserve mirrored ID borders',
+        description='Useful when a mirrored mesh creates convex hulls that lose concavity over mirror axes.\nEnable to split mirrored same-color ID regions to separate convex hulls.\nCollider smart separate is disabled.',
         default=False,
-        update=lambda self, context: update_obj_props(self, context, 'singlemesh'))
+        update=lambda self, context: update_obj_props(self, context, 'preserveborders'))
 
     hulltrimax: bpy.props.IntProperty(
         name='Max Hull Triangles',
@@ -8776,7 +8781,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_cids.prop(sx2, 'use_cids', text='Use Collider IDs')
                             if obj.sx2.use_cids:
                                 row_cids.prop(sx2, 'mergefragments', text='Merge CID fragments')
-                                row_cids.prop(sx2, 'singlemesh', text='Treat as single mesh')
+                                row_cids.prop(sx2, 'preserveborders', text='Preserve CID borders')
                             col_hulls.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
                             col_hulls.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Distance', slider=True)
                             col_hulls.enabled = sx2.generatehulls
