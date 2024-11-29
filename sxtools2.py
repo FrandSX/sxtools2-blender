@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 7, 10),
+    'version': (2, 8, 0),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3504,6 +3504,7 @@ class SXTOOLS2_export(object):
                         new_obj.sx2.xmirror = view_layer.objects[color_ref_obj[color][3]].sx2.xmirror
                         new_obj.sx2.ymirror = view_layer.objects[color_ref_obj[color][3]].sx2.ymirror
                         new_obj.sx2.zmirror = view_layer.objects[color_ref_obj[color][3]].sx2.zmirror
+                        new_obj.sx2.separate_cids = view_layer.objects[color_ref_obj[color][3]].sx2.separate_cids
                         new_obj.sx2.mergefragments = view_layer.objects[color_ref_obj[color][3]].sx2.mergefragments
                         new_obj.sx2.preserveborders = view_layer.objects[color_ref_obj[color][3]].sx2.preserveborders
                         new_obj.sx2.collideroffsetfactor = view_layer.objects[color_ref_obj[color][3]].sx2.collideroffsetfactor
@@ -3614,17 +3615,16 @@ class SXTOOLS2_export(object):
                 # Split mirrored collider source objects
                 separated_objs = []
                 for new_obj in new_cid_objs:
-                    if new_obj.sx2.preserveborders:
+                    if (new_obj.sx2.preserveborders) or (not new_obj.sx2.separate_cids):
                         new_objs.append(new_obj)
                     else:
                         bpy.ops.object.select_all(action='DESELECT')
                         view_layer.objects.active = new_obj
                         sep_objs = self.smart_separate([new_obj, ], override=True, parent=False)
+                        # print('Hull Mesh:', new_obj.name)
+                        # print('Separated:', [sep_obj.name for sep_obj in sep_objs])
                         
                         if new_obj.sx2.mergefragments:
-                            # print('Hull Mesh:', new_obj.name)
-                            # print('Separated:', [sep_obj.name for sep_obj in sep_objs])
-
                             # Merge needlessly separated objects by analyzing their bbx centers
                             left, right, front, back, top, bottom, center_x, center_y, center_z = [], [], [], [], [], [], [], [], []
 
@@ -3670,13 +3670,14 @@ class SXTOOLS2_export(object):
                                     for i, bucket_object in enumerate(bucket, start=1):
                                         sep_objs.remove(bucket_object)
 
-                                    # print('Bucket:', bucket)
+                                    print('Bucket:', bucket)
                                     bpy.ops.object.join()
 
                                     for i, cleanup_mesh in enumerate(cleanup, start=1):
                                         bpy.data.meshes.remove(cleanup_mesh)
 
-                        sep_objs = [sep_obj for sep_obj in sep_objs if sep_obj.name in view_layer.objects]
+                        if sep_objs:
+                            sep_objs = [sep_obj for sep_obj in sep_objs if sep_obj.name in view_layer.objects]
                         if sep_objs:
                             separated_objs += sep_objs
 
@@ -7292,9 +7293,15 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
 
     use_cids: bpy.props.BoolProperty(
         name='Use Collider ID',
-        description='Add a Collider ID layer and paint unique face colors for each convex submesh.\nFaces with (0.0, 0.0, 0.0, 0.0) color are discarded.\nSmart separates collider loose parts to individual convex hulls.',
+        description='Add a Collider ID layer and paint unique face colors for each convex submesh.\nFaces with (0.0, 0.0, 0.0, 0.0) color are discarded.',
         default=False,
         update=lambda self, context: update_obj_props(self, context, 'use_cids'))
+
+    separate_cids: bpy.props.BoolProperty(
+        name='Separate Collider ID Parts',
+        description='Separate loose parts even if they have the same Collider ID.\nOften useful for mirrored objects.',
+        default=True,
+        update=lambda self, context: update_obj_props(self, context, 'separate_cids'))
 
     mergefragments: bpy.props.BoolProperty(
         name='Merge fragments',
@@ -8780,6 +8787,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_cids = col_hulls.row(align=True)
                             row_cids.prop(sx2, 'use_cids', text='Use Collider IDs')
                             if obj.sx2.use_cids:
+                                row_cids.prop(sx2, 'separate_cids', text='Separate CID parts')
                                 row_cids.prop(sx2, 'mergefragments', text='Merge CID fragments')
                                 row_cids.prop(sx2, 'preserveborders', text='Preserve CID borders')
                             col_hulls.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
