@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 8, 0),
+    'version': (2, 8, 2),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -8784,14 +8784,16 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             row_hulls.label(text='Generate Convex Hulls on Export:')
                             row_hulls.prop(sx2, 'generatehulls', text='', toggle=False)
                             col_hulls = col_export_mesh.column(align=True)
-                            row_cids = col_hulls.row(align=True)
-                            row_cids.prop(sx2, 'use_cids', text='Use Collider IDs')
-                            if obj.sx2.use_cids:
-                                row_cids.prop(sx2, 'separate_cids', text='Separate CID parts')
-                                row_cids.prop(sx2, 'mergefragments', text='Merge CID fragments')
-                                row_cids.prop(sx2, 'preserveborders', text='Preserve CID borders')
-                            col_hulls.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
-                            col_hulls.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Distance', slider=True)
+                            if sx2.generatehulls:
+                                box_cids = col_hulls.box()
+                                box_cids.prop(sx2, 'use_cids', text='Use Collider IDs')
+                            if sx2.use_cids and sx2.generatehulls:
+                                box_cids.prop(sx2, 'separate_cids', text='Separate CID parts')
+                                box_cids.prop(sx2, 'mergefragments', text='Merge CID fragments')
+                                box_cids.prop(sx2, 'preserveborders', text='Preserve CID borders')
+                            if sx2.generatehulls:
+                                col_hulls.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
+                                col_hulls.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Distance', slider=True)
                             col_hulls.enabled = sx2.generatehulls
 
                             if hasattr(bpy.types, bpy.ops.object.vhacd.idname()):
