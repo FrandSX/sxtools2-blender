@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 8, 2),
+    'version': (2, 8, 3),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3365,7 +3365,8 @@ class SXTOOLS2_export(object):
 
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
             bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.decimate(ratio=0.7)
+            bpy.ops.mesh.dissolve_limited(angle_limit=math.radians(angle))
+            # bpy.ops.mesh.decimate(ratio=0.7)
             bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
             bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
