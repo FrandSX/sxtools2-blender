@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 8, 3),
+    'version': (2, 8, 4),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -736,6 +736,16 @@ class SXTOOLS2_utils(object):
         zmin, zmax = min(bbx_z), max(bbx_z)
 
         return xmin, xmax, ymin, ymax, zmin, zmax
+
+
+    def bounding_box_overlap_test(self, obj1, obj2):
+        bbx1 = self.get_object_bounding_box([obj1, ])
+        bbx2 = self.get_object_bounding_box([obj2, ])
+        min1, max1 = (bbx1[0], bbx1[2], bbx1[4]), (bbx1[1], bbx1[3], bbx1[5])
+        min2, max2 = (bbx2[0], bbx2[2], bbx2[4]), (bbx2[1], bbx2[3], bbx2[5])
+        return (min1.x <= max2.x and max1.x >= min2.x and
+                min1.y <= max2.y and max1.y >= min2.y and
+                min1.z <= max2.z and max1.z >= min2.z)
 
 
     # The default index of any added layer is 100
@@ -3622,9 +3632,9 @@ class SXTOOLS2_export(object):
                         bpy.ops.object.select_all(action='DESELECT')
                         view_layer.objects.active = new_obj
                         sep_objs = self.smart_separate([new_obj, ], override=True, parent=False)
-                        # print('Hull Mesh:', new_obj.name)
+                        # print('Hull Mesh:', new_obj.name, 'Mergefragments:', new_obj.sx2.mergefragments)
                         # print('Separated:', [sep_obj.name for sep_obj in sep_objs])
-                        
+
                         if new_obj.sx2.mergefragments:
                             # Merge needlessly separated objects by analyzing their bbx centers
                             left, right, front, back, top, bottom, center_x, center_y, center_z = [], [], [], [], [], [], [], [], []
@@ -3637,29 +3647,38 @@ class SXTOOLS2_export(object):
 
                                 if new_obj.sx2.xmirror:
                                     if ((xmin + xmax) * 0.5 > ref_pivot[0]) and (abs(((xmin + xmax) * 0.5) - abs(ref_pivot[0])) > 0.01):
+                                        # print('Adding', sep_obj.name, 'left')
                                         left.append(sep_obj)
                                     elif ((xmin + xmax) * 0.5 < ref_pivot[0]) and (abs(((xmin + xmax) * 0.5) - abs(ref_pivot[0])) > 0.01):
+                                        # print('Adding', sep_obj.name, 'right')
                                         right.append(sep_obj)
                                     else:
+                                        # print('Adding', sep_obj.name, 'center_x')
                                         center_x.append(sep_obj)
 
                                 elif new_obj.sx2.ymirror:
                                     if ((ymin + ymax) * 0.5 > ref_pivot[1]) and (abs(((ymin + ymax) * 0.5) - abs(ref_pivot[1])) > 0.01):
+                                        # print('Adding', sep_obj.name, 'front')
                                         front.append(sep_obj)
                                     elif ((ymin + ymax) * 0.5 < ref_pivot[1]) and (abs(((ymin + ymax) * 0.5) - abs(ref_pivot[1])) > 0.01):
+                                        # print('Adding', sep_obj.name, 'back')
                                         back.append(sep_obj)
                                     else:
+                                        # print('Adding', sep_obj.name, 'center_y')
                                         center_y.append(sep_obj)
 
                                 elif new_obj.sx2.zmirror:
                                     if ((zmin + zmax) * 0.5 > ref_pivot[2]) and (abs(((zmin + zmax) * 0.5) - abs(ref_pivot[2])) > 0.01):
+                                        # print('Adding', sep_obj.name, 'top')
                                         top.append(sep_obj)
                                     elif ((zmin + zmax) * 0.5 < ref_pivot[2]) and (abs(((zmin + zmax) * 0.5) - abs(ref_pivot[2])) > 0.01):
+                                        # print('Adding', sep_obj.name, 'bottom')
                                         bottom.append(sep_obj)
                                     else:
+                                        # print('Adding', sep_obj.name, 'center_z')
                                         center_z.append(sep_obj)
 
-                            for bucket in [left, right, center_x, top, bottom, center_y, front, back, center_z]:
+                            for i, bucket in enumerate([left, right, center_x, top, bottom, center_y, front, back, center_z]):
                                 if len(bucket) > 1:
                                     bpy.ops.object.select_all(action='DESELECT')
                                     view_layer.objects.active = bucket[0]
@@ -3668,17 +3687,18 @@ class SXTOOLS2_export(object):
                                         cleanup.append(bucket_object.data)
                                         bucket_object.select_set(True)
 
-                                    for i, bucket_object in enumerate(bucket, start=1):
+                                    for bucket_object in bucket[1:]:
                                         sep_objs.remove(bucket_object)
 
-                                    print('Bucket:', bucket)
+                                    # print('Bucket:', i, bucket)
                                     bpy.ops.object.join()
 
-                                    for i, cleanup_mesh in enumerate(cleanup, start=1):
+                                    for cleanup_mesh in cleanup[1:]:
                                         bpy.data.meshes.remove(cleanup_mesh)
 
                         if sep_objs:
                             sep_objs = [sep_obj for sep_obj in sep_objs if sep_obj.name in view_layer.objects]
+
                         if sep_objs:
                             separated_objs += sep_objs
 
@@ -7312,7 +7332,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
 
     preserveborders: bpy.props.BoolProperty(
         name='Preserve mirrored ID borders',
-        description='Useful when a mirrored mesh creates convex hulls that lose concavity over mirror axes.\nEnable to split mirrored same-color ID regions to separate convex hulls.\nCollider smart separate is disabled.',
+        description='Useful when a mirrored mesh creates convex hulls that lose concavity over mirror axes.\nEnable to split mirrored same-color ID regions to separate convex hulls.\nSeparate CID parts setting is ignored.',
         default=False,
         update=lambda self, context: update_obj_props(self, context, 'preserveborders'))
 
