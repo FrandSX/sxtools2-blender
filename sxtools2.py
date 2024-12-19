@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 8, 4),
+    'version': (2, 9, 0),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -37,7 +37,7 @@ class SXTOOLS2_sxglobals(object):
         self.benchmark_tool = False
         self.benchmark_ao = False
         self.benchmark_magic = False
-        self.benchmark_cvx = False
+        self.benchmark_cvx = True
 
         self.libraries_status = False
         self.refresh_in_progress = False
@@ -3274,11 +3274,10 @@ class SXTOOLS2_export(object):
                 print(f'SX Tools: {collider_obj.name} Initial Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
             bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.convex_hull(use_existing_faces=True, face_threshold=math.radians(40.0), shape_threshold=math.radians(40.0), sharp=True)
+            bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(40.0), shape_threshold=math.radians(40.0), sharp=True)
             if sxglobals.benchmark_cvx:
                 print(f'SX Tools: {collider_obj.name} Convex Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
             tri_opt = False
-            shrink_opt = False
             angle = 0.0
 
             # Shrink hull according to factor
@@ -3289,7 +3288,6 @@ class SXTOOLS2_export(object):
                 bpy.context.tool_settings.mesh_select_mode = (True, False, False)
                 bpy.ops.mesh.select_all(action='SELECT')
                 bpy.ops.transform.shrink_fatten(value=offset)
-                shrink_opt = True
 
                 # Weld after shrink to clean up clumped verts
                 # bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
@@ -3320,7 +3318,7 @@ class SXTOOLS2_export(object):
                 #     collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
 
                 # Use binary search approach for decimation angle
-                lower_bound = collider_obj.sx2.hulltrimax * 0.7  # adjust acceptable lower bound as necessary
+                lower_bound = collider_obj.sx2.hulltrimax * collider_obj.sx2.hulltrifactor
 
                 # Initialize search range
                 low_angle = 0.0
@@ -3338,11 +3336,11 @@ class SXTOOLS2_export(object):
                     triangle_count = int(modifiers.calculate_triangles([collider_obj]))
 
                     if sxglobals.benchmark_cvx:
-                        print(f'SX Tools: Low: {low_angle}, High: {high_angle}, Mid: {mid_angle}, Triangles: {triangle_count}')
+                        print(f'SX Tools: Low: {low_angle}, High: {high_angle}, Mid: {mid_angle}, Best: {angle}, Triangles: {triangle_count}')
 
                     if triangle_count > collider_obj.sx2.hulltrimax:
                         low_angle = mid_angle
-                    elif (best_result > triangle_count >= lower_bound):
+                    elif (best_result >= triangle_count >= lower_bound):
                         best_found = True
                         angle = mid_angle
                         best_result = triangle_count
@@ -3367,7 +3365,14 @@ class SXTOOLS2_export(object):
                 tri_opt = True
 
             # Final convex conversion
-            if tri_opt or shrink_opt:
+            if tri_opt:
+                pass
+                # Weld after shrink to clean up clumped verts
+                # bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                # collider_obj.modifiers.new(type='WELD', name='hullWeld')
+                # collider_obj.modifiers["hullWeld"].merge_threshold = min(collider_obj.dimensions) * 0.15
+                # bpy.ops.object.modifier_apply(modifier='hullWeld')
+
                 bpy.ops.object.mode_set(mode='EDIT', toggle=False)
                 bpy.ops.mesh.select_all(action='SELECT')
                 bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(angle), shape_threshold=math.radians(angle))
@@ -3376,7 +3381,6 @@ class SXTOOLS2_export(object):
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
             bpy.ops.mesh.select_all(action='SELECT')
             bpy.ops.mesh.dissolve_limited(angle_limit=math.radians(angle))
-            # bpy.ops.mesh.decimate(ratio=0.7)
             bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
             bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
@@ -7344,6 +7348,16 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         default=250,
         update=lambda self, context: update_obj_props(self, context, 'hulltrimax'))
 
+    hulltrifactor: bpy.props.FloatProperty(
+        name='Low Bound Factor',
+        description='Sets requested low bound factor for generated hull.',
+        min=0.0,
+        max=1.0,
+        step=0.1,
+        precision=2,
+        default=0.7,
+        update=lambda self, context: update_obj_props(self, context, 'hulltrifactor'))
+
     collideroffset: bpy.props.BoolProperty(
         name='Collision Mesh Auto-Offset',
         default=False,
@@ -8814,6 +8828,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 box_cids.prop(sx2, 'preserveborders', text='Preserve CID borders')
                             if sx2.generatehulls:
                                 col_hulls.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
+                                col_hulls.prop(sx2, 'hulltrifactor', text='Hull Low Bound Factor')
                                 col_hulls.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Distance', slider=True)
                             col_hulls.enabled = sx2.generatehulls
 
