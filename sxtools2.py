@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 9, 0),
+    'version': (2, 9, 2),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3778,7 +3778,7 @@ class SXTOOLS2_export(object):
 
             new_objs.append(new_obj)
 
-        tools.apply_modifiers(new_objs)
+        modifiers.apply_modifiers(new_objs)
 
         bpy.ops.object.select_all(action='DESELECT')
         for new_obj in new_objs:
@@ -3822,7 +3822,7 @@ class SXTOOLS2_export(object):
         #     obj.modifiers['hullWeld'].show_expanded = False
         #     obj.modifiers['hullWeld'].merge_threshold = 0.05
 
-        #     tools.apply_modifiers([obj, ])
+        #     modifiers.apply_modifiers([obj, ])
 
         #     bpy.context.view_layer.objects.active = obj
         #     bpy.ops.object.mode_set(mode='EDIT', toggle=False)
@@ -3897,17 +3897,19 @@ class SXTOOLS2_export(object):
             export_objects = bpy.data.collections['ExportObjects'].objects
             print('Export Objects:', export_objects.keys())
             for obj in export_objects:
-                mesh = obj.data
+                mesh = obj.data if obj.type == 'MESH' else None
                 bpy.data.objects.remove(obj, do_unlink=True)
-                bpy.data.meshes.remove(mesh)
+                if mesh:
+                    bpy.data.meshes.remove(mesh)
 
         if 'SXColliders' in bpy.data.collections:
             collider_objects = bpy.data.collections['SXColliders'].objects
             print('Collider Objects:', collider_objects.keys())
             for obj in collider_objects:
-                mesh = obj.data
+                mesh = obj.data if obj.type == 'MESH' else None
                 bpy.data.objects.remove(obj, do_unlink=True)
-                bpy.data.meshes.remove(mesh)
+                if mesh:
+                    bpy.data.meshes.remove(mesh)
 
         if 'SourceObjects' in bpy.data.collections:
             source_objects = bpy.data.collections['SourceObjects'].objects
@@ -4555,6 +4557,8 @@ class SXTOOLS2_magic(object):
                 source_objects.objects.link(org_group)
                 export_objects.objects.link(group)
 
+            viewlayer.update()
+
             for obj in objs:
                 if obj.name not in source_objects.objects:
                     source_objects.objects.link(obj)
@@ -4652,15 +4656,15 @@ class SXTOOLS2_magic(object):
 
                     if category == 'DEFAULT':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(group_objs)
+                            modifiers.apply_modifiers(group_objs)
                         self.process_default(group_objs)
                     if category == 'STATIC':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(group_objs)
+                            modifiers.apply_modifiers(group_objs)
                         self.process_static(group_objs)
                     elif category == 'PALETTED':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(group_objs)
+                            modifiers.apply_modifiers(group_objs)
                         self.process_paletted(group_objs)
                     elif (category == 'VEHICLES') or (category == 'NPCVEHICLES'):
                         for obj in group_objs:
@@ -4671,7 +4675,7 @@ class SXTOOLS2_magic(object):
                             if obj.name.endswith('_roof') or obj.name.endswith('_frame') or obj.name.endswith('_dash') or obj.name.endswith('_hood') or ('bumper' in obj.name):
                                 obj.modifiers['sxDecimate2'].use_symmetry = True
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(group_objs)
+                            modifiers.apply_modifiers(group_objs)
                         if (scene.exportquality == 'HI') and (createLODs is True):
                             for i in range(3):
                                 lod_objs = []
@@ -4689,23 +4693,23 @@ class SXTOOLS2_magic(object):
                             self.process_vehicles(group_objs)
                     elif category == 'BUILDINGS':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(group_objs)
+                            modifiers.apply_modifiers(group_objs)
                         self.process_buildings(group_objs)
                     elif category == 'TREES':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(group_objs)
+                            modifiers.apply_modifiers(group_objs)
                         self.process_trees(group_objs)
                     elif category == 'CHARACTERS':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(group_objs)
+                            modifiers.apply_modifiers(group_objs)
                         self.process_characters(group_objs)
                     elif category == 'ROADTILES':
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(group_objs)
+                            modifiers.apply_modifiers(group_objs)
                         self.process_roadtiles(group_objs)
                     else:
                         if scene.exportquality == 'HI':
-                            tools.apply_modifiers(group_objs)
+                            modifiers.apply_modifiers(group_objs)
                         self.process_default(group_objs)
 
                     for obj in group_objs:
