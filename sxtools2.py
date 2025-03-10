@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 9, 2),
+    'version': (2, 9, 3),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4350,13 +4350,14 @@ class SXTOOLS2_export(object):
             if True in selection:
                 loose_objs.append(obj.name)
 
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+
         if loose_objs:
             new_line = '\n'
             message_box(f'Objects contain loose geometry:{new_line}{new_line.join(map(str, loose_objs))}')
             print(f'SX Tools Error: Loose geometry in {loose_objs}')
             return False
 
-        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
         return True
 
 
@@ -4367,6 +4368,7 @@ class SXTOOLS2_export(object):
                 message_box('Object is not in a group: ' + obj.name)
                 print(f'SX Tools Error: {obj.name} is not in a group')
                 return False
+
         return True
 
 
