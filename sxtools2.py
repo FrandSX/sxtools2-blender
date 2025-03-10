@@ -37,7 +37,7 @@ class SXTOOLS2_sxglobals(object):
         self.benchmark_tool = False
         self.benchmark_ao = False
         self.benchmark_magic = False
-        self.benchmark_cvx = True
+        self.benchmark_cvx = False
 
         self.libraries_status = False
         self.refresh_in_progress = False
