@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 9, 5),
+    'version': (2, 9, 7),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3124,6 +3124,7 @@ class SXTOOLS2_export(object):
                     xmirror = obj.sx2.xmirror
                     ymirror = obj.sx2.ymirror
                     zmirror = obj.sx2.zmirror
+                    org_pivot = obj.matrix_world.to_translation()
 
                     if ('sxMirror' in obj.modifiers) and (obj.modifiers['sxMirror'].mirror_object is not None):
                         ref_loc = obj.modifiers['sxMirror'].mirror_object.matrix_world.to_translation()
@@ -3147,6 +3148,7 @@ class SXTOOLS2_export(object):
                             export_objects.objects.link(vl_obj)
 
                     if len(new_obj_list) > 1:
+                        # Adjust pivots according to mirror settings
                         export.set_pivots(new_obj_list)  # , force=True)
                         suffixDict = {}
                         for new_obj in new_obj_list:
@@ -3533,17 +3535,17 @@ class SXTOOLS2_export(object):
                             ref_obj = bpy.data.objects[color_ref_obj[color][3]]
                             pivot_obj = ref_obj.copy()
                             pivot_obj.data = ref_obj.data.copy()
-
                             pivot_obj.sx2.weldthreshold = 0.0
                             pivot_obj.sx2.decimation = 0.0
 
                             bpy.context.scene.collection.objects.link(pivot_obj)
                             view_layer.objects.active = pivot_obj
 
+                            # NOTE: Set pivot before applying modifiers to avoid drift due to modifiers
                             if 'sxMirror' in pivot_obj.modifiers:
                                 pivot_obj.modifiers.remove(pivot_obj.modifiers.get('sxMirror'))
-                            modifiers.apply_modifiers([pivot_obj, ])
                             self.set_pivots([pivot_obj, ])
+                            modifiers.apply_modifiers([pivot_obj, ])
                             pivot_loc = list(pivot_obj.matrix_world.to_translation())
 
                             # Fix pivot location for object halves
@@ -3571,7 +3573,7 @@ class SXTOOLS2_export(object):
                                     for bound in [zmin, zmax]:
                                         if (abs(mirror_pos[2] - bound) < 0.001):
                                             pivot_loc[2] = mirror_pos[2]
-                            
+
                             bpy.data.objects.remove(pivot_obj)
                         else:
                             pivot_loc = view_layer.objects[color_ref_obj[color][3]].matrix_world.to_translation()
@@ -4077,12 +4079,12 @@ class SXTOOLS2_export(object):
 
     # pivotmodes: 0 == no change, 1 == center of mass, 2 == center of bbox,
     # 3 == base of bbox, 4 == world origin, 5 == pivot of parent, 6 == used with submesh convex hulls,
-    # force == set mirror axis to mirrorobj
+    # 7 == 3D cursor, force == set mirror axis to mirrorobj
     def set_pivots(self, objs, pivotmode=None, force=False):
         viewlayer = bpy.context.view_layer
         active = viewlayer.objects.active
         selected = viewlayer.objects.selected[:]
-        modedict = {'OFF': 0, 'MASS': 1, 'BBOX': 2, 'ROOT': 3, 'ORG': 4, 'PAR': 5, 'CID': 6}
+        modedict = {'OFF': 0, 'MASS': 1, 'BBOX': 2, 'ROOT': 3, 'ORG': 4, 'PAR': 5, 'CID': 6, 'CUR': 7}
 
         for sel in viewlayer.objects.selected:
             sel.select_set(False)
@@ -4152,29 +4154,24 @@ class SXTOOLS2_export(object):
                 bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
             elif mode == 6:
                 pivot_world = obj.matrix_world.to_translation()
-                # pivot_world = obj.sx2.mirrorobject.matrix_world.to_translation() if obj.sx2.mirrorobject else  obj.matrix_world.to_translation()
                 pivot_loc = obj.matrix_local.to_translation()
                 pivot_ref = obj.sx2.mirrorobject.matrix_local.to_translation() if obj.sx2.mirrorobject else (0.0, 0.0, 0.0)
                 xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], mode='parent')
                 if obj.sx2.xmirror and (((xmin + xmax) * 0.5) > pivot_ref[0]) and (pivot_loc[0] < pivot_ref[0]):
                     pivot_world[0] += -2 * (pivot_loc[0] - pivot_ref[0])
-                    # pivot_loc[0] *= -1.0
                 elif obj.sx2.xmirror and (((xmin + xmax) * 0.5) < pivot_ref[0]) and (pivot_loc[0] > pivot_ref[0]):
                     pivot_world[0] += -2 * (pivot_loc[0] - pivot_ref[0])
-                    # pivot_loc[0] *= -1.0
                 if obj.sx2.ymirror and (((ymin + ymax) * 0.5) > pivot_ref[1]) and (pivot_loc[1] < pivot_ref[1]):
                     pivot_world[1] += -2 * (pivot_loc[1] - pivot_ref[1])
-                    # pivot_loc[1] *= -1.0
                 elif obj.sx2.ymirror and (((ymin + ymax) * 0.5) < pivot_ref[1]) and (pivot_loc[1] > pivot_ref[1]):
                     pivot_world[1] += -2 * (pivot_loc[1] - pivot_ref[1])
-                    # pivot_loc[1] *= -1.0
                 if obj.sx2.zmirror and (((zmin + zmax) * 0.5) > pivot_ref[2]) and (pivot_loc[2] < pivot_ref[2]):
                     pivot_world[2] += -2 * (pivot_loc[2] - pivot_ref[2])
-                    # pivot_loc[2] *= -1.0
                 elif obj.sx2.zmirror and (((zmin + zmax) * 0.5) < pivot_ref[2]) and (pivot_loc[2] > pivot_ref[2]):
                     pivot_world[2] += -2 * (pivot_loc[2] - pivot_ref[2])
-                    # pivot_loc[2] *= -1.0
                 bpy.context.scene.cursor.location = pivot_world
+                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+            elif mode == 7:
                 bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
             else:
                 pass
