@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 9, 10),
+    'version': (2, 9, 12),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -77,6 +77,10 @@ class SXTOOLS2_sxglobals(object):
             'CMP': (0.0, 0.0, 0.0, 0.0),
             'CID': (0.0, 0.0, 0.0, 0.0),
             }
+
+        # Layer definitions for four-channel and single-channel layers, used for layer data access
+        self.rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP', 'CID']
+        self.alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
 
         # {layer_keys: (index, obj)}
         self.sx2material_dict = {}
@@ -1068,10 +1072,13 @@ class SXTOOLS2_generate(object):
     def blur_list(self, obj, layer, masklayer=None, returndict=False):
 
         def average_color(colors):
+            if not colors:
+                return Vector((0.0, 0.0, 0.0, 0.0))
+            
             sum_color = Vector((0.0, 0.0, 0.0, 0.0))
             for color in colors:
                 sum_color += color
-            return (sum_color / len(colors)) if colors else sum_color
+            return sum_color / len(colors)
 
 
         color_dict = {}
@@ -2063,19 +2070,17 @@ class SXTOOLS2_layers(object):
 
     # wrapper for low-level functions, always returns layerdata in RGBA
     def get_layer(self, obj, sourcelayer, as_tuple=False, single_as_alpha=False, apply_layer_opacity=False):
-        rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP', 'CID']
-        alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
         dv = [1.0, 1.0, 1.0, 1.0]
 
-        if sourcelayer.layer_type in rgba_targets:
+        if sourcelayer.layer_type in sxglobals.rgba_targets:
             values = self.get_colors(obj, sourcelayer.color_attribute)
 
-        elif sourcelayer.layer_type in alpha_targets:
+        elif sourcelayer.layer_type in sxglobals.alpha_targets:
             source_values = self.get_colors(obj, sourcelayer.color_attribute)
             values = [None] * len(source_values)
             for i in range(len(source_values)//4):
                 value_slice = source_values[(0+i*4):(4+i*4)]
-                value = value_slice[alpha_targets[sourcelayer.layer_type]]
+                value = value_slice[sxglobals.alpha_targets[sourcelayer.layer_type]]
                 if single_as_alpha:
                     if value > 0.0:
                         values[(0+i*4):(4+i*4)] = [dv[0], dv[1], dv[2], value]
@@ -2102,33 +2107,29 @@ class SXTOOLS2_layers(object):
 
     # takes RGBA buffers, converts and writes to appropriate channels
     def set_layer(self, obj, colors, targetlayer):
-        rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP', 'CID']
-        alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
         target_type = targetlayer.layer_type
 
-        if target_type in rgba_targets:
+        if target_type in sxglobals.rgba_targets:
             layers.set_colors(obj, targetlayer.color_attribute, colors)
 
-        elif target_type in alpha_targets:
+        elif target_type in sxglobals.alpha_targets:
             target_values = self.get_colors(obj, 'Alpha Materials')
             values = layers.get_luminances(obj, sourcelayer=None, colors=colors, as_rgba=False)
             for i in range(len(values)):
-                target_values[alpha_targets[target_type]+i*4] = values[i]
+                target_values[sxglobals.alpha_targets[target_type]+i*4] = values[i]
             self.set_colors(obj, 'Alpha Materials', target_values)
 
 
     def get_layer_mask(self, obj, sourcelayer, channel='A'):
-        rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP', 'CID']
-        alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
         channel_targets = {'R': 0, 'G': 1, 'B': 2, 'A': 3}
         layer_type = sourcelayer.layer_type
 
-        if layer_type in rgba_targets:
+        if layer_type in sxglobals.rgba_targets:
             colors = self.get_colors(obj, sourcelayer.color_attribute)
             values = colors[channel_targets[channel]::4]
-        elif layer_type in alpha_targets:
+        elif layer_type in sxglobals.alpha_targets:
             colors = self.get_colors(obj, sourcelayer.color_attribute)
-            values = colors[alpha_targets[layer_type]::4]
+            values = colors[sxglobals.alpha_targets[layer_type]::4]
 
         if any(v != 0.0 for v in values):
             return values, False
@@ -4132,20 +4133,113 @@ class SXTOOLS2_export(object):
         utils.mode_manager(objs, set_mode=False, mode_id='group_objects')
 
 
-    # pivotmodes: 0 == no change, 1 == center of mass, 2 == center of bbox,
-    # 3 == base of bbox, 4 == world origin, 5 == pivot of parent, 6 == used with submesh convex hulls,
-    # 7 == 3D cursor, force == set mirror axis to mirrorobj
+    # pivotmodes: OFF == no change, MASS == center of mass, BBOX == center of bbox,
+    # ROOT == base of bbox, ORG == world origin, PAR == pivot of parent, CID == used with submesh convex hulls,
+    # CUR == 3D cursor, force == set mirror axis to mirrorobj
     def set_pivots(self, objs, pivotmode=None, force=False):
+
+        def pivot_no_change(obj):
+            pivot_loc = obj.matrix_world.to_translation()
+            xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ])
+            if obj.sx2.xmirror and not (xmin < pivot_loc[0] < xmax):
+                pivot_loc[0] *= -1.0
+            if obj.sx2.ymirror and not (ymin < pivot_loc[1] < ymax):
+                pivot_loc[1] *= -1.0
+            if obj.sx2.zmirror and not (zmin < pivot_loc[2] < zmax):
+                pivot_loc[2] *= -1.0
+            bpy.context.scene.cursor.location = pivot_loc
+            bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
+        def pivot_center_of_mass(obj):
+            bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_VOLUME', center='MEDIAN')
+            if force:
+                pivot_loc = obj.matrix_world.to_translation()
+                if obj.sx2.mirrorobject is not None:
+                    mirror_pivot_loc = obj.sx2.mirrorobject.matrix_world.to_translation()
+                else:
+                    mirror_pivot_loc = (0.0, 0.0, 0.0)
+                if obj.sx2.xmirror:
+                    pivot_loc[0] = mirror_pivot_loc[0]
+                if obj.sx2.ymirror:
+                    pivot_loc[1] = mirror_pivot_loc[1]
+                if obj.sx2.zmirror:
+                    pivot_loc[2] = mirror_pivot_loc[2]
+                bpy.context.scene.cursor.location = pivot_loc
+                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
+        def pivot_center_bbox(obj):
+            bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+            if force:
+                pivot_loc = obj.matrix_world.to_translation()
+                if obj.sx2.mirrorobject is not None:
+                    mirror_pivot_loc = obj.sx2.mirrorobject.matrix_world.to_translation()
+                else:
+                    mirror_pivot_loc = (0.0, 0.0, 0.0)
+                if obj.sx2.xmirror:
+                    pivot_loc[0] = mirror_pivot_loc[0]
+                if obj.sx2.ymirror:
+                    pivot_loc[1] = mirror_pivot_loc[1]
+                if obj.sx2.zmirror:
+                    pivot_loc[2] = mirror_pivot_loc[2]
+                bpy.context.scene.cursor.location = pivot_loc
+                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
+        def pivot_root_bbox(obj):
+            bpy.context.scene.cursor.location = utils.find_root_pivot([obj, ])
+            bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
+        def pivot_world_origin(obj):
+            bpy.context.scene.cursor.location = (0.0, 0.0, 0.0)
+            bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
+        def pivot_parent(obj):
+            pivot_loc = obj.parent.matrix_world.to_translation()
+            bpy.context.scene.cursor.location = pivot_loc
+            bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
+        def pivot_collision_hull(obj):
+            pivot_world = obj.matrix_world.to_translation()
+            pivot_loc = obj.matrix_local.to_translation()
+            pivot_ref = obj.sx2.mirrorobject.matrix_local.to_translation() if obj.sx2.mirrorobject else (0.0, 0.0, 0.0)
+            xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], mode='parent')
+            if obj.sx2.xmirror and (((xmin + xmax) * 0.5) > pivot_ref[0]) and (pivot_loc[0] < pivot_ref[0]):
+                pivot_world[0] += -2 * (pivot_loc[0] - pivot_ref[0])
+            elif obj.sx2.xmirror and (((xmin + xmax) * 0.5) < pivot_ref[0]) and (pivot_loc[0] > pivot_ref[0]):
+                pivot_world[0] += -2 * (pivot_loc[0] - pivot_ref[0])
+            if obj.sx2.ymirror and (((ymin + ymax) * 0.5) > pivot_ref[1]) and (pivot_loc[1] < pivot_ref[1]):
+                pivot_world[1] += -2 * (pivot_loc[1] - pivot_ref[1])
+            elif obj.sx2.ymirror and (((ymin + ymax) * 0.5) < pivot_ref[1]) and (pivot_loc[1] > pivot_ref[1]):
+                pivot_world[1] += -2 * (pivot_loc[1] - pivot_ref[1])
+            if obj.sx2.zmirror and (((zmin + zmax) * 0.5) > pivot_ref[2]) and (pivot_loc[2] < pivot_ref[2]):
+                pivot_world[2] += -2 * (pivot_loc[2] - pivot_ref[2])
+            elif obj.sx2.zmirror and (((zmin + zmax) * 0.5) < pivot_ref[2]) and (pivot_loc[2] > pivot_ref[2]):
+                pivot_world[2] += -2 * (pivot_loc[2] - pivot_ref[2])
+            bpy.context.scene.cursor.location = pivot_world
+            bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
+        def pivot_cursor(obj):
+            bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
+
         viewlayer = bpy.context.view_layer
         active = viewlayer.objects.active
         selected = viewlayer.objects.selected[:]
-        modedict = {'OFF': 0, 'MASS': 1, 'BBOX': 2, 'ROOT': 3, 'ORG': 4, 'PAR': 5, 'CID': 6, 'CUR': 7}
+        pivotmodes = {
+            'OFF': pivot_no_change,
+            'MASS': pivot_center_of_mass,
+            'BBOX': pivot_center_bbox,
+            'ROOT': pivot_root_bbox,
+            'ORG': pivot_world_origin,
+            'PAR': pivot_parent,
+            'CID': pivot_collision_hull,
+            'CUR': pivot_cursor
+        }
 
         for sel in viewlayer.objects.selected:
             sel.select_set(False)
 
         for obj in objs:
-            mode = modedict[obj.sx2.pivotmode] if pivotmode is None else pivotmode
+            mode = obj.sx2.pivotmode if pivotmode is None else pivotmode
             viewlayer.objects.active = obj
             obj.select_set(True)
 
@@ -4154,82 +4248,8 @@ class SXTOOLS2_export(object):
             if sxglobals.benchmark_magic:
                 then = time.perf_counter()
 
-            if mode == 0:
-                pivot_loc = obj.matrix_world.to_translation()
-                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ])
-                if obj.sx2.xmirror and not (xmin < pivot_loc[0] < xmax):
-                    pivot_loc[0] *= -1.0
-                if obj.sx2.ymirror and not (ymin < pivot_loc[1] < ymax):
-                    pivot_loc[1] *= -1.0
-                if obj.sx2.zmirror and not (zmin < pivot_loc[2] < zmax):
-                    pivot_loc[2] *= -1.0
-                bpy.context.scene.cursor.location = pivot_loc
-                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-            elif mode == 1:
-                bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_VOLUME', center='MEDIAN')
-                if force:
-                    pivot_loc = obj.matrix_world.to_translation()
-                    if obj.sx2.mirrorobject is not None:
-                        mirror_pivot_loc = obj.sx2.mirrorobject.matrix_world.to_translation()
-                    else:
-                        mirror_pivot_loc = (0.0, 0.0, 0.0)
-                    if obj.sx2.xmirror:
-                        pivot_loc[0] = mirror_pivot_loc[0]
-                    if obj.sx2.ymirror:
-                        pivot_loc[1] = mirror_pivot_loc[1]
-                    if obj.sx2.zmirror:
-                        pivot_loc[2] = mirror_pivot_loc[2]
-                    bpy.context.scene.cursor.location = pivot_loc
-                    bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-            elif mode == 2:
-                bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
-                if force:
-                    pivot_loc = obj.matrix_world.to_translation()
-                    if obj.sx2.mirrorobject is not None:
-                        mirror_pivot_loc = obj.sx2.mirrorobject.matrix_world.to_translation()
-                    else:
-                        mirror_pivot_loc = (0.0, 0.0, 0.0)
-                    if obj.sx2.xmirror:
-                        pivot_loc[0] = mirror_pivot_loc[0]
-                    if obj.sx2.ymirror:
-                        pivot_loc[1] = mirror_pivot_loc[1]
-                    if obj.sx2.zmirror:
-                        pivot_loc[2] = mirror_pivot_loc[2]
-                    bpy.context.scene.cursor.location = pivot_loc
-                    bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-            elif mode == 3:
-                bpy.context.scene.cursor.location = utils.find_root_pivot([obj, ])
-                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-            elif mode == 4:
-                bpy.context.scene.cursor.location = (0.0, 0.0, 0.0)
-                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-            elif mode == 5:
-                pivot_loc = obj.parent.matrix_world.to_translation()
-                bpy.context.scene.cursor.location = pivot_loc
-                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-            elif mode == 6:
-                pivot_world = obj.matrix_world.to_translation()
-                pivot_loc = obj.matrix_local.to_translation()
-                pivot_ref = obj.sx2.mirrorobject.matrix_local.to_translation() if obj.sx2.mirrorobject else (0.0, 0.0, 0.0)
-                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], mode='parent')
-                if obj.sx2.xmirror and (((xmin + xmax) * 0.5) > pivot_ref[0]) and (pivot_loc[0] < pivot_ref[0]):
-                    pivot_world[0] += -2 * (pivot_loc[0] - pivot_ref[0])
-                elif obj.sx2.xmirror and (((xmin + xmax) * 0.5) < pivot_ref[0]) and (pivot_loc[0] > pivot_ref[0]):
-                    pivot_world[0] += -2 * (pivot_loc[0] - pivot_ref[0])
-                if obj.sx2.ymirror and (((ymin + ymax) * 0.5) > pivot_ref[1]) and (pivot_loc[1] < pivot_ref[1]):
-                    pivot_world[1] += -2 * (pivot_loc[1] - pivot_ref[1])
-                elif obj.sx2.ymirror and (((ymin + ymax) * 0.5) < pivot_ref[1]) and (pivot_loc[1] > pivot_ref[1]):
-                    pivot_world[1] += -2 * (pivot_loc[1] - pivot_ref[1])
-                if obj.sx2.zmirror and (((zmin + zmax) * 0.5) > pivot_ref[2]) and (pivot_loc[2] < pivot_ref[2]):
-                    pivot_world[2] += -2 * (pivot_loc[2] - pivot_ref[2])
-                elif obj.sx2.zmirror and (((zmin + zmax) * 0.5) < pivot_ref[2]) and (pivot_loc[2] > pivot_ref[2]):
-                    pivot_world[2] += -2 * (pivot_loc[2] - pivot_ref[2])
-                bpy.context.scene.cursor.location = pivot_world
-                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-            elif mode == 7:
-                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-            else:
-                pass
+            if mode in pivotmodes:
+                pivotmodes[mode](obj)
 
             if sxglobals.benchmark_magic:
                 now = time.perf_counter()
