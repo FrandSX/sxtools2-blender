@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 9, 7),
+    'version': (2, 9, 10),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -56,6 +56,8 @@ class SXTOOLS2_sxglobals(object):
         self.selection_modal_status = False
         self.key_modal_status = False
 
+        self.prev_validated_selection = []
+        self.prev_selection_hash = None
         self.prev_selection = []
         self.prev_component_selection = []
         self.ramp_dict = {}
@@ -1803,25 +1805,32 @@ class SXTOOLS2_generate(object):
         def add_to_dict(vert_id):
             min_dot = None
             if dots:
-                dot_list = []
                 vert = bm.verts[vert_id]
                 num_connected = len(vert.link_edges)
                 if num_connected > 0:
+                    vert_normal_normalized = vert.normal.normalized()
+                    dot_list = []
                     for edge in vert.link_edges:
-                        dot_list.append((vert.normal.normalized()).dot((edge.other_vert(vert).co - vert.co).normalized()))
+                        other_vec = (edge.other_vert(vert).co - vert.co).normalized()
+                        dot_list.append(vert_normal_normalized.dot(other_vec))
                 min_dot = min(dot_list)
 
+            vert = mesh.vertices[vert_id]
+            vert_co = vert.co
+            vert_normal = vert.normal
+
             vertex_dict[vert_id] = (
-                mesh.vertices[vert_id].co,
-                mesh.vertices[vert_id].normal,
-                mat @ mesh.vertices[vert_id].co,
-                (mat @ mesh.vertices[vert_id].normal - mat @ Vector()).normalized(),
+                vert_co,
+                vert_normal,
+                mat @ vert_co,
+                (mat @ vert_normal - origin).normalized(),
                 min_dot
             )
 
 
         mesh = obj.data
         mat = obj.matrix_world
+        origin = mat @ Vector()
         ids = self.vertex_id_list(obj)
 
         if dots:
@@ -2376,6 +2385,63 @@ class SXTOOLS2_tools(object):
 
 
     def blend_values(self, topcolors, basecolors, blendmode, blendvalue, selectionmask=None):
+        midpoint = 0.5  # convert.srgb_to_linear([0.5, 0.5, 0.5, 1.0])[0]
+
+        def blend_alpha(top, base, a):
+            result = top * a + base * (1 - a)
+            result[3] = min(base[3]+a, 1.0)
+            return result
+        
+        def blend_add(top, base, a):
+            result = base + top * a
+            result[3] = min(base[3]+a, 1.0)
+            return result
+        
+        def blend_sub(top, base, a):
+            result = base - top * a
+            result[3] = min(base[3]+a, 1.0)
+            return result
+        
+        def blend_mul(top, base, a):
+            result = Vector([0.0, 0.0, 0.0, 0.0])
+            for j in range(3):
+                result[j] = base[j] * top[j] * a + base[j] * (1 - a)
+            return result
+
+        def blend_over(top, base, a):
+            over = Vector([0.0, 0.0, 0.0, top[3]])
+            b = over[3] * blendvalue
+            for j in range(3):
+                if base[j] < midpoint:
+                    over[j] = 2.0 * base[j] * top[j]
+                else:
+                    over[j] = 1.0 - 2.0 * (1.0 - base[j]) * (1.0 - top[j])
+            result = over * b + base * (1.0 - b)
+            result[3] = min(base[3]+a, 1.0)
+            return result
+        
+        def blend_pal(top, base, a):
+            alpha = base[3]
+            result = top * blendvalue + base * (1 - blendvalue)
+            result[3] = alpha
+            return result
+        
+        def blend_rep(top, base, a):
+            if (selectionmask is None) or (selectionmask[i] != 0.0):
+                return top
+            else:
+                return base
+
+        blend_functions = {
+            'ALPHA': blend_alpha,
+            'ADD': blend_add,
+            'SUB': blend_sub,
+            'MUL': blend_mul, 
+            'OVR': blend_over,
+            'PAL': blend_pal,
+            'REP': blend_rep
+            }
+
         if topcolors is None:
             return basecolors
         else:
@@ -2383,58 +2449,40 @@ class SXTOOLS2_tools(object):
                 basecolors = [0.0] * len(topcolors)
 
             count = len(topcolors)//4
-            colors = [None] * count * 4
-            midpoint = 0.5  # convert.srgb_to_linear([0.5, 0.5, 0.5, 1.0])[0]
+            colors = [0.0] * count * 4
+            blend_func = blend_functions[blendmode]
 
             for i in range(count):
-                top = Vector(topcolors[(0+i*4):(4+i*4)])
-                base = Vector(basecolors[(0+i*4):(4+i*4)])
+                start_idx = i * 4
+                top = Vector([
+                    topcolors[start_idx],
+                    topcolors[start_idx + 1],
+                    topcolors[start_idx + 2], 
+                    topcolors[start_idx + 3]
+                ])
+                
+                base = Vector([
+                    basecolors[start_idx],
+                    basecolors[start_idx + 1],
+                    basecolors[start_idx + 2],
+                    basecolors[start_idx + 3]
+                ])
                 a = top[3] * blendvalue
 
-                if blendmode == 'ALPHA':
-                    base = top * a + base * (1 - a)
-                    base[3] = min(base[3]+a, 1.0)
-
-                elif blendmode == 'ADD':
-                    base += top * a
-                    base[3] = min(base[3]+a, 1.0)
-
-                elif blendmode == 'SUB':
-                    base -= top * a
-                    base[3] = min(base[3]+a, 1.0)
-
-                elif blendmode == 'MUL':
-                    for j in range(3):
-                        base[j] *= top[j] * a + (1 - a)
+                result = blend_func(top, base, a)
 
                 # Screen: (A+B) - (A*B)
                 # elif blendmode == 'SCR':
                 #     base = (base + top * a) - (base * top * a)
 
-                elif blendmode == 'OVR':
-                    over = Vector([0.0, 0.0, 0.0, top[3]])
-                    b = over[3] * blendvalue
-                    for j in range(3):
-                        if base[j] < midpoint:
-                            over[j] = 2.0 * base[j] * top[j]
-                        else:
-                            over[j] = 1.0 - 2.0 * (1.0 - base[j]) * (1.0 - top[j])
-                    base = over * b + base * (1.0 - b)
-                    base[3] = min(base[3]+a, 1.0)
-
-                elif blendmode == 'REP':
-                    if (selectionmask is None) or (selectionmask[i] != 0.0):
-                        base = top
-
-                elif blendmode == 'PAL':
-                    alpha = base[3]
-                    base = top * blendvalue + base * (1 - blendvalue)
-                    base[3] = alpha
-
                 # if (base[3] == 0.0) and (blendmode != 'REP'):
                 #     base = [0.0, 0.0, 0.0, 0.0]
 
-                colors[(0+i*4):(4+i*4)] = base
+                colors[start_idx] = result[0]
+                colors[start_idx + 1] = result[1]
+                colors[start_idx + 2] = result[2]
+                colors[start_idx + 3] = result[3]
+
             return colors
 
 
@@ -3306,7 +3354,7 @@ class SXTOOLS2_export(object):
             if int(modifiers.calculate_triangles([collider_obj, ])) > collider_obj.sx2.hulltrimax:
                 # Decimate until below tri count limit
                 if sxglobals.benchmark_cvx:
-                    then = time.perf_counter()
+                    then_iterate = time.perf_counter()
 
                 bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
                 collider_obj.modifiers.new(type='DECIMATE', name='hullDecimate')
@@ -3364,7 +3412,7 @@ class SXTOOLS2_export(object):
 
                 if sxglobals.benchmark_cvx:
                     now = time.perf_counter()
-                    print(f'SX Tools: {collider_obj.name} Tris/limit: {modifiers.calculate_triangles([collider_obj, ])}/{collider_obj.sx2.hulltrimax} Angle: {angle} Iteration Time: {now-then}')
+                    print(f'SX Tools: {collider_obj.name} Tris/limit: {modifiers.calculate_triangles([collider_obj, ])}/{collider_obj.sx2.hulltrimax} Angle: {angle} Iteration Time: {now-then_iterate}')
 
                 tri_opt = True
 
@@ -3435,6 +3483,8 @@ class SXTOOLS2_export(object):
                             if ('sxSubdivision' in obj.modifiers):
                                 obj.modifiers['sxSubdivision'].levels = org_subdiv
                             
+                            first_obj_matrix_world = obj.matrix_world.copy()
+                            first_obj_matrix_world_inv = first_obj_matrix_world.inverted()
                             for face in bm.faces:
                                 color = face.loops[0][color_layer]
                                 color = tuple(round(c, 2) for c in color)
@@ -3443,12 +3493,11 @@ class SXTOOLS2_export(object):
                                 # Create color buckets, discard uncolored faces
                                 if (color != (0.0, 0.0, 0.0, 0.0)):
                                     transformed_face_verts = []
-                                    first_obj_matrix_world_inv = obj.matrix_world.inverted()
 
                                     # Transform all color island vertices to the local space of reference object
                                     # (first source obj with respective color)
                                     for vert in face.verts:
-                                        world_coord = obj.matrix_world @ vert.co
+                                        world_coord = first_obj_matrix_world @ vert.co
                                         local_coord_first_obj = first_obj_matrix_world_inv @ world_coord
                                         transformed_face_verts.append(tuple(local_coord_first_obj))
 
@@ -3478,27 +3527,29 @@ class SXTOOLS2_export(object):
                     for i, (color, faces) in enumerate(color_to_faces.items()):
                         new_bm = bmesh.new()
                         vert_map = {}  # Map old verts to new verts
+                        existing_faces = set()
                         
                         for face_verts in faces:
                             new_verts = []
                             
                             for vert_co in face_verts:
-                                if vert_co not in vert_map:
-                                    new_vert = new_bm.verts.new(vert_co)
-                                    vert_map[vert_co] = new_vert
+                                vert = vert_map.get(vert_co)
+                                if not vert:
+                                    vert = new_bm.verts.new(vert_co)
+                                    vert_map[vert_co] = vert
+                                
+                                # if vert_co not in vert_map:
+                                #     new_vert = new_bm.verts.new(vert_co)
+                                #     vert_map[vert_co] = new_vert
 
-                                if vert_map[vert_co] not in new_verts:
+                                if vert not in new_verts:
                                     new_verts.append(vert_map[vert_co])
                             
                             if len(new_verts) > 2:
-                                existing_face = False
-                                for f in new_bm.faces:
-                                    if set(f.verts[:]) == set(new_verts):
-                                        existing_face = True
-                                        break
-
-                                if not existing_face:
+                                face_key = frozenset(new_verts)
+                                if face_key not in existing_faces:
                                     new_bm.faces.new(new_verts)
+                                    existing_faces.add(face_key)
                         
                         new_bm.verts.index_update()
                         new_bm.edges.index_update()
@@ -3750,6 +3801,10 @@ class SXTOOLS2_export(object):
                 view_layer.objects.active = active_obj
                 if not bpy.app.background:
                     setup.update_sx2material(bpy.context)
+
+                if sxglobals.benchmark_cvx:
+                    now = time.perf_counter()
+                    print(f'SX Tools: Convex hull generation finished. Time: {now-then}')
 
 
     def generate_mesh_colliders(self, objs):
@@ -6128,6 +6183,26 @@ def start_modal():
 
 # Return value eliminates duplicates
 def mesh_selection_validator(self, context):
+    current_selection = frozenset(obj.name for obj in context.view_layer.objects.selected)
+
+    if not current_selection:
+        sxglobals.prev_selection_hash = current_selection
+        sxglobals.prev_validated_selection = []
+        return []
+
+    if current_selection == sxglobals.prev_selection_hash:
+        valid_objects = []
+        for obj in sxglobals.prev_validated_selection:
+            try:
+                name = obj.name
+                if name in context.view_layer.objects:
+                    valid_objects.append(obj)
+            except ReferenceError:
+                continue
+        
+        sxglobals.prev_validated_selection = valid_objects
+        return valid_objects
+    
     mesh_objs = []
     for obj in context.view_layer.objects.selected:
         if obj is None:
@@ -6137,7 +6212,12 @@ def mesh_selection_validator(self, context):
         elif obj.type == 'ARMATURE':
             mesh_objs += utils.find_children(obj, recursive=True, child_type='MESH')
 
-    return list(set(mesh_objs))
+    result = list(set(mesh_objs))
+
+    sxglobals.prev_selection_hash = current_selection
+    sxglobals.prev_validated_selection = result
+
+    return result
 
 
 def layer_validator(self, context):
@@ -6765,6 +6845,11 @@ def export_validator(self, context):
 def load_post_handler(dummy):
     prefs = bpy.context.preferences.addons['sxtools2'].preferences
 
+    sxglobals.prev_selection_hash = None
+    sxglobals.prev_validated_selection = []
+    sxglobals.prev_selection = []
+    sxglobals.prev_component_selection = []
+    sxglobals.copy_buffer.clear()
     sxglobals.layer_stack_dict.clear()
     sxglobals.sx2material_dict.clear()
     sxglobals.libraries_status = False
