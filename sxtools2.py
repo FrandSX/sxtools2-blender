@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 9, 14),
+    'version': (2, 9, 17),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -135,7 +135,6 @@ class SXTOOLS2_files(object):
                         sxglobals.category_dict.clear()
                         sxglobals.category_dict = temp_dict
 
-                    input.close()
                 print(f'SX Tools: {mode} loaded from {file_path}')
             except ValueError:
                 print(f'SX Tools Error: Invalid {mode} file.')
@@ -176,10 +175,10 @@ class SXTOOLS2_files(object):
                     temp_dict = sxglobals.ramp_dict
                     json.dump(temp_dict, output, indent=4)
                 output.close()
-            message_box(mode + ' saved')
+            message_box(f'{mode} saved')
             # print('SX Tools: ' + mode + ' saved')
         else:
-            message_box(mode + ' file location not set!', 'SX Tools Error', 'ERROR')
+            message_box(f'{mode} file location not set!', 'SX Tools Error', 'ERROR')
             # print('SX Tools Warning: ' + mode + ' file location not set!')
 
 
@@ -591,7 +590,8 @@ class SXTOOLS2_utils(object):
         else:
             colors = [color for color in color_list if color[3] > 0.0]
 
-        quantized_colors = [(self.round_stepped(color[0]), self.round_stepped(color[1]), self.round_stepped(color[2]), 1.0) for color in colors]
+        round_stepped = self.round_stepped
+        quantized_colors = [(round_stepped(color[0]), round_stepped(color[1]), round_stepped(color[2]), 1.0) for color in colors]
         sort_list = [color for color, count in Counter(quantized_colors).most_common(numcolors)]
 
         if numcolors is not None:
@@ -690,6 +690,7 @@ class SXTOOLS2_utils(object):
 
 
     def get_selection_bounding_box(self, objs):
+        Vec = Vector
 
         def get_selected_vertex_positions(objs):
             vert_pos_list = []
@@ -705,7 +706,7 @@ class SXTOOLS2_utils(object):
 
                 for i, selected in enumerate(select_states):
                     if selected:
-                        co = Vector((coords[i*3], coords[i*3+1], coords[i*3+2]))
+                        co = Vec((coords[i*3], coords[i*3+1], coords[i*3+2]))
                         vert_pos_list.append(mat @ co)
     
             return vert_pos_list
@@ -729,6 +730,7 @@ class SXTOOLS2_utils(object):
 
 
     def get_object_bounding_box(self, objs, mode='world'):
+        Vec = Vector
         bbx_x = []
         bbx_y = []
         bbx_z = []
@@ -737,11 +739,11 @@ class SXTOOLS2_utils(object):
         for obj in objs:
             obj_eval = obj.evaluated_get(edg)
             if (mode == 'local'):
-                corners = [Vector(corner) for corner in obj_eval.bound_box]
+                corners = [Vec(corner) for corner in obj_eval.bound_box]
             elif (mode == 'parent'):
-                corners = [obj.matrix_local @ Vector(corner) for corner in obj_eval.bound_box]
+                corners = [obj.matrix_local @ Vec(corner) for corner in obj_eval.bound_box]
             elif (mode == 'world'):
-                corners = [obj.matrix_world @ Vector(corner) for corner in obj_eval.bound_box]
+                corners = [obj.matrix_world @ Vec(corner) for corner in obj_eval.bound_box]
 
             for corner in corners:
                 bbx_x.append(corner[0])
@@ -800,7 +802,8 @@ class SXTOOLS2_utils(object):
 
 
     def color_compare(self, color1, color2, tolerance=0.001):
-        return (Vector(color1) - Vector(color2)).length <= tolerance
+        Vec = Vector
+        return (Vec(color1) - Vec(color2)).length <= tolerance
 
 
     def round_stepped(self, x, step=0.005):
@@ -809,13 +812,14 @@ class SXTOOLS2_utils(object):
 
     # if vertex pos x y z is at bbx limit, and mirror axis is set, round vertex position
     def round_tiling_verts(self, objs):
+        Vec = Vector
         for obj in objs:
             if obj.sx2.tiling:
                 vert_dict = generate.vertex_data_dict(obj)
                 if vert_dict:
                     xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box([obj, ], mode='local')
                     for vert_id in vert_dict:
-                        vertLoc = Vector(vert_dict[vert_id][0])
+                        vertLoc = Vec(vert_dict[vert_id][0])
 
                         if (obj.sx2.tile_neg_x and (round(vertLoc[0], 2) == round(xmin, 2))) or (obj.sx2.tile_pos_x and (round(vertLoc[0], 2) == round(xmax, 2))):
                             vertLoc[0] = round(vertLoc[0], 2)
@@ -824,7 +828,7 @@ class SXTOOLS2_utils(object):
                         if (obj.sx2.tile_neg_z and (round(vertLoc[2], 2) == round(zmin, 2))) or (obj.sx2.tile_pos_z and (round(vertLoc[2], 2) == round(zmax, 2))):
                             vertLoc[2] = round(vertLoc[2], 2)
 
-                        if vertLoc != Vector(vert_dict[vert_id][0]):
+                        if vertLoc != Vec(vert_dict[vert_id][0]):
                             obj.data.vertices[vert_id].co = vertLoc
                             obj.data.vertices[vert_id].select = True
 
@@ -1080,12 +1084,13 @@ class SXTOOLS2_generate(object):
 
 
     def blur_list(self, obj, layer, masklayer=None, returndict=False):
+        Vec = Vector
 
         def average_color(colors):
             if not colors:
-                return Vector((0.0, 0.0, 0.0, 0.0))
+                return Vec((0.0, 0.0, 0.0, 0.0))
             
-            sum_color = Vector((0.0, 0.0, 0.0, 0.0))
+            sum_color = Vec((0.0, 0.0, 0.0, 0.0))
             for color in colors:
                 sum_color += color
             return sum_color / len(colors)
@@ -1102,7 +1107,7 @@ class SXTOOLS2_generate(object):
         for vert in bm.verts:
             loop_colors = []
             for loop in vert.link_loops:
-                loop_color = Vector(colors[(loop.index*4):(loop.index*4+4)])
+                loop_color = Vec(colors[(loop.index*4):(loop.index*4+4)])
                 loop_colors.append(loop_color)
             
             color_dict[vert.index] = average_color(loop_colors)
@@ -1121,10 +1126,10 @@ class SXTOOLS2_generate(object):
                     # weights are inverted so near colors are more important
                     edge_weights = [int((1.1 - (weight / max_weight)) * 10) for weight in edge_weights]
 
-                    neighbor_colors = [Vector(color_dict[vert.index])] * 20
+                    neighbor_colors = [Vec(color_dict[vert.index])] * 20
                     for i, edge in enumerate(vert.link_edges):
                         for j in range(edge_weights[i]):
-                            neighbor_colors.append(Vector(color_dict[edge.other_vert(vert).index]))
+                            neighbor_colors.append(Vec(color_dict[edge.other_vert(vert).index]))
 
                     vert_blur_dict[vert.index] = average_color(neighbor_colors)
             else:
@@ -1182,9 +1187,10 @@ class SXTOOLS2_generate(object):
                     curv_obj.modifiers.update()
                     bpy.context.view_layer.update()
 
+                Vec = Vector
                 xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([curv_obj, ], mode='local')
                 tiling_props = [('tile_neg_x', 'tile_pos_x'), ('tile_neg_y', 'tile_pos_y'), ('tile_neg_z', 'tile_pos_z')]
-                axis_vectors = [(Vector((-1.0, 0.0, 0.0)), Vector((1.0, 0.0, 0.0))), (Vector((0.0, -1.0, 0.0)), Vector((0.0, 1.0, 0.0))), (Vector((0.0, 0.0, -1.0)), Vector((0.0, 0.0, 1.0)))]
+                axis_vectors = [(Vec((-1.0, 0.0, 0.0)), Vec((1.0, 0.0, 0.0))), (Vec((0.0, -1.0, 0.0)), Vec((0.0, 1.0, 0.0))), (Vec((0.0, 0.0, -1.0)), Vec((0.0, 0.0, 1.0)))]
                 bounds = [(xmin, xmax), (ymin, ymax), (zmin, zmax)]
 
                 for vert in bm.verts:
@@ -1261,6 +1267,7 @@ class SXTOOLS2_generate(object):
         scene = bpy.context.scene.sx2
         cone_angle = scene.dirCone
         half_cone_angle = cone_angle * 0.5
+        Vec = Vector
 
         vert_dict = self.vertex_data_dict(obj, masklayer)
 
@@ -1270,10 +1277,10 @@ class SXTOOLS2_generate(object):
         vert_dir_dict = {vert_id: 0.0 for vert_id in vert_dict}
         inclination = math.radians(scene.dirInclination - 90.0)
         angle = math.radians(scene.dirAngle + 90)
-        direction = Vector((math.sin(inclination) * math.cos(angle), math.sin(inclination) * math.sin(angle), math.cos(inclination)))
+        direction = Vec((math.sin(inclination) * math.cos(angle), math.sin(inclination) * math.sin(angle), math.cos(inclination)))
 
         for vert_id in vert_dict:
-            vert_world_normal = Vector(vert_dict[vert_id][3])
+            vert_world_normal = Vec(vert_dict[vert_id][3])
             angle_diff = math.degrees(math.acos(min(1.0, max(-1.0, vert_world_normal @ direction))))
             vert_dir_dict[vert_id] = max(0.0, (90.0 + half_cone_angle - angle_diff) / (90.0 + half_cone_angle))
 
@@ -1308,6 +1315,7 @@ class SXTOOLS2_generate(object):
     def ray_randomizer(self, count):
         hemisphere = [None] * count
         random.seed(sxglobals.randomseed)
+        Vec = Vector
 
         for i in range(count):
             u1 = random.random()
@@ -1319,8 +1327,8 @@ class SXTOOLS2_generate(object):
             y = r * math.sin(theta)
             z = math.sqrt(max(0, 1 - u1))
 
-            ray = Vector((x, y, z))
-            up_vector = Vector((0, 0, 1))
+            ray = Vec((x, y, z))
+            up_vector = Vec((0, 0, 1))
             
             dot_product = ray.dot(up_vector)
             hemisphere[i] = (ray, dot_product)
@@ -1350,6 +1358,7 @@ class SXTOOLS2_generate(object):
 
 
     def thickness_list(self, obj, raycount, masklayer=None):
+        Vec = Vector
 
         def dist_caster(obj, vert_dict):
             hemisphere = self.ray_randomizer(20)
@@ -1372,7 +1381,7 @@ class SXTOOLS2_generate(object):
 
                 # Raycast for distance
                 for ray, _ in hemisphere:
-                    hit, loc, normal, _ = obj.ray_cast(vertPos, rotQuat @ Vector(ray))
+                    hit, loc, normal, _ = obj.ray_cast(vertPos, rotQuat @ Vec(ray))
                     if hit:
                         dist_list.append((loc - vertPos).length)
 
@@ -1387,7 +1396,7 @@ class SXTOOLS2_generate(object):
                 rotQuat = forward.rotation_difference(invNormal)
 
                 for ray, _ in hemisphere:
-                    hit = obj.ray_cast(vertPos, rotQuat @ Vector(ray), distance=raydistance)[0]
+                    hit = obj.ray_cast(vertPos, rotQuat @ Vec(ray), distance=raydistance)[0]
                     vert_occ_dict[vert_id] += contribution * hit
 
 
@@ -1398,7 +1407,7 @@ class SXTOOLS2_generate(object):
         edg = bpy.context.evaluated_depsgraph_get()
         obj_eval = obj.evaluated_get(edg)
         contribution = 1.0 / float(raycount)
-        forward = Vector((0.0, 0.0, 1.0))
+        forward = Vec((0.0, 0.0, 1.0))
         dist_list = []
         bias_vert_dict = {}
         vert_occ_dict = {vert_id: 0.0 for vert_id in vert_dict}
@@ -1418,11 +1427,12 @@ class SXTOOLS2_generate(object):
         if sxglobals.benchmark_ao:
             then = time.perf_counter()
 
+        Vec = Vector
         scene = bpy.context.scene
         contribution = 1.0/float(raycount)
         hemisphere = self.ray_randomizer(raycount)
         mix = max(min(blend, 1.0), 0.0)
-        forward = Vector((0.0, 0.0, 1.0))
+        forward = Vec((0.0, 0.0, 1.0))
 
         if obj.sx2.tiling:
             blend = 0.0
@@ -1471,7 +1481,7 @@ class SXTOOLS2_generate(object):
                             mod_normal[i] = 0.0
 
                 if match:
-                    vertNormal = Vector(mod_normal[:]).normalized()
+                    vertNormal = Vec(mod_normal[:]).normalized()
 
             # Pass 0: Raycast for bias
             # hit, loc, normal, _ = obj.ray_cast(vertLoc, vertNormal, distance=dist)
@@ -1505,8 +1515,8 @@ class SXTOOLS2_generate(object):
 
                 # for every object ray hit, subtract a fraction from the vertex brightness
                 for i, ray in enumerate(valid_rays):
-                    # hit = obj_eval.ray_cast(vertPos, rotQuat @ Vector(ray), distance=dist)[0]
-                    result = bvh.ray_cast(vertPos, rotQuat @ Vector(ray), dist)
+                    # hit = obj_eval.ray_cast(vertPos, rotQuat @ Vec(ray), distance=dist)[0]
+                    result = bvh.ray_cast(vertPos, rotQuat @ Vec(ray), dist)
                     hit = not all(x is None for x in result)
                     occValue -= contribution * hit
                     pass2_hits[i] = hit
@@ -1524,7 +1534,7 @@ class SXTOOLS2_generate(object):
                 # Fire rays only for samples that had not hit in Pass 2
                 for i, ray in enumerate(valid_rays):
                     if not pass2_hits[i]:
-                        hit = scene.ray_cast(edg, scnVertPos, rotQuat @ Vector(ray), distance=dist)[0]
+                        hit = scene.ray_cast(edg, scnVertPos, rotQuat @ Vec(ray), distance=dist)[0]
                         scnOccValue -= contribution * hit
 
             vert_occ_dict[vert_id] = float((occValue * (1.0 - mix)) + (scnOccValue * mix))
@@ -1547,18 +1557,23 @@ class SXTOOLS2_generate(object):
 
 
     def emission_list(self, obj, raycount=250, masklayer=None):
+        Vec = Vector
 
         def calculate_face_colors(obj):
             colors = layers.get_layer(obj, obj.sx2layers['Emission'], as_tuple=True)
             face_colors = [None] * len(obj.data.polygons)
 
             for face in obj.data.polygons:
-                face_color = Vector((0.0, 0.0, 0.0, 0.0))
+                face_color = Vec((0.0, 0.0, 0.0, 0.0))
+                has_emission = False
+                loop_count = len(face.loop_indices)
+
                 for loop_index in face.loop_indices:
-                    loop_color = Vector(colors[loop_index])
+                    loop_color = Vec(colors[loop_index])
                     if loop_color[3] > 0.0:
-                        face_color += Vector(colors[loop_index])
-                face_colors[face.index] = face_color / len(face.loop_indices)
+                        face_color += Vec(colors[loop_index])
+                        has_emission = True
+                face_colors[face.index] = face_color / loop_count if has_emission else face_color
 
             return face_colors
 
@@ -1573,27 +1588,31 @@ class SXTOOLS2_generate(object):
 
 
         _, empty = layers.get_layer_mask(obj, obj.sx2layers['Emission'])
+        if empty:
+            return None
+
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=False)
-        if not vert_dict or empty:
+        if not vert_dict:
             return None
 
         mod_vis = [modifier.show_viewport for modifier in obj.modifiers]
         for modifier in obj.modifiers:
             modifier.show_viewport = False
 
-        hemi_up = Vector((0.0, 0.0, 1.0))
+        hemi_up = Vec((0.0, 0.0, 1.0))
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=False)
         face_colors = calculate_face_colors(obj)
         original_emissive_vertex_colors = {}
-        original_emissive_vertex_face_count = [0 for _ in obj.data.vertices]
+        original_emissive_vertex_face_count = [0] * len(obj.data.vertices)
         dist = max(utils.get_object_bounding_box([obj, ], mode='local')) * 5
         bias = 0.001
 
+        get_item = original_emissive_vertex_colors.get
         for face in obj.data.polygons:
             color = face_colors[face.index]
             if color.length > 0:
                 for vert_idx in face.vertices:
-                    vert_color = original_emissive_vertex_colors.get(vert_idx, Vector((0.0, 0.0, 0.0, 0.0)))
+                    vert_color = get_item(vert_idx, Vec((0.0, 0.0, 0.0, 0.0)))
                     original_emissive_vertex_colors[vert_idx] = vert_color + color
                     original_emissive_vertex_face_count[vert_idx] += 1
 
@@ -1602,9 +1621,9 @@ class SXTOOLS2_generate(object):
         contribution = 1.0 / float(raycount)
         for i in range(10):
             for j, face in enumerate(obj.data.polygons):
-                face_emission = Vector((0.0, 0.0, 0.0, 0.0))
+                face_emission = Vec((0.0, 0.0, 0.0, 0.0))
                 vertices = [obj.data.vertices[face_vert_id].co for face_vert_id in face.vertices]
-                face_center = (sum(vertices, Vector()) / len(vertices)) + (bias * face.normal)
+                face_center = (sum(vertices, Vec()) / len(vertices)) + (bias * face.normal)
                 rotQuat = hemi_up.rotation_difference(face.normal)
 
                 for sample, _ in hemisphere:
@@ -1619,7 +1638,7 @@ class SXTOOLS2_generate(object):
                     face_colors[j] = face_emission.copy()
 
         # Pass 2: Average face colors to vertices
-        vertex_colors = [Vector((0, 0, 0, 0)) for _ in obj.data.vertices]
+        vertex_colors = [Vec((0, 0, 0, 0)) for _ in obj.data.vertices]
         vertex_faces = [[] for _ in obj.data.vertices]
         vert_emission_list = self.empty_list(obj, 4)
 
@@ -1638,7 +1657,9 @@ class SXTOOLS2_generate(object):
                     vertex_colors[vert_idx] = color_sum / len(vertex_faces[vert_idx])
 
         for loop in obj.data.loops:
-            vert_emission_list[(0+loop.index*4):(4+loop.index*4)] = vertex_colors[loop.vertex_index]
+            vert_idx = loop.vertex_index
+            loop_idx = loop.index
+            vert_emission_list[(0+loop_idx*4):(4+loop_idx*4)] = vertex_colors[vert_idx]
 
         # vert_emission_list = face_colors_to_loop_list(obj, face_colors)
         result = self.mask_list(obj, vert_emission_list, masklayer)
@@ -1651,6 +1672,7 @@ class SXTOOLS2_generate(object):
 
     def mask_list(self, obj, colors, masklayer=None, maskcolor=None, as_tuple=False, override_mask=False):
         count = len(colors)//4
+        Vec = Vector
 
         # No mask, colors pass through
         if (masklayer is None) and (maskcolor is None) and (sxglobals.mode != 'EDIT'):
@@ -1690,7 +1712,7 @@ class SXTOOLS2_generate(object):
             if as_tuple:
                 rgba = [None] * count
                 for i in range(count):
-                    rgba[i] = tuple(Vector(colors[(0+i*4):(4+i*4)]) * mask[i])
+                    rgba[i] = tuple(Vec(colors[(0+i*4):(4+i*4)]) * mask[i])
                 return rgba
             else:
                 color_list = [None, None, None, None] * count
@@ -2395,6 +2417,7 @@ class SXTOOLS2_tools(object):
 
     def blend_values(self, topcolors, basecolors, blendmode, blendvalue, selectionmask=None):
         midpoint = 0.5  # convert.srgb_to_linear([0.5, 0.5, 0.5, 1.0])[0]
+        Vec = Vector
 
         def blend_alpha(top, base, a):
             result = top * a + base * (1 - a)
@@ -2412,13 +2435,13 @@ class SXTOOLS2_tools(object):
             return result
         
         def blend_mul(top, base, a):
-            result = Vector([0.0, 0.0, 0.0, 0.0])
+            result = Vec([0.0, 0.0, 0.0, 0.0])
             for j in range(3):
                 result[j] = base[j] * top[j] * a + base[j] * (1 - a)
             return result
 
         def blend_over(top, base, a):
-            over = Vector([0.0, 0.0, 0.0, top[3]])
+            over = Vec([0.0, 0.0, 0.0, top[3]])
             b = over[3] * blendvalue
             for j in range(3):
                 if base[j] < midpoint:
@@ -2463,14 +2486,14 @@ class SXTOOLS2_tools(object):
 
             for i in range(count):
                 start_idx = i * 4
-                top = Vector([
+                top = Vec([
                     topcolors[start_idx],
                     topcolors[start_idx + 1],
                     topcolors[start_idx + 2], 
                     topcolors[start_idx + 3]
                 ])
                 
-                base = Vector([
+                base = Vec([
                     basecolors[start_idx],
                     basecolors[start_idx + 1],
                     basecolors[start_idx + 2],
@@ -3270,6 +3293,7 @@ class SXTOOLS2_export(object):
         new_obj_list = []
         active_obj = bpy.context.view_layer.objects.active
         scene = bpy.context.scene.sx2
+        Vec = Vector
 
         xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box(org_obj_list)
         bbxheight = zmax - zmin
@@ -3298,7 +3322,7 @@ class SXTOOLS2_export(object):
                     new_obj.data.name = name_list[j][1] + '_LOD' + str(i)
                     new_obj.name = name_list[j][0] + '_LOD' + str(i)
 
-                    new_obj.location += Vector((0.0, 0.0, (bbxheight+prefs.lodoffset)*i))
+                    new_obj.location += Vec((0.0, 0.0, (bbxheight+prefs.lodoffset)*i))
 
                     bpy.context.scene.collection.objects.link(new_obj)
                     export_objects.objects.link(new_obj)
@@ -3331,6 +3355,7 @@ class SXTOOLS2_export(object):
 
     # Multi-pass convex hull generator
     def generate_hulls(self, objs, group=None):
+        Vec = Vector
 
         def sign(x):
             return 1 if x >= 0 else -1
@@ -3524,7 +3549,7 @@ class SXTOOLS2_export(object):
 
                             # In case of preserved borders, check face centroid against mirror axes
                             if obj.sx2.preserveborders:
-                                centroid = sum((Vector(vert) for vert in transformed_face_verts), Vector((0, 0, 0))) / len(transformed_face_verts)
+                                centroid = sum((Vec(vert) for vert in transformed_face_verts), Vec((0, 0, 0))) / len(transformed_face_verts)
                                 signs = [
                                         sign(centroid[0]) if obj.sx2.xmirror else 1,
                                         sign(centroid[1]) if obj.sx2.ymirror else 1,
@@ -4486,21 +4511,22 @@ class SXTOOLS2_export(object):
                                 colors.append(vertex_colors[loop_idx].color[:])
 
                         # if object is transparent, ignore alpha
+                        round_stepped = utils.round_stepped
                         if layers[0].opacity < 1.0:
-                            quantized_colors = [(utils.round_stepped(color[0]), utils.round_stepped(color[1]), utils.round_stepped(color[2])) for color in colors]
+                            quantized_colors = [(round_stepped(color[0]), round_stepped(color[1]), round_stepped(color[2])) for color in colors]
                         else:
-                            quantized_colors = [(utils.round_stepped(color[0]), utils.round_stepped(color[1]), utils.round_stepped(color[2]), utils.round_stepped(color[3])) for color in colors]
+                            quantized_colors = [(round_stepped(color[0]), round_stepped(color[1]), round_stepped(color[2]), round_stepped(color[3])) for color in colors]
                         color_set = set(quantized_colors)
 
                         if layer == layers[0]:
                             if len(color_set) > 1:
                                 print(f'SX Tools Error: Multiple colors in {obj.name} {layer.name}\nValues: {color_set}')
-                                message_box('Multiple colors in ' + obj.name + ' ' + layer.name)
+                                message_box(f'Multiple colors in {obj.name} {layer.name}')
                                 return False
                         else:
                             if len(color_set) > 2:
                                 print(f'SX Tools Error: Multiple colors in {obj.name} {layer.name}\nValues: {color_set}')
-                                message_box('Multiple colors in ' + obj.name + ' ' + layer.name)
+                                message_box(f'Multiple colors in {obj.name} {layer.name}')
                                 return False
         return True
 
@@ -4515,7 +4541,7 @@ class SXTOOLS2_export(object):
             if ('sxMirror' in obj.modifiers.keys()) and (obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror):
                 for keyword in sxglobals.keywords:
                     if keyword in obj.name:
-                        message_box(obj.name + '\ncontains the substring ' + keyword + '\nreserved for Smart Separate\nfunction of Mirror Modifier')
+                        message_box(f'{obj.name}\ncontains the substring {keyword}\nreserved for Smart Separate\nfunction of Mirror Modifier')
                         return False
         return True
 
@@ -4541,7 +4567,7 @@ class SXTOOLS2_export(object):
                             return False
                 else:
                     print(f'SX Tools Error: {obj.name} layers do not match the selected category')
-                    message_box(obj.name + ' layers do not match the selected category')
+                    message_box(f'{obj.name} layers do not match the selected category')
                     return False
         return True
 
@@ -6944,7 +6970,6 @@ def save_post_handler(dummy):
         try:
             with open(prefs.cataloguepath, 'r') as input:
                 catalogue_dict = json.load(input)
-                input.close()
 
             file_path = bpy.data.filepath
             asset_path = os.path.split(prefs.cataloguepath)[0]
@@ -10608,7 +10633,7 @@ class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
                     mode = False
 
                 if obj.name not in sxglobals.copy_buffer:
-                    message_box('Nothing to paste to ' + obj.name + '!')
+                    message_box(f'Nothing to paste to {obj.name}!')
                 else:
                     layers.paste_layer([obj, ], target_layer, mode)
                     refresh_swatches(self, context)
@@ -11293,7 +11318,7 @@ class SXTOOLS2_OT_catalogue_add(bpy.types.Operator):
                 with open(catalogue_path, 'r') as input:
                     temp_dict = {}
                     temp_dict = json.load(input)
-                    input.close()
+
                 return True, temp_dict
             except ValueError:
                 message_box('Invalid Asset Catalogue file.', 'SX Tools Error', 'ERROR')
@@ -11311,7 +11336,7 @@ class SXTOOLS2_OT_catalogue_add(bpy.types.Operator):
             with open(catalogue_path, 'w') as output:
                 json.dump(data_dict, output, indent=4)
                 output.close()
-            message_box(catalogue_path + ' saved')
+            message_box(f'{catalogue_path} saved')
         else:
             message_box('Invalid catalogue path', 'SX Tools Error', 'ERROR')
 
@@ -11396,7 +11421,6 @@ class SXTOOLS2_OT_catalogue_remove(bpy.types.Operator):
                 with open(catalogue_path, 'r') as input:
                     temp_dict = {}
                     temp_dict = json.load(input)
-                    input.close()
                 return True, temp_dict
             except ValueError:
                 message_box('Invalid Asset Catalogue file.', 'SX Tools Error', 'ERROR')
@@ -11414,7 +11438,7 @@ class SXTOOLS2_OT_catalogue_remove(bpy.types.Operator):
             with open(catalogue_path, 'w') as output:
                 json.dump(data_dict, output, indent=4)
                 output.close()
-            message_box(catalogue_path + ' saved')
+            message_box(f'{catalogue_path} saved')
         else:
             message_box('Invalid catalogue path', 'SX Tools Error', 'ERROR')
 
