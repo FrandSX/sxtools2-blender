@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 9, 13),
+    'version': (2, 9, 14),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -115,7 +115,7 @@ class SXTOOLS2_files(object):
         directory = prefs.libraryfolder
         file_path = directory + mode + '.json'
 
-        if len(directory) > 0:
+        if directory:
             try:
                 with open(file_path, 'r') as input:
                     temp_dict = {}
@@ -161,7 +161,7 @@ class SXTOOLS2_files(object):
         file_path = directory + mode + '.json'
         # Palettes.json Materials.json
 
-        if len(directory) > 0:
+        if directory:
             with open(file_path, 'w') as output:
                 if mode == 'palettes':
                     temp_dict = {}
@@ -193,7 +193,7 @@ class SXTOOLS2_files(object):
 
         for category_dict in swatch_list:
             for category in category_dict:
-                if len(category_dict[category]) == 0:
+                if not category_dict[category]:
                     item = sxlist.add()
                     item.name = 'Empty'
                     item.category = category
@@ -453,7 +453,7 @@ class SXTOOLS2_files(object):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         for palette_name, palette in palette_dict.items():
             swatch_size = 16
-            grid = 1 if len(palette) == 0 else 2**math.ceil(math.log2(math.sqrt(len(palette))))
+            grid = 1 if not palette else 2**math.ceil(math.log2(math.sqrt(len(palette))))
             pixels = [0.0, 0.0, 0.0, 0.1] * grid * grid * swatch_size * swatch_size
 
             z = 0
@@ -528,10 +528,7 @@ class SXTOOLS2_utils(object):
 
     def find_sx2material_name(self, obj):
         mat_id = self.get_mat_id(obj)
-        if mat_id in sxglobals.sx2material_dict:
-            return 'SX2Material_' + sxglobals.sx2material_dict[mat_id][1]
-        else:
-            return None
+        return 'SX2Material_' + sxglobals.sx2material_dict[mat_id][1] if mat_id in sxglobals.sx2material_dict else None
 
 
     # SX2Materials are generated according to differentiators combined in per-object mat_ids
@@ -551,23 +548,23 @@ class SXTOOLS2_utils(object):
 
 
     def find_layer_by_stack_index(self, obj, index):
-        if obj.sx2layers:
-            stack_dict = sxglobals.layer_stack_dict.get(obj.name, {})
-            if len(stack_dict) == 0:
-                layers = [(layer.index, layer.color_attribute) for layer in obj.sx2layers]
-                layers.sort(key=lambda y: y[0])
-
-                for i, layer_tuple in enumerate(layers):
-                    for layer in obj.sx2layers:
-                        if layer.color_attribute == layer_tuple[1]:
-                            stack_dict[i] = (layer.name, layer.color_attribute, layer.layer_type)
-
-                sxglobals.layer_stack_dict[obj.name] = stack_dict
-
-            layer_data = stack_dict.get(index, None)
-            return obj.sx2layers[layer_data[0]] if layer_data is not None else None
-        else:
+        if not obj.sx2layers:
             return None
+
+        stack_dict = sxglobals.layer_stack_dict.get(obj.name, {})
+        if not stack_dict:
+            layers = [(layer.index, layer.color_attribute) for layer in obj.sx2layers]
+            layers.sort(key=lambda y: y[0])
+
+            for i, layer_tuple in enumerate(layers):
+                for layer in obj.sx2layers:
+                    if layer.color_attribute == layer_tuple[1]:
+                        stack_dict[i] = (layer.name, layer.color_attribute, layer.layer_type)
+
+            sxglobals.layer_stack_dict[obj.name] = stack_dict
+
+        layer_data = stack_dict.get(index, None)
+        return obj.sx2layers[layer_data[0]] if layer_data is not None else None
 
 
     def find_layer_index_by_name(self, obj, name):
@@ -607,29 +604,28 @@ class SXTOOLS2_utils(object):
 
     # The index parameter returns the nth color layer in the stack
     def find_color_layers(self, obj, index=None, staticvertexcolors=True):
-        if obj.sx2layers:
-            color_layers = [layer for layer in obj.sx2layers if (layer.layer_type == 'COLOR') and (layer.name != 'Flattened')]
-
-            if not staticvertexcolors:
-                filtered = [layer for layer in color_layers if ('Gradient' not in layer.name and 'Overlay' not in layer.name)]
-                color_layers = filtered
-
-            color_layers.sort(key=lambda x: x.index)
-
-            index_layer = None
-            if index is not None:
-                if index <= (len(color_layers) - 1):
-                    index_layer = color_layers[index]
-
-            return color_layers if index is None else index_layer
-        else:
+        if not obj.sx2layers:
             return None
+        
+        color_layers = [layer for layer in obj.sx2layers if (layer.layer_type == 'COLOR') and (layer.name != 'Flattened')]
+
+        if not staticvertexcolors:
+            filtered = [layer for layer in color_layers if ('Gradient' not in layer.name and 'Overlay' not in layer.name)]
+            color_layers = filtered
+
+        color_layers.sort(key=lambda x: x.index)
+
+        index_layer = None
+        if index is not None:
+            if index <= (len(color_layers) - 1):
+                index_layer = color_layers[index]
+
+        return color_layers if index is None else index_layer
 
 
     def find_root_pivot(self, objs):
         xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box(objs)
         pivot = ((xmax + xmin)*0.5, (ymax + ymin)*0.5, zmin)
-
         return pivot
 
 
@@ -787,20 +783,20 @@ class SXTOOLS2_utils(object):
         if stack_dict:
             sxglobals.layer_stack_dict[obj.name].clear()
 
-        if obj.sx2layers:
-            if sort_layers is None:
-                sort_layers = obj.sx2layers[:]
-                sort_layers.sort(key=lambda x: x.index)
-
-            for i, sort_layer in enumerate(sort_layers):
-                obj.sx2layers[sort_layer.name].index = i
-                stack_dict[i] = (sort_layer.name, sort_layer.color_attribute, sort_layer.layer_type)
-
-            sxglobals.layer_stack_dict[obj.name] = stack_dict
-
-            return sort_layers
-        else:
+        if not obj.sx2layers:
             return None
+
+        if sort_layers is None:
+            sort_layers = obj.sx2layers[:]
+            sort_layers.sort(key=lambda x: x.index)
+
+        for i, sort_layer in enumerate(sort_layers):
+            obj.sx2layers[sort_layer.name].index = i
+            stack_dict[i] = (sort_layer.name, sort_layer.color_attribute, sort_layer.layer_type)
+
+        sxglobals.layer_stack_dict[obj.name] = stack_dict
+
+        return sort_layers
 
 
     def color_compare(self, color1, color2, tolerance=0.001):
@@ -1268,25 +1264,25 @@ class SXTOOLS2_generate(object):
 
         vert_dict = self.vertex_data_dict(obj, masklayer)
 
-        if vert_dict:
-            vert_dir_dict = {vert_id: 0.0 for vert_id in vert_dict}
-            inclination = math.radians(scene.dirInclination - 90.0)
-            angle = math.radians(scene.dirAngle + 90)
-            direction = Vector((math.sin(inclination) * math.cos(angle), math.sin(inclination) * math.sin(angle), math.cos(inclination)))
-
-            for vert_id in vert_dict:
-                vert_world_normal = Vector(vert_dict[vert_id][3])
-                angle_diff = math.degrees(math.acos(min(1.0, max(-1.0, vert_world_normal @ direction))))
-                vert_dir_dict[vert_id] = max(0.0, (90.0 + half_cone_angle - angle_diff) / (90.0 + half_cone_angle))
-
-            values = self.vert_dict_to_loop_list(obj, vert_dir_dict, 1, 1)
-            vert_dir_list = [None] * len(values) * 4
-            for i in range(len(values)):
-                vert_dir_list[(0+i*4):(4+i*4)] = [values[i], values[i], values[i], 1.0]
-
-            return self.mask_list(obj, vert_dir_list, masklayer)
-        else:
+        if not vert_dict:
             return None
+
+        vert_dir_dict = {vert_id: 0.0 for vert_id in vert_dict}
+        inclination = math.radians(scene.dirInclination - 90.0)
+        angle = math.radians(scene.dirAngle + 90)
+        direction = Vector((math.sin(inclination) * math.cos(angle), math.sin(inclination) * math.sin(angle), math.cos(inclination)))
+
+        for vert_id in vert_dict:
+            vert_world_normal = Vector(vert_dict[vert_id][3])
+            angle_diff = math.degrees(math.acos(min(1.0, max(-1.0, vert_world_normal @ direction))))
+            vert_dir_dict[vert_id] = max(0.0, (90.0 + half_cone_angle - angle_diff) / (90.0 + half_cone_angle))
+
+        values = self.vert_dict_to_loop_list(obj, vert_dir_dict, 1, 1)
+        vert_dir_list = [None] * len(values) * 4
+        for i in range(len(values)):
+            vert_dir_list[(0+i*4):(4+i*4)] = [values[i], values[i], values[i], 1.0]
+
+        return self.mask_list(obj, vert_dir_list, masklayer)
 
 
     def noise_list(self, obj, amplitude=0.5, offset=0.5, mono=False, masklayer=None):
@@ -1396,26 +1392,26 @@ class SXTOOLS2_generate(object):
 
 
         vert_dict = self.vertex_data_dict(obj, masklayer)
-        if vert_dict:
-            edg = bpy.context.evaluated_depsgraph_get()
-            obj_eval = obj.evaluated_get(edg)
-            contribution = 1.0 / float(raycount)
-            forward = Vector((0.0, 0.0, 1.0))
-            dist_list = []
-            bias_vert_dict = {}
-            vert_occ_dict = {vert_id: 0.0 for vert_id in vert_dict}
-
-            # Pass 1: analyze ray hit distances, set max ray distance to half of median distance
-            dist_caster(obj_eval, vert_dict)
-            distance = statistics.median(dist_list) * 0.5
-
-            # Pass 2: final results
-            sample_caster(obj_eval, raycount, bias_vert_dict, raydistance=distance)
-
-            vert_occ_list = generate.vert_dict_to_loop_list(obj, vert_occ_dict, 1, 4)
-            return self.mask_list(obj, vert_occ_list, masklayer)
-        else:
+        if not vert_dict:
             return None
+        
+        edg = bpy.context.evaluated_depsgraph_get()
+        obj_eval = obj.evaluated_get(edg)
+        contribution = 1.0 / float(raycount)
+        forward = Vector((0.0, 0.0, 1.0))
+        dist_list = []
+        bias_vert_dict = {}
+        vert_occ_dict = {vert_id: 0.0 for vert_id in vert_dict}
+
+        # Pass 1: analyze ray hit distances, set max ray distance to half of median distance
+        dist_caster(obj_eval, vert_dict)
+        distance = statistics.median(dist_list) * 0.5
+
+        # Pass 2: final results
+        sample_caster(obj_eval, raycount, bias_vert_dict, raydistance=distance)
+
+        vert_occ_list = generate.vert_dict_to_loop_list(obj, vert_occ_dict, 1, 4)
+        return self.mask_list(obj, vert_occ_list, masklayer)
 
 
     def occlusion_list(self, obj, raycount=250, blend=0.5, dist=10.0, groundplane=False, groundheight=-0.5, masklayer=None):
@@ -1439,117 +1435,115 @@ class SXTOOLS2_generate(object):
 
         vert_occ_dict = {}
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=True)
-
-        if vert_dict:
-            if (blend > 0.0) and groundplane:
-                pivot = utils.find_root_pivot([obj, ])
-                pivot = (pivot[0], pivot[1], groundheight)
-                size = max(obj.dimensions) * 10
-                ground, groundmesh = self.ground_plane(size, pivot)
-
-            edg = bpy.context.evaluated_depsgraph_get()
-            # edg.update()
-            # obj_eval = obj.evaluated_get(edg)
-            bvh = BVHTree.FromObject(obj, edg)
-
-            for vert_id in vert_dict:
-                bias = 0.001
-                occValue = 1.0
-                scnOccValue = 1.0
-                vertLoc, vertNormal, vertWorldLoc, vertWorldNormal, min_dot = vert_dict[vert_id]
-
-                # use modified tile-border normals to reduce seam artifacts
-                # if vertex pos x y z is at bbx limit, and mirror axis is set, modify respective normal vector component to zero
-                if obj.sx2.tiling:
-                    mod_normal = list(vertNormal)
-                    match = False
-
-                    tiling_props = [('tile_neg_x', 'tile_pos_x'), ('tile_neg_y', 'tile_pos_y'), ('tile_neg_z', 'tile_pos_z')]
-                    bounds = [(xmin, xmax), (ymin, ymax), (zmin, zmax)]
-
-                    for i, coord in enumerate(vertLoc):
-                        for j, prop in enumerate(tiling_props[i]):
-                            if getattr(obj.sx2, prop) and (round(coord, 2) == round(bounds[i][j], 2)):
-                                match = True
-                                mod_normal[i] = 0.0
-
-                    if match:
-                        vertNormal = Vector(mod_normal[:]).normalized()
-
-                # Pass 0: Raycast for bias
-                # hit, loc, normal, _ = obj.ray_cast(vertLoc, vertNormal, distance=dist)
-                result = bvh.ray_cast(vertLoc, vertNormal, dist)
-                hit = not all(x is None for x in result)
-                _, normal, _, hit_dist = result
-                if hit and (normal.dot(vertNormal) > 0):
-                    # hit_dist = (loc - vertLoc).length
-                    if hit_dist < 0.5:
-                        bias += hit_dist
-
-                # Pass 1: Mark hits for rays that are inside the mesh
-                first_hit_index = raycount
-                for i, (_, dot) in enumerate(hemisphere):
-                    if dot < min_dot:
-                        first_hit_index = i
-                        break
-
-                valid_rays = [ray for ray, _ in hemisphere[:first_hit_index]]
-                occValue -= contribution * (raycount - first_hit_index)
-
-                # Store Pass 2 valid ray hits
-                pass2_hits = [False] * len(valid_rays)
-
-                # Pass 2: Local space occlusion for individual object
-                if 0.0 <= mix < 1.0:
-                    rotQuat = forward.rotation_difference(vertNormal)
-
-                    # offset ray origin with normal bias
-                    vertPos = vertLoc + (bias * vertNormal)
-
-                    # for every object ray hit, subtract a fraction from the vertex brightness
-                    for i, ray in enumerate(valid_rays):
-                        # hit = obj_eval.ray_cast(vertPos, rotQuat @ Vector(ray), distance=dist)[0]
-                        result = bvh.ray_cast(vertPos, rotQuat @ Vector(ray), dist)
-                        hit = not all(x is None for x in result)
-                        occValue -= contribution * hit
-                        pass2_hits[i] = hit
-
-                # Pass 3: Worldspace occlusion for scene
-                if 0.0 < mix <= 1.0:
-                    rotQuat = forward.rotation_difference(vertWorldNormal)
-
-                    # offset ray origin with normal bias
-                    scnVertPos = vertWorldLoc + (bias * vertWorldNormal)
-
-                    # Include previous pass results
-                    scnOccValue = occValue
-
-                    # Fire rays only for samples that had not hit in Pass 2
-                    for i, ray in enumerate(valid_rays):
-                        if not pass2_hits[i]:
-                            hit = scene.ray_cast(edg, scnVertPos, rotQuat @ Vector(ray), distance=dist)[0]
-                            scnOccValue -= contribution * hit
-
-                vert_occ_dict[vert_id] = float((occValue * (1.0 - mix)) + (scnOccValue * mix))
-
-            if (blend > 0.0) and groundplane:
-                bpy.data.objects.remove(ground, do_unlink=True)
-                bpy.data.meshes.remove(groundmesh, do_unlink=True)
-
-            if obj.sx2.tiling:
-                obj.modifiers['sxTiler'].show_viewport = False
-
-            vert_occ_list = generate.vert_dict_to_loop_list(obj, vert_occ_dict, 1, 4)
-            result = self.mask_list(obj, vert_occ_list, masklayer)
-
-            if sxglobals.benchmark_ao:
-                now = time.perf_counter()
-                print(f'SX Tools: {obj.name} AO rendered in {round(now-then, 4)} seconds')
-
-            return result
-
-        else:
+        if not vert_dict:
             return None
+
+        if (blend > 0.0) and groundplane:
+            pivot = utils.find_root_pivot([obj, ])
+            pivot = (pivot[0], pivot[1], groundheight)
+            size = max(obj.dimensions) * 10
+            ground, groundmesh = self.ground_plane(size, pivot)
+
+        edg = bpy.context.evaluated_depsgraph_get()
+        # edg.update()
+        # obj_eval = obj.evaluated_get(edg)
+        bvh = BVHTree.FromObject(obj, edg)
+
+        for vert_id in vert_dict:
+            bias = 0.001
+            occValue = 1.0
+            scnOccValue = 1.0
+            vertLoc, vertNormal, vertWorldLoc, vertWorldNormal, min_dot = vert_dict[vert_id]
+
+            # use modified tile-border normals to reduce seam artifacts
+            # if vertex pos x y z is at bbx limit, and mirror axis is set, modify respective normal vector component to zero
+            if obj.sx2.tiling:
+                mod_normal = list(vertNormal)
+                match = False
+
+                tiling_props = [('tile_neg_x', 'tile_pos_x'), ('tile_neg_y', 'tile_pos_y'), ('tile_neg_z', 'tile_pos_z')]
+                bounds = [(xmin, xmax), (ymin, ymax), (zmin, zmax)]
+
+                for i, coord in enumerate(vertLoc):
+                    for j, prop in enumerate(tiling_props[i]):
+                        if getattr(obj.sx2, prop) and (round(coord, 2) == round(bounds[i][j], 2)):
+                            match = True
+                            mod_normal[i] = 0.0
+
+                if match:
+                    vertNormal = Vector(mod_normal[:]).normalized()
+
+            # Pass 0: Raycast for bias
+            # hit, loc, normal, _ = obj.ray_cast(vertLoc, vertNormal, distance=dist)
+            result = bvh.ray_cast(vertLoc, vertNormal, dist)
+            hit = not all(x is None for x in result)
+            _, normal, _, hit_dist = result
+            if hit and (normal.dot(vertNormal) > 0):
+                # hit_dist = (loc - vertLoc).length
+                if hit_dist < 0.5:
+                    bias += hit_dist
+
+            # Pass 1: Mark hits for rays that are inside the mesh
+            first_hit_index = raycount
+            for i, (_, dot) in enumerate(hemisphere):
+                if dot < min_dot:
+                    first_hit_index = i
+                    break
+
+            valid_rays = [ray for ray, _ in hemisphere[:first_hit_index]]
+            occValue -= contribution * (raycount - first_hit_index)
+
+            # Store Pass 2 valid ray hits
+            pass2_hits = [False] * len(valid_rays)
+
+            # Pass 2: Local space occlusion for individual object
+            if 0.0 <= mix < 1.0:
+                rotQuat = forward.rotation_difference(vertNormal)
+
+                # offset ray origin with normal bias
+                vertPos = vertLoc + (bias * vertNormal)
+
+                # for every object ray hit, subtract a fraction from the vertex brightness
+                for i, ray in enumerate(valid_rays):
+                    # hit = obj_eval.ray_cast(vertPos, rotQuat @ Vector(ray), distance=dist)[0]
+                    result = bvh.ray_cast(vertPos, rotQuat @ Vector(ray), dist)
+                    hit = not all(x is None for x in result)
+                    occValue -= contribution * hit
+                    pass2_hits[i] = hit
+
+            # Pass 3: Worldspace occlusion for scene
+            if 0.0 < mix <= 1.0:
+                rotQuat = forward.rotation_difference(vertWorldNormal)
+
+                # offset ray origin with normal bias
+                scnVertPos = vertWorldLoc + (bias * vertWorldNormal)
+
+                # Include previous pass results
+                scnOccValue = occValue
+
+                # Fire rays only for samples that had not hit in Pass 2
+                for i, ray in enumerate(valid_rays):
+                    if not pass2_hits[i]:
+                        hit = scene.ray_cast(edg, scnVertPos, rotQuat @ Vector(ray), distance=dist)[0]
+                        scnOccValue -= contribution * hit
+
+            vert_occ_dict[vert_id] = float((occValue * (1.0 - mix)) + (scnOccValue * mix))
+
+        if (blend > 0.0) and groundplane:
+            bpy.data.objects.remove(ground, do_unlink=True)
+            bpy.data.meshes.remove(groundmesh, do_unlink=True)
+
+        if obj.sx2.tiling:
+            obj.modifiers['sxTiler'].show_viewport = False
+
+        vert_occ_list = generate.vert_dict_to_loop_list(obj, vert_occ_dict, 1, 4)
+        result = self.mask_list(obj, vert_occ_list, masklayer)
+
+        if sxglobals.benchmark_ao:
+            now = time.perf_counter()
+            print(f'SX Tools: {obj.name} AO rendered in {round(now-then, 4)} seconds')
+
+        return result
 
 
     def emission_list(self, obj, raycount=250, masklayer=None):
@@ -1568,7 +1562,6 @@ class SXTOOLS2_generate(object):
 
             return face_colors
 
-
         def face_colors_to_loop_list(obj, face_colors):
             loop_list = self.empty_list(obj, 4)
 
@@ -1581,80 +1574,79 @@ class SXTOOLS2_generate(object):
 
         _, empty = layers.get_layer_mask(obj, obj.sx2layers['Emission'])
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=False)
-
-        if vert_dict and not empty:
-            mod_vis = [modifier.show_viewport for modifier in obj.modifiers]
-            for modifier in obj.modifiers:
-                modifier.show_viewport = False
-
-            hemi_up = Vector((0.0, 0.0, 1.0))
-            vert_dict = self.vertex_data_dict(obj, masklayer, dots=False)
-            face_colors = calculate_face_colors(obj)
-            original_emissive_vertex_colors = {}
-            original_emissive_vertex_face_count = [0 for _ in obj.data.vertices]
-            dist = max(utils.get_object_bounding_box([obj, ], mode='local')) * 5
-            bias = 0.001
-
-            for face in obj.data.polygons:
-                color = face_colors[face.index]
-                if color.length > 0:
-                    for vert_idx in face.vertices:
-                        vert_color = original_emissive_vertex_colors.get(vert_idx, Vector((0.0, 0.0, 0.0, 0.0)))
-                        original_emissive_vertex_colors[vert_idx] = vert_color + color
-                        original_emissive_vertex_face_count[vert_idx] += 1
-
-            # Pass 1: Propagate emission to face colors
-            hemisphere = self.ray_randomizer(raycount)
-            contribution = 1.0 / float(raycount)
-            for i in range(10):
-                for j, face in enumerate(obj.data.polygons):
-                    face_emission = Vector((0.0, 0.0, 0.0, 0.0))
-                    vertices = [obj.data.vertices[face_vert_id].co for face_vert_id in face.vertices]
-                    face_center = (sum(vertices, Vector()) / len(vertices)) + (bias * face.normal)
-                    rotQuat = hemi_up.rotation_difference(face.normal)
-
-                    for sample, _ in hemisphere:
-                        sample_ray = rotQuat @ sample
-                        hit, _, hit_normal, hit_face_index = obj.ray_cast(face_center, sample_ray, distance=dist)
-                        if hit and (hit_normal.dot(sample_ray) < 0):
-                            face_color = face_colors[hit_face_index].copy()
-                            addition = face_color * contribution
-                            face_emission += addition
-
-                    if face_emission.length > face_colors[j].length:
-                        face_colors[j] = face_emission.copy()
-
-            # Pass 2: Average face colors to vertices
-            vertex_colors = [Vector((0, 0, 0, 0)) for _ in obj.data.vertices]
-            vertex_faces = [[] for _ in obj.data.vertices]
-            vert_emission_list = self.empty_list(obj, 4)
-
-            for face in obj.data.polygons:
-                color = face_colors[face.index]
-                if color.length > 0:
-                    for vert_idx in face.vertices:
-                        vertex_colors[vert_idx] += color
-                        vertex_faces[vert_idx].append(face.index)
-
-            for vert_idx, color_sum in enumerate(vertex_colors):
-                if vert_idx in original_emissive_vertex_colors:
-                    vertex_colors[vert_idx] = original_emissive_vertex_colors[vert_idx] / original_emissive_vertex_face_count[vert_idx]
-                else:
-                    if len(vertex_faces[vert_idx]) > 0:
-                        vertex_colors[vert_idx] = color_sum / len(vertex_faces[vert_idx])
-
-            for loop in obj.data.loops:
-                vert_emission_list[(0+loop.index*4):(4+loop.index*4)] = vertex_colors[loop.vertex_index]
-
-            # vert_emission_list = face_colors_to_loop_list(obj, face_colors)
-            result = self.mask_list(obj, vert_emission_list, masklayer)
-
-            for i, modifier in enumerate(obj.modifiers):
-                modifier.show_viewport = mod_vis[i]
-
-            return result
-        else:
+        if not vert_dict or empty:
             return None
+
+        mod_vis = [modifier.show_viewport for modifier in obj.modifiers]
+        for modifier in obj.modifiers:
+            modifier.show_viewport = False
+
+        hemi_up = Vector((0.0, 0.0, 1.0))
+        vert_dict = self.vertex_data_dict(obj, masklayer, dots=False)
+        face_colors = calculate_face_colors(obj)
+        original_emissive_vertex_colors = {}
+        original_emissive_vertex_face_count = [0 for _ in obj.data.vertices]
+        dist = max(utils.get_object_bounding_box([obj, ], mode='local')) * 5
+        bias = 0.001
+
+        for face in obj.data.polygons:
+            color = face_colors[face.index]
+            if color.length > 0:
+                for vert_idx in face.vertices:
+                    vert_color = original_emissive_vertex_colors.get(vert_idx, Vector((0.0, 0.0, 0.0, 0.0)))
+                    original_emissive_vertex_colors[vert_idx] = vert_color + color
+                    original_emissive_vertex_face_count[vert_idx] += 1
+
+        # Pass 1: Propagate emission to face colors
+        hemisphere = self.ray_randomizer(raycount)
+        contribution = 1.0 / float(raycount)
+        for i in range(10):
+            for j, face in enumerate(obj.data.polygons):
+                face_emission = Vector((0.0, 0.0, 0.0, 0.0))
+                vertices = [obj.data.vertices[face_vert_id].co for face_vert_id in face.vertices]
+                face_center = (sum(vertices, Vector()) / len(vertices)) + (bias * face.normal)
+                rotQuat = hemi_up.rotation_difference(face.normal)
+
+                for sample, _ in hemisphere:
+                    sample_ray = rotQuat @ sample
+                    hit, _, hit_normal, hit_face_index = obj.ray_cast(face_center, sample_ray, distance=dist)
+                    if hit and (hit_normal.dot(sample_ray) < 0):
+                        face_color = face_colors[hit_face_index].copy()
+                        addition = face_color * contribution
+                        face_emission += addition
+
+                if face_emission.length > face_colors[j].length:
+                    face_colors[j] = face_emission.copy()
+
+        # Pass 2: Average face colors to vertices
+        vertex_colors = [Vector((0, 0, 0, 0)) for _ in obj.data.vertices]
+        vertex_faces = [[] for _ in obj.data.vertices]
+        vert_emission_list = self.empty_list(obj, 4)
+
+        for face in obj.data.polygons:
+            color = face_colors[face.index]
+            if color.length > 0:
+                for vert_idx in face.vertices:
+                    vertex_colors[vert_idx] += color
+                    vertex_faces[vert_idx].append(face.index)
+
+        for vert_idx, color_sum in enumerate(vertex_colors):
+            if vert_idx in original_emissive_vertex_colors:
+                vertex_colors[vert_idx] = original_emissive_vertex_colors[vert_idx] / original_emissive_vertex_face_count[vert_idx]
+            else:
+                if len(vertex_faces[vert_idx]) > 0:
+                    vertex_colors[vert_idx] = color_sum / len(vertex_faces[vert_idx])
+
+        for loop in obj.data.loops:
+            vert_emission_list[(0+loop.index*4):(4+loop.index*4)] = vertex_colors[loop.vertex_index]
+
+        # vert_emission_list = face_colors_to_loop_list(obj, face_colors)
+        result = self.mask_list(obj, vert_emission_list, masklayer)
+
+        for i, modifier in enumerate(obj.modifiers):
+            modifier.show_viewport = mod_vis[i]
+
+        return result
 
 
     def mask_list(self, obj, colors, masklayer=None, maskcolor=None, as_tuple=False, override_mask=False):
@@ -1863,11 +1855,13 @@ class SXTOOLS2_generate(object):
         vertex_dict = {}
         if masklayer is not None:
             mask, empty = layers.get_layer_mask(obj, masklayer)
-            if not empty:
-                for poly in mesh.polygons:
-                    for vert_id, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        if mask[loop_idx] > 0.0:
-                            add_to_dict(vert_id)
+            if empty:
+                return {}
+            
+            for poly in mesh.polygons:
+                for vert_id, loop_idx in zip(poly.vertices, poly.loop_indices):
+                    if mask[loop_idx] > 0.0:
+                        add_to_dict(vert_id)
 
         elif sxglobals.mode == 'EDIT':
             vert_sel = [None] * len(mesh.vertices)
@@ -2503,6 +2497,9 @@ class SXTOOLS2_tools(object):
 
     # NOTE: Make sure color parameter is always provided in linear color space!
     def apply_tool(self, objs, targetlayer, masklayer=None, invertmask=False, color=None, channel=None):
+        if not objs:
+            return
+        
         if sxglobals.benchmark_tool:
             then = time.perf_counter()
 
@@ -3142,6 +3139,9 @@ class SXTOOLS2_export(object):
 
 
     def composite_color_layers(self, objs):
+        if not objs:
+            return
+
         utils.mode_manager(objs, set_mode=True, mode_id='composite_color_layers')
         cmp_add_objs = [obj for obj in objs if 'Composite' not in obj.sx2layers.keys()]
         if cmp_add_objs:
@@ -3155,109 +3155,111 @@ class SXTOOLS2_export(object):
 
 
     def smart_separate(self, objs, override=False, parent=True):
-        if objs:
-            mirror_pairs = [('_top', '_bottom'), ('_front', '_rear'), ('_left', '_right'), ('_bottom', '_top'), ('_rear', '_front'), ('_right', '_left')]
-            prefs = bpy.context.preferences.addons['sxtools2'].preferences
-            scene = bpy.context.scene.sx2
-            view_layer = bpy.context.view_layer
-            mode = objs[0].mode
-            objs = objs[:]
-            separated_objs = []
+        if not objs:
+            return
 
-            export_objects = utils.create_collection('ExportObjects')
-            source_objects = utils.create_collection('SourceObjects')
+        mirror_pairs = [('_top', '_bottom'), ('_front', '_rear'), ('_left', '_right'), ('_bottom', '_top'), ('_rear', '_front'), ('_right', '_left')]
+        prefs = bpy.context.preferences.addons['sxtools2'].preferences
+        scene = bpy.context.scene.sx2
+        view_layer = bpy.context.view_layer
+        mode = objs[0].mode
+        objs = objs[:]
+        separated_objs = []
 
-            if override:
-                sep_objs = objs
-            else:
-                sep_objs = [obj for obj in objs if obj.sx2.smartseparate]
+        export_objects = utils.create_collection('ExportObjects')
+        source_objects = utils.create_collection('SourceObjects')
 
-            if sep_objs:
-                for obj in sep_objs:
-                    if (scene.exportquality == 'LO') and (obj.name not in source_objects.objects.keys()) and (obj.name not in export_objects.objects.keys()) and (obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror):
-                        source_objects.objects.link(obj)
+        if override:
+            sep_objs = objs
+        else:
+            sep_objs = [obj for obj in objs if obj.sx2.smartseparate]
 
-                active = view_layer.objects.active
-                bpy.ops.object.select_all(action='DESELECT')
-                for obj in sep_objs:
-                    obj.select_set(True)
-                    view_layer.objects.active = obj
-                    ref_objs = view_layer.objects[:]
-                    orgname = obj.name[:]
-                    xmirror = obj.sx2.xmirror
-                    ymirror = obj.sx2.ymirror
-                    zmirror = obj.sx2.zmirror
-                    org_pivot = obj.matrix_world.to_translation()
+        if sep_objs:
+            for obj in sep_objs:
+                if (scene.exportquality == 'LO') and (obj.name not in source_objects.objects.keys()) and (obj.name not in export_objects.objects.keys()) and (obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror):
+                    source_objects.objects.link(obj)
 
-                    if ('sxMirror' in obj.modifiers) and (obj.modifiers['sxMirror'].mirror_object is not None):
-                        ref_loc = obj.modifiers['sxMirror'].mirror_object.matrix_world.to_translation()
-                        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                        bpy.ops.object.modifier_apply(modifier='sxMirror')
-                    elif obj.sx2.mirrorobject is not None:
-                        ref_loc = obj.sx2.mirrorobject.matrix_world.to_translation()
-                    else:
-                        ref_loc = obj.matrix_world.to_translation()
+            active = view_layer.objects.active
+            bpy.ops.object.select_all(action='DESELECT')
+            for obj in sep_objs:
+                obj.select_set(True)
+                view_layer.objects.active = obj
+                ref_objs = view_layer.objects[:]
+                orgname = obj.name[:]
+                xmirror = obj.sx2.xmirror
+                ymirror = obj.sx2.ymirror
+                zmirror = obj.sx2.zmirror
+                org_pivot = obj.matrix_world.to_translation()
 
-                    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                    bpy.ops.mesh.select_all(action='SELECT')
-                    bpy.ops.mesh.separate(type='LOOSE')
-
+                if ('sxMirror' in obj.modifiers) and (obj.modifiers['sxMirror'].mirror_object is not None):
+                    ref_loc = obj.modifiers['sxMirror'].mirror_object.matrix_world.to_translation()
                     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                    new_obj_list = [view_layer.objects[orgname], ]
+                    bpy.ops.object.modifier_apply(modifier='sxMirror')
+                elif obj.sx2.mirrorobject is not None:
+                    ref_loc = obj.sx2.mirrorobject.matrix_world.to_translation()
+                else:
+                    ref_loc = obj.matrix_world.to_translation()
 
-                    for vl_obj in view_layer.objects:
-                        if vl_obj not in ref_objs:
-                            new_obj_list.append(vl_obj)
-                            export_objects.objects.link(vl_obj)
+                bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+                bpy.ops.mesh.select_all(action='SELECT')
+                bpy.ops.mesh.separate(type='LOOSE')
 
-                    if len(new_obj_list) > 1:
-                        # Adjust pivots according to mirror settings
-                        export.set_pivots(new_obj_list)  # , force=True)
-                        suffixDict = {}
-                        for new_obj in new_obj_list:
-                            view_layer.objects.active = new_obj
-                            zstring = ystring = xstring = ''
-                            xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([new_obj, ])
-                            pivot_loc = new_obj.matrix_world.to_translation()
+                bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                new_obj_list = [view_layer.objects[orgname], ]
 
-                            # print(f'SX Tools: {new_obj.name} pivot: {pivot_loc} ref: {ref_loc}')
+                for vl_obj in view_layer.objects:
+                    if vl_obj not in ref_objs:
+                        new_obj_list.append(vl_obj)
+                        export_objects.objects.link(vl_obj)
 
-                            # 1) compare bounding box max to reference pivot
-                            # 2) flip result with xor according to SX Tools prefs
-                            # 3) look up matching sub-string from mirror_pairs
-                            if zmirror and (abs(ref_loc[2] - pivot_loc[2]) > 0.001):
-                                zstring = mirror_pairs[0][int(zmax < ref_loc[2])]
-                            if ymirror and (abs(ref_loc[1] - pivot_loc[1]) > 0.001):
-                                ystring = mirror_pairs[1][int((ymax < ref_loc[1]) ^ prefs.flipsmarty)]
-                            if xmirror and (abs(ref_loc[0] - pivot_loc[0]) > 0.001):
-                                xstring = mirror_pairs[2][int((xmax < ref_loc[0]) ^ prefs.flipsmartx)]
+                if len(new_obj_list) > 1:
+                    # Adjust pivots according to mirror settings
+                    export.set_pivots(new_obj_list)  # , force=True)
+                    suffixDict = {}
+                    for new_obj in new_obj_list:
+                        view_layer.objects.active = new_obj
+                        zstring = ystring = xstring = ''
+                        xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([new_obj, ])
+                        pivot_loc = new_obj.matrix_world.to_translation()
 
-                            if len(new_obj_list) > 2 ** (zmirror + ymirror + xmirror):
-                                if zstring+ystring+xstring not in suffixDict:
-                                    suffixDict[zstring+ystring+xstring] = 0
-                                else:
-                                    suffixDict[zstring+ystring+xstring] += 1
-                                new_obj.name = orgname + str(suffixDict[zstring+ystring+xstring]) + zstring + ystring + xstring
+                        # print(f'SX Tools: {new_obj.name} pivot: {pivot_loc} ref: {ref_loc}')
+
+                        # 1) compare bounding box max to reference pivot
+                        # 2) flip result with xor according to SX Tools prefs
+                        # 3) look up matching sub-string from mirror_pairs
+                        if zmirror and (abs(ref_loc[2] - pivot_loc[2]) > 0.001):
+                            zstring = mirror_pairs[0][int(zmax < ref_loc[2])]
+                        if ymirror and (abs(ref_loc[1] - pivot_loc[1]) > 0.001):
+                            ystring = mirror_pairs[1][int((ymax < ref_loc[1]) ^ prefs.flipsmarty)]
+                        if xmirror and (abs(ref_loc[0] - pivot_loc[0]) > 0.001):
+                            xstring = mirror_pairs[2][int((xmax < ref_loc[0]) ^ prefs.flipsmartx)]
+
+                        if len(new_obj_list) > 2 ** (zmirror + ymirror + xmirror):
+                            if zstring+ystring+xstring not in suffixDict:
+                                suffixDict[zstring+ystring+xstring] = 0
                             else:
-                                new_obj.name = orgname + zstring + ystring + xstring
+                                suffixDict[zstring+ystring+xstring] += 1
+                            new_obj.name = orgname + str(suffixDict[zstring+ystring+xstring]) + zstring + ystring + xstring
+                        else:
+                            new_obj.name = orgname + zstring + ystring + xstring
 
-                            new_obj.data.name = new_obj.name + '_mesh'
+                        new_obj.data.name = new_obj.name + '_mesh'
 
-                    separated_objs.extend(new_obj_list)
+                separated_objs.extend(new_obj_list)
 
-                # Parent new children to their matching parents
-                if parent:
-                    for obj in separated_objs:
-                        for mirror_pair in mirror_pairs:
-                            if mirror_pair[0] in obj.name:
-                                if mirror_pair[1] in obj.parent.name:
-                                    new_parent_name = obj.parent.name.replace(mirror_pair[1], mirror_pair[0])
-                                    obj.parent = view_layer.objects[new_parent_name]
-                                    obj.matrix_parent_inverse = obj.parent.matrix_world.inverted()
+            # Parent new children to their matching parents
+            if parent:
+                for obj in separated_objs:
+                    for mirror_pair in mirror_pairs:
+                        if mirror_pair[0] in obj.name:
+                            if mirror_pair[1] in obj.parent.name:
+                                new_parent_name = obj.parent.name.replace(mirror_pair[1], mirror_pair[0])
+                                obj.parent = view_layer.objects[new_parent_name]
+                                obj.matrix_parent_inverse = obj.parent.matrix_world.inverted()
 
-                view_layer.objects.active = active
-            bpy.ops.object.mode_set(mode=mode)
-            return separated_objs
+            view_layer.objects.active = active
+        bpy.ops.object.mode_set(mode=mode)
+        return separated_objs
 
     # NOTE: In case of bevels, prefer even-numbered segment counts!
     #       Odd-numbered bevels often generate incorrect vertex colors
@@ -3455,371 +3457,375 @@ class SXTOOLS2_export(object):
                 print(f'SX Tools: {collider_obj.name} Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
 
 
-        if objs:
-            view_layer = bpy.context.view_layer
-            org_objs = []
-            hull_objs = [obj for obj in objs if (obj.sx2.generatehulls and not obj.sx2.use_cids)]
-            cid_objs = [obj for obj in objs if (obj.sx2.generatehulls and obj.sx2.use_cids)]
+        if not objs:
+            return
+
+        view_layer = bpy.context.view_layer
+        org_objs = []
+        hull_objs = [obj for obj in objs if (obj.sx2.generatehulls and not obj.sx2.use_cids)]
+        cid_objs = [obj for obj in objs if (obj.sx2.generatehulls and obj.sx2.use_cids)]
+
+        if not (hull_objs or cid_objs):
+            return
+
+        if sxglobals.benchmark_cvx:
+            then = time.perf_counter()
+            print(f'SX Tools: Convex hull generation starting')
+
+        new_objs = []
+        new_cid_objs = []
+        new_hull_objs = []
+        active_obj = view_layer.objects.active
+        colliders = utils.create_collection('SXColliders')
+        if colliders.name not in bpy.context.scene.collection.children:
+            bpy.context.scene.collection.children.link(colliders)
+        pivot_ref = {}
+
+        # Create hull meshes via object copies or Collider IDs
+        if cid_objs:
+            org_objs += cid_objs[:]
+            # Map color regions to mesh islands
+            color_to_faces = defaultdict(list)
+            color_ref_obj = {}
+            edg = bpy.context.evaluated_depsgraph_get()
+
+            for obj in cid_objs:
+                if obj.type == 'MESH':
+                    id_layer = obj.sx2layers['Collider IDs'].color_attribute
+                    org_subdiv = obj.sx2.subdivisionlevel
+                    if ('sxSubdivision' in obj.modifiers):
+                        obj.modifiers['sxSubdivision'].levels = 1 if org_subdiv > 1 else org_subdiv
+
+                    # Get evaluated mesh at subdiv 1
+                    temp_mesh = obj.evaluated_get(edg).to_mesh()
+                    bm = bmesh.new()
+                    bm.from_mesh(temp_mesh)
+                    color_layer = bm.loops.layers.float_color[id_layer]
+                    if ('sxSubdivision' in obj.modifiers):
+                        obj.modifiers['sxSubdivision'].levels = org_subdiv
+                    
+                    first_obj_matrix_world = obj.matrix_world.copy()
+                    first_obj_matrix_world_inv = first_obj_matrix_world.inverted()
+                    for face in bm.faces:
+                        color = face.loops[0][color_layer]
+                        color = tuple(round(c, 2) for c in color)
+                        # color = tuple(round(c * 20) / 20 for c in color)
+
+                        # Create color buckets, discard uncolored faces
+                        if (color != (0.0, 0.0, 0.0, 0.0)):
+                            transformed_face_verts = []
+
+                            # Transform all color island vertices to the local space of reference object
+                            # (first source obj with respective color)
+                            for vert in face.verts:
+                                world_coord = first_obj_matrix_world @ vert.co
+                                local_coord_first_obj = first_obj_matrix_world_inv @ world_coord
+                                transformed_face_verts.append(tuple(local_coord_first_obj))
+
+                            # In case of preserved borders, check face centroid against mirror axes
+                            if obj.sx2.preserveborders:
+                                centroid = sum((Vector(vert) for vert in transformed_face_verts), Vector((0, 0, 0))) / len(transformed_face_verts)
+                                signs = [
+                                        sign(centroid[0]) if obj.sx2.xmirror else 1,
+                                        sign(centroid[1]) if obj.sx2.ymirror else 1,
+                                        sign(centroid[2]) if obj.sx2.zmirror else 1
+                                        ]
+
+                                color = tuple((c + 10) * s for c, s in zip(color, signs))
+
+                            if (color not in color_ref_obj):
+                                color_ref_obj[color] = (obj.location.copy(), obj.matrix_world.inverted(), obj.sx2.hulltrimax, obj.name)
+                            color_to_faces[color].append(transformed_face_verts)
+                    
+                    bm.free()
+                    obj.evaluated_get(edg).to_mesh_clear()
 
             if sxglobals.benchmark_cvx:
-                then = time.perf_counter()
-                print(f'SX Tools: Convex hull generation starting')
+                now = time.perf_counter()
+                print(f'SX Tools: Convex hull generation: faces mapped to color regions. Time: {now-then}')
 
-            if (hull_objs or cid_objs):
-                new_objs = []
-                new_cid_objs = []
-                new_hull_objs = []
-                active_obj = view_layer.objects.active
-                colliders = utils.create_collection('SXColliders')
-                if colliders.name not in bpy.context.scene.collection.children:
-                    bpy.context.scene.collection.children.link(colliders)
-                pivot_ref = {}
-
-                # Create hull meshes via object copies or Collider IDs
-                if cid_objs:
-                    org_objs += cid_objs[:]
-                    # Map color regions to mesh islands
-                    color_to_faces = defaultdict(list)
-                    color_ref_obj = {}
-                    edg = bpy.context.evaluated_depsgraph_get()
-
-                    for obj in cid_objs:
-                        if obj.type == 'MESH':
-                            id_layer = obj.sx2layers['Collider IDs'].color_attribute
-                            org_subdiv = obj.sx2.subdivisionlevel
-                            if ('sxSubdivision' in obj.modifiers):
-                                obj.modifiers['sxSubdivision'].levels = 1 if org_subdiv > 1 else org_subdiv
-
-                            # Get evaluated mesh at subdiv 1
-                            temp_mesh = obj.evaluated_get(edg).to_mesh()
-                            bm = bmesh.new()
-                            bm.from_mesh(temp_mesh)
-                            color_layer = bm.loops.layers.float_color[id_layer]
-                            if ('sxSubdivision' in obj.modifiers):
-                                obj.modifiers['sxSubdivision'].levels = org_subdiv
-                            
-                            first_obj_matrix_world = obj.matrix_world.copy()
-                            first_obj_matrix_world_inv = first_obj_matrix_world.inverted()
-                            for face in bm.faces:
-                                color = face.loops[0][color_layer]
-                                color = tuple(round(c, 2) for c in color)
-                                # color = tuple(round(c * 20) / 20 for c in color)
-
-                                # Create color buckets, discard uncolored faces
-                                if (color != (0.0, 0.0, 0.0, 0.0)):
-                                    transformed_face_verts = []
-
-                                    # Transform all color island vertices to the local space of reference object
-                                    # (first source obj with respective color)
-                                    for vert in face.verts:
-                                        world_coord = first_obj_matrix_world @ vert.co
-                                        local_coord_first_obj = first_obj_matrix_world_inv @ world_coord
-                                        transformed_face_verts.append(tuple(local_coord_first_obj))
-
-                                    # In case of preserved borders, check face centroid against mirror axes
-                                    if obj.sx2.preserveborders:
-                                        centroid = sum((Vector(vert) for vert in transformed_face_verts), Vector((0, 0, 0))) / len(transformed_face_verts)
-                                        signs = [
-                                                sign(centroid[0]) if obj.sx2.xmirror else 1,
-                                                sign(centroid[1]) if obj.sx2.ymirror else 1,
-                                                sign(centroid[2]) if obj.sx2.zmirror else 1
-                                                ]
-
-                                        color = tuple((c + 10) * s for c, s in zip(color, signs))
-
-                                    if (color not in color_ref_obj):
-                                        color_ref_obj[color] = (obj.location.copy(), obj.matrix_world.inverted(), obj.sx2.hulltrimax, obj.name)
-                                    color_to_faces[color].append(transformed_face_verts)
-                            
-                            bm.free()
-                            obj.evaluated_get(edg).to_mesh_clear()
-
-                    if sxglobals.benchmark_cvx:
-                        now = time.perf_counter()
-                        print(f'SX Tools: Convex hull generation: faces mapped to color regions. Time: {now-then}')
-
-                    # Create a new bmesh and mesh for each color group
-                    for i, (color, faces) in enumerate(color_to_faces.items()):
-                        new_bm = bmesh.new()
-                        vert_map = {}  # Map old verts to new verts
-                        existing_faces = set()
-                        
-                        for face_verts in faces:
-                            new_verts = []
-                            
-                            for vert_co in face_verts:
-                                vert = vert_map.get(vert_co)
-                                if not vert:
-                                    vert = new_bm.verts.new(vert_co)
-                                    vert_map[vert_co] = vert
-                                
-                                # if vert_co not in vert_map:
-                                #     new_vert = new_bm.verts.new(vert_co)
-                                #     vert_map[vert_co] = new_vert
-
-                                if vert not in new_verts:
-                                    new_verts.append(vert_map[vert_co])
-                            
-                            if len(new_verts) > 2:
-                                face_key = frozenset(new_verts)
-                                if face_key not in existing_faces:
-                                    new_bm.faces.new(new_verts)
-                                    existing_faces.add(face_key)
-                        
-                        new_bm.verts.index_update()
-                        new_bm.edges.index_update()
-                        new_bm.faces.index_update()
-
-                        name = f'{color_ref_obj[color][3]}_hull_{i}'
-                        mesh_data = bpy.data.meshes.new(name+'_mesh')
-                        new_bm.to_mesh(mesh_data)
-                        new_bm.free()
-
-                        new_obj = bpy.data.objects.new(name, mesh_data)
-                        bpy.context.scene.collection.objects.link(new_obj)
-                        colliders.objects.link(new_obj)
-
-                        # New meshes local to origin
-                        # Proceed to smart separate manually and move to correct location
-                        new_obj.sx2.smartseparate = False
-                        new_obj.location = color_ref_obj[color][0]
-                        new_obj.parent = group
-                        new_obj.sx2.hulltrimax = color_ref_obj[color][2]
-                        new_obj.sx2.mirrorobject = view_layer.objects[color_ref_obj[color][3]].sx2.mirrorobject
-                        new_obj.sx2.xmirror = view_layer.objects[color_ref_obj[color][3]].sx2.xmirror
-                        new_obj.sx2.ymirror = view_layer.objects[color_ref_obj[color][3]].sx2.ymirror
-                        new_obj.sx2.zmirror = view_layer.objects[color_ref_obj[color][3]].sx2.zmirror
-                        new_obj.sx2.separate_cids = view_layer.objects[color_ref_obj[color][3]].sx2.separate_cids
-                        new_obj.sx2.mergefragments = view_layer.objects[color_ref_obj[color][3]].sx2.mergefragments
-                        new_obj.sx2.preserveborders = view_layer.objects[color_ref_obj[color][3]].sx2.preserveborders
-                        new_obj.sx2.collideroffsetfactor = view_layer.objects[color_ref_obj[color][3]].sx2.collideroffsetfactor
-                        new_obj.sx2.pivotmode = 'CID'
-                        new_obj['group_id'] = view_layer.objects[color_ref_obj[color][3]].parent.name
-
-                        # Set pivots manually for split convex hulls
-                        if bpy.data.objects[color_ref_obj[color][3]].sx2.smartseparate:
-                            ref_obj = bpy.data.objects[color_ref_obj[color][3]]
-                            pivot_obj = ref_obj.copy()
-                            pivot_obj.data = ref_obj.data.copy()
-                            pivot_obj.sx2.weldthreshold = 0.0
-                            pivot_obj.sx2.decimation = 0.0
-
-                            bpy.context.scene.collection.objects.link(pivot_obj)
-                            view_layer.objects.active = pivot_obj
-
-                            # NOTE: Set pivot before applying modifiers to avoid drift due to modifiers
-                            if 'sxMirror' in pivot_obj.modifiers:
-                                pivot_obj.modifiers.remove(pivot_obj.modifiers.get('sxMirror'))
-                            self.set_pivots([pivot_obj, ])
-                            modifiers.apply_modifiers([pivot_obj, ])
-                            pivot_loc = list(pivot_obj.matrix_world.to_translation())
-
-                            # Fix pivot location for object halves
-                            adjustables = ['MASS', 'BBOX']
-                            if new_obj.sx2.mirrorobject:
-                                mirror_pos = new_obj.sx2.mirrorobject.matrix_world.to_translation()
-                            else:
-                                mirror_pos = new_obj.parent.matrix_world.to_translation() if new_obj.parent else (0.0, 0.0, 0.0)
-
-                            # Check if object has vertices at mirror axes
-                            if pivot_obj.sx2.pivotmode in adjustables:
-                                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([pivot_obj, ])
-
-                                if pivot_obj.sx2.xmirror:
-                                    for bound in [xmin, xmax]:
-                                        if (abs(mirror_pos[0] - bound) < 0.001):
-                                            pivot_loc[0] = mirror_pos[0]
-
-                                if pivot_obj.sx2.ymirror:
-                                    for bound in [ymin, ymax]:
-                                        if (abs(mirror_pos[1] - bound) < 0.001):
-                                            pivot_loc[1] = mirror_pos[1]
-
-                                if pivot_obj.sx2.zmirror:
-                                    for bound in [zmin, zmax]:
-                                        if (abs(mirror_pos[2] - bound) < 0.001):
-                                            pivot_loc[2] = mirror_pos[2]
-
-                            bpy.data.objects.remove(pivot_obj)
-                        else:
-                            pivot_loc = view_layer.objects[color_ref_obj[color][3]].matrix_world.to_translation()
-
-                        view_layer.objects.active = new_obj
-                        bpy.context.scene.cursor.location = pivot_loc
-                        bpy.ops.object.select_all(action='DESELECT')
-                        new_obj.select_set(True)
-                        bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-                        parent_pivot = new_obj.parent.matrix_world.to_translation() if new_obj.parent else (0.0, 0.0, 0.0)
-                        pivot_ref[new_obj] = new_obj.sx2.mirrorobject.matrix_world.to_translation() if new_obj.sx2.mirrorobject else parent_pivot
-
-                        new_obj.sx2.generatelodmeshes = False
-                        new_obj.sx2.generateemissionmeshes = False
-                        new_obj.sx2.weldthreshold = 0.0
-                        new_obj.sx2.decimation = 0.0
-                        new_cid_objs.append(new_obj)
-
-                    if sxglobals.benchmark_cvx:
-                        now = time.perf_counter()
-                        print(f'SX Tools: Convex hull generation: collision ID objects created. Time: {now-then}')
-                        
-                if hull_objs:
-                    org_objs = hull_objs[:]
-                    for obj in org_objs:
-                        new_obj = obj.copy()
-                        new_obj.data = obj.data.copy()
-                        new_obj.data.name = obj.name[:] + '_hull_mesh'
-                        new_obj.name = obj.name[:] + '_hull'
-
-                        bpy.context.scene.collection.objects.link(new_obj)
-                        view_layer.objects.active = new_obj
-                        colliders.objects.link(new_obj)
-
-                        pivot_ref[new_obj] = new_obj.matrix_world.to_translation()
-
-                        org_subdiv = obj.sx2.subdivisionlevel
-                        if ('sxSubdivision' in obj.modifiers):
-                            new_obj.sx2.subdivisionlevel = 1 if org_subdiv > 1 else org_subdiv
-                            new_obj.modifiers['sxSubdivision'].levels = 1 if org_subdiv > 1 else org_subdiv
-
-                        new_obj.sx2.smartseparate = obj.sx2.smartseparate
-                        new_obj.sx2.generatelodmeshes = False
-                        new_obj.sx2.generateemissionmeshes = False
-                        new_obj.sx2.weldthreshold = 0.0
-                        new_obj.sx2.decimation = 0.0
-                        new_obj.parent = group
-                        new_obj['group_id'] = obj.parent.name
-                        new_hull_objs.append(new_obj)
-
-                        # Clear existing modifier stacks
-                        modifiers.apply_modifiers([new_obj, ])
-
-                    if sxglobals.benchmark_cvx:
-                        now = time.perf_counter()
-                        print(f'SX Tools: Convex hull generation: hull objects created. Time: {now-then}')
-
-                # Split mirrored collider source objects
-                separated_objs = []
-                for new_obj in new_cid_objs:
-                    if (new_obj.sx2.preserveborders) or (not new_obj.sx2.separate_cids):
-                        new_objs.append(new_obj)
-                    else:
-                        bpy.ops.object.select_all(action='DESELECT')
-                        view_layer.objects.active = new_obj
-                        sep_objs = self.smart_separate([new_obj, ], override=True, parent=False)
-                        # print('Hull Mesh:', new_obj.name, 'Mergefragments:', new_obj.sx2.mergefragments)
-                        # print('Separated:', [sep_obj.name for sep_obj in sep_objs])
-
-                        if new_obj.sx2.mergefragments:
-                            # Merge needlessly separated objects by analyzing their bbx centers
-                            left, right, front, back, top, bottom, center_x, center_y, center_z = [], [], [], [], [], [], [], [], []
-
-                            for i, sep_obj in enumerate(sep_objs):
-                                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([sep_obj, ])
-                                ref_pivot = pivot_ref[new_obj]
-                                # print('New obj:', new_obj.name, ref_pivot)
-                                # print('Sep obj:', sep_obj.name, (xmin + xmax * 0.5, ymin + ymax * 0.5, zmin + zmax * 0.5))
-
-                                if new_obj.sx2.xmirror:
-                                    if ((xmin + xmax) * 0.5 > ref_pivot[0]) and (abs(((xmin + xmax) * 0.5) - abs(ref_pivot[0])) > 0.01):
-                                        # print('Adding', sep_obj.name, 'left')
-                                        left.append(sep_obj)
-                                    elif ((xmin + xmax) * 0.5 < ref_pivot[0]) and (abs(((xmin + xmax) * 0.5) - abs(ref_pivot[0])) > 0.01):
-                                        # print('Adding', sep_obj.name, 'right')
-                                        right.append(sep_obj)
-                                    else:
-                                        # print('Adding', sep_obj.name, 'center_x')
-                                        center_x.append(sep_obj)
-
-                                elif new_obj.sx2.ymirror:
-                                    if ((ymin + ymax) * 0.5 > ref_pivot[1]) and (abs(((ymin + ymax) * 0.5) - abs(ref_pivot[1])) > 0.01):
-                                        # print('Adding', sep_obj.name, 'front')
-                                        front.append(sep_obj)
-                                    elif ((ymin + ymax) * 0.5 < ref_pivot[1]) and (abs(((ymin + ymax) * 0.5) - abs(ref_pivot[1])) > 0.01):
-                                        # print('Adding', sep_obj.name, 'back')
-                                        back.append(sep_obj)
-                                    else:
-                                        # print('Adding', sep_obj.name, 'center_y')
-                                        center_y.append(sep_obj)
-
-                                elif new_obj.sx2.zmirror:
-                                    if ((zmin + zmax) * 0.5 > ref_pivot[2]) and (abs(((zmin + zmax) * 0.5) - abs(ref_pivot[2])) > 0.01):
-                                        # print('Adding', sep_obj.name, 'top')
-                                        top.append(sep_obj)
-                                    elif ((zmin + zmax) * 0.5 < ref_pivot[2]) and (abs(((zmin + zmax) * 0.5) - abs(ref_pivot[2])) > 0.01):
-                                        # print('Adding', sep_obj.name, 'bottom')
-                                        bottom.append(sep_obj)
-                                    else:
-                                        # print('Adding', sep_obj.name, 'center_z')
-                                        center_z.append(sep_obj)
-
-                            for i, bucket in enumerate([left, right, center_x, top, bottom, center_y, front, back, center_z]):
-                                if len(bucket) > 1:
-                                    bpy.ops.object.select_all(action='DESELECT')
-                                    view_layer.objects.active = bucket[0]
-                                    cleanup = []
-                                    for bucket_object in bucket:
-                                        cleanup.append(bucket_object.data)
-                                        bucket_object.select_set(True)
-
-                                    for bucket_object in bucket[1:]:
-                                        sep_objs.remove(bucket_object)
-
-                                    # print('Bucket:', i, bucket)
-                                    bpy.ops.object.join()
-
-                                    for cleanup_mesh in cleanup[1:]:
-                                        bpy.data.meshes.remove(cleanup_mesh)
-
-                        if sep_objs:
-                            sep_objs = [sep_obj for sep_obj in sep_objs if sep_obj.name in view_layer.objects]
-
-                        if sep_objs:
-                            separated_objs += sep_objs
-
-                if sxglobals.benchmark_cvx:
-                    now = time.perf_counter()
-                    print(f'SX Tools: Convex hull generation: fragment merging done. Time: {now-then}')
-
-                for new_obj in new_hull_objs:
-                    bpy.ops.object.select_all(action='DESELECT')
-                    sep_objs = self.smart_separate([new_obj, ], parent=False)
-
-                    if sep_objs:
-                        separated_objs += sep_objs
-                    else:
-                        new_objs.append(new_obj)
-
-                if separated_objs:
-                    new_objs += separated_objs
+            # Create a new bmesh and mesh for each color group
+            for i, (color, faces) in enumerate(color_to_faces.items()):
+                new_bm = bmesh.new()
+                vert_map = {}  # Map old verts to new verts
+                existing_faces = set()
+                
+                for face_verts in faces:
+                    new_verts = []
                     
+                    for vert_co in face_verts:
+                        vert = vert_map.get(vert_co)
+                        if not vert:
+                            vert = new_bm.verts.new(vert_co)
+                            vert_map[vert_co] = vert
+                        
+                        # if vert_co not in vert_map:
+                        #     new_vert = new_bm.verts.new(vert_co)
+                        #     vert_map[vert_co] = new_vert
 
+                        if vert not in new_verts:
+                            new_verts.append(vert_map[vert_co])
+                    
+                    if len(new_verts) > 2:
+                        face_key = frozenset(new_verts)
+                        if face_key not in existing_faces:
+                            new_bm.faces.new(new_verts)
+                            existing_faces.add(face_key)
+                
+                new_bm.verts.index_update()
+                new_bm.edges.index_update()
+                new_bm.faces.index_update()
+
+                name = f'{color_ref_obj[color][3]}_hull_{i}'
+                mesh_data = bpy.data.meshes.new(name+'_mesh')
+                new_bm.to_mesh(mesh_data)
+                new_bm.free()
+
+                new_obj = bpy.data.objects.new(name, mesh_data)
+                bpy.context.scene.collection.objects.link(new_obj)
+                colliders.objects.link(new_obj)
+
+                # New meshes local to origin
+                # Proceed to smart separate manually and move to correct location
+                new_obj.sx2.smartseparate = False
+                new_obj.location = color_ref_obj[color][0]
+                new_obj.parent = group
+                new_obj.sx2.hulltrimax = color_ref_obj[color][2]
+                new_obj.sx2.mirrorobject = view_layer.objects[color_ref_obj[color][3]].sx2.mirrorobject
+                new_obj.sx2.xmirror = view_layer.objects[color_ref_obj[color][3]].sx2.xmirror
+                new_obj.sx2.ymirror = view_layer.objects[color_ref_obj[color][3]].sx2.ymirror
+                new_obj.sx2.zmirror = view_layer.objects[color_ref_obj[color][3]].sx2.zmirror
+                new_obj.sx2.separate_cids = view_layer.objects[color_ref_obj[color][3]].sx2.separate_cids
+                new_obj.sx2.mergefragments = view_layer.objects[color_ref_obj[color][3]].sx2.mergefragments
+                new_obj.sx2.preserveborders = view_layer.objects[color_ref_obj[color][3]].sx2.preserveborders
+                new_obj.sx2.collideroffsetfactor = view_layer.objects[color_ref_obj[color][3]].sx2.collideroffsetfactor
+                new_obj.sx2.pivotmode = 'CID'
+                new_obj['group_id'] = view_layer.objects[color_ref_obj[color][3]].parent.name
+
+                # Set pivots manually for split convex hulls
+                if bpy.data.objects[color_ref_obj[color][3]].sx2.smartseparate:
+                    ref_obj = bpy.data.objects[color_ref_obj[color][3]]
+                    pivot_obj = ref_obj.copy()
+                    pivot_obj.data = ref_obj.data.copy()
+                    pivot_obj.sx2.weldthreshold = 0.0
+                    pivot_obj.sx2.decimation = 0.0
+
+                    bpy.context.scene.collection.objects.link(pivot_obj)
+                    view_layer.objects.active = pivot_obj
+
+                    # NOTE: Set pivot before applying modifiers to avoid drift due to modifiers
+                    if 'sxMirror' in pivot_obj.modifiers:
+                        pivot_obj.modifiers.remove(pivot_obj.modifiers.get('sxMirror'))
+                    self.set_pivots([pivot_obj, ])
+                    modifiers.apply_modifiers([pivot_obj, ])
+                    pivot_loc = list(pivot_obj.matrix_world.to_translation())
+
+                    # Fix pivot location for object halves
+                    adjustables = ['MASS', 'BBOX']
+                    if new_obj.sx2.mirrorobject:
+                        mirror_pos = new_obj.sx2.mirrorobject.matrix_world.to_translation()
+                    else:
+                        mirror_pos = new_obj.parent.matrix_world.to_translation() if new_obj.parent else (0.0, 0.0, 0.0)
+
+                    # Check if object has vertices at mirror axes
+                    if pivot_obj.sx2.pivotmode in adjustables:
+                        xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([pivot_obj, ])
+
+                        if pivot_obj.sx2.xmirror:
+                            for bound in [xmin, xmax]:
+                                if (abs(mirror_pos[0] - bound) < 0.001):
+                                    pivot_loc[0] = mirror_pos[0]
+
+                        if pivot_obj.sx2.ymirror:
+                            for bound in [ymin, ymax]:
+                                if (abs(mirror_pos[1] - bound) < 0.001):
+                                    pivot_loc[1] = mirror_pos[1]
+
+                        if pivot_obj.sx2.zmirror:
+                            for bound in [zmin, zmax]:
+                                if (abs(mirror_pos[2] - bound) < 0.001):
+                                    pivot_loc[2] = mirror_pos[2]
+
+                    bpy.data.objects.remove(pivot_obj)
+                else:
+                    pivot_loc = view_layer.objects[color_ref_obj[color][3]].matrix_world.to_translation()
+
+                view_layer.objects.active = new_obj
+                bpy.context.scene.cursor.location = pivot_loc
                 bpy.ops.object.select_all(action='DESELECT')
-                for new_obj in new_objs:
-                    shrink_colliders(new_obj)
+                new_obj.select_set(True)
+                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+                parent_pivot = new_obj.parent.matrix_world.to_translation() if new_obj.parent else (0.0, 0.0, 0.0)
+                pivot_ref[new_obj] = new_obj.sx2.mirrorobject.matrix_world.to_translation() if new_obj.sx2.mirrorobject else parent_pivot
 
-                    if new_obj.name not in bpy.context.scene.collection.objects:
-                        bpy.context.scene.collection.objects.link(new_obj)
+                new_obj.sx2.generatelodmeshes = False
+                new_obj.sx2.generateemissionmeshes = False
+                new_obj.sx2.weldthreshold = 0.0
+                new_obj.sx2.decimation = 0.0
+                new_cid_objs.append(new_obj)
 
-                    if new_obj.name not in bpy.context.view_layer.objects:
-                        bpy.context.view_layer.objects.link(new_obj)
+            if sxglobals.benchmark_cvx:
+                now = time.perf_counter()
+                print(f'SX Tools: Convex hull generation: collision ID objects created. Time: {now-then}')
+                
+        if hull_objs:
+            org_objs = hull_objs[:]
+            for obj in org_objs:
+                new_obj = obj.copy()
+                new_obj.data = obj.data.copy()
+                new_obj.data.name = obj.name[:] + '_hull_mesh'
+                new_obj.name = obj.name[:] + '_hull'
 
-                    if new_obj.name not in colliders.objects:
-                        colliders.objects.link(new_obj)
+                bpy.context.scene.collection.objects.link(new_obj)
+                view_layer.objects.active = new_obj
+                colliders.objects.link(new_obj)
 
-                    # Clear sx2layers
-                    new_obj.sx2layers.clear()
-                    new_obj.select_set(False)
+                pivot_ref[new_obj] = new_obj.matrix_world.to_translation()
 
-                for obj in org_objs:
-                    obj.select_set(True)
+                org_subdiv = obj.sx2.subdivisionlevel
+                if ('sxSubdivision' in obj.modifiers):
+                    new_obj.sx2.subdivisionlevel = 1 if org_subdiv > 1 else org_subdiv
+                    new_obj.modifiers['sxSubdivision'].levels = 1 if org_subdiv > 1 else org_subdiv
 
-                view_layer.objects.active = active_obj
-                if not bpy.app.background:
-                    setup.update_sx2material(bpy.context)
+                new_obj.sx2.smartseparate = obj.sx2.smartseparate
+                new_obj.sx2.generatelodmeshes = False
+                new_obj.sx2.generateemissionmeshes = False
+                new_obj.sx2.weldthreshold = 0.0
+                new_obj.sx2.decimation = 0.0
+                new_obj.parent = group
+                new_obj['group_id'] = obj.parent.name
+                new_hull_objs.append(new_obj)
 
-                if sxglobals.benchmark_cvx:
-                    now = time.perf_counter()
-                    print(f'SX Tools: Convex hull generation finished. Time: {now-then}')
+                # Clear existing modifier stacks
+                modifiers.apply_modifiers([new_obj, ])
+
+            if sxglobals.benchmark_cvx:
+                now = time.perf_counter()
+                print(f'SX Tools: Convex hull generation: hull objects created. Time: {now-then}')
+
+        # Split mirrored collider source objects
+        separated_objs = []
+        for new_obj in new_cid_objs:
+            if (new_obj.sx2.preserveborders) or (not new_obj.sx2.separate_cids):
+                new_objs.append(new_obj)
+            else:
+                bpy.ops.object.select_all(action='DESELECT')
+                view_layer.objects.active = new_obj
+                sep_objs = self.smart_separate([new_obj, ], override=True, parent=False)
+                # print('Hull Mesh:', new_obj.name, 'Mergefragments:', new_obj.sx2.mergefragments)
+                # print('Separated:', [sep_obj.name for sep_obj in sep_objs])
+
+                if new_obj.sx2.mergefragments:
+                    # Merge needlessly separated objects by analyzing their bbx centers
+                    left, right, front, back, top, bottom, center_x, center_y, center_z = [], [], [], [], [], [], [], [], []
+
+                    for i, sep_obj in enumerate(sep_objs):
+                        xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([sep_obj, ])
+                        ref_pivot = pivot_ref[new_obj]
+                        # print('New obj:', new_obj.name, ref_pivot)
+                        # print('Sep obj:', sep_obj.name, (xmin + xmax * 0.5, ymin + ymax * 0.5, zmin + zmax * 0.5))
+
+                        if new_obj.sx2.xmirror:
+                            if ((xmin + xmax) * 0.5 > ref_pivot[0]) and (abs(((xmin + xmax) * 0.5) - abs(ref_pivot[0])) > 0.01):
+                                # print('Adding', sep_obj.name, 'left')
+                                left.append(sep_obj)
+                            elif ((xmin + xmax) * 0.5 < ref_pivot[0]) and (abs(((xmin + xmax) * 0.5) - abs(ref_pivot[0])) > 0.01):
+                                # print('Adding', sep_obj.name, 'right')
+                                right.append(sep_obj)
+                            else:
+                                # print('Adding', sep_obj.name, 'center_x')
+                                center_x.append(sep_obj)
+
+                        elif new_obj.sx2.ymirror:
+                            if ((ymin + ymax) * 0.5 > ref_pivot[1]) and (abs(((ymin + ymax) * 0.5) - abs(ref_pivot[1])) > 0.01):
+                                # print('Adding', sep_obj.name, 'front')
+                                front.append(sep_obj)
+                            elif ((ymin + ymax) * 0.5 < ref_pivot[1]) and (abs(((ymin + ymax) * 0.5) - abs(ref_pivot[1])) > 0.01):
+                                # print('Adding', sep_obj.name, 'back')
+                                back.append(sep_obj)
+                            else:
+                                # print('Adding', sep_obj.name, 'center_y')
+                                center_y.append(sep_obj)
+
+                        elif new_obj.sx2.zmirror:
+                            if ((zmin + zmax) * 0.5 > ref_pivot[2]) and (abs(((zmin + zmax) * 0.5) - abs(ref_pivot[2])) > 0.01):
+                                # print('Adding', sep_obj.name, 'top')
+                                top.append(sep_obj)
+                            elif ((zmin + zmax) * 0.5 < ref_pivot[2]) and (abs(((zmin + zmax) * 0.5) - abs(ref_pivot[2])) > 0.01):
+                                # print('Adding', sep_obj.name, 'bottom')
+                                bottom.append(sep_obj)
+                            else:
+                                # print('Adding', sep_obj.name, 'center_z')
+                                center_z.append(sep_obj)
+
+                    for i, bucket in enumerate([left, right, center_x, top, bottom, center_y, front, back, center_z]):
+                        if len(bucket) > 1:
+                            bpy.ops.object.select_all(action='DESELECT')
+                            view_layer.objects.active = bucket[0]
+                            cleanup = []
+                            for bucket_object in bucket:
+                                cleanup.append(bucket_object.data)
+                                bucket_object.select_set(True)
+
+                            for bucket_object in bucket[1:]:
+                                sep_objs.remove(bucket_object)
+
+                            # print('Bucket:', i, bucket)
+                            bpy.ops.object.join()
+
+                            for cleanup_mesh in cleanup[1:]:
+                                bpy.data.meshes.remove(cleanup_mesh)
+
+                if sep_objs:
+                    sep_objs = [sep_obj for sep_obj in sep_objs if sep_obj.name in view_layer.objects]
+
+                if sep_objs:
+                    separated_objs += sep_objs
+
+        if sxglobals.benchmark_cvx:
+            now = time.perf_counter()
+            print(f'SX Tools: Convex hull generation: fragment merging done. Time: {now-then}')
+
+        for new_obj in new_hull_objs:
+            bpy.ops.object.select_all(action='DESELECT')
+            sep_objs = self.smart_separate([new_obj, ], parent=False)
+
+            if sep_objs:
+                separated_objs += sep_objs
+            else:
+                new_objs.append(new_obj)
+
+        if separated_objs:
+            new_objs += separated_objs
+            
+
+        bpy.ops.object.select_all(action='DESELECT')
+        for new_obj in new_objs:
+            shrink_colliders(new_obj)
+
+            if new_obj.name not in bpy.context.scene.collection.objects:
+                bpy.context.scene.collection.objects.link(new_obj)
+
+            if new_obj.name not in bpy.context.view_layer.objects:
+                bpy.context.view_layer.objects.link(new_obj)
+
+            if new_obj.name not in colliders.objects:
+                colliders.objects.link(new_obj)
+
+            # Clear sx2layers
+            new_obj.sx2layers.clear()
+            new_obj.select_set(False)
+
+        for obj in org_objs:
+            obj.select_set(True)
+
+        view_layer.objects.active = active_obj
+        if not bpy.app.background:
+            setup.update_sx2material(bpy.context)
+
+        if sxglobals.benchmark_cvx:
+            now = time.perf_counter()
+            print(f'SX Tools: Convex hull generation finished. Time: {now-then}')
 
 
     def generate_mesh_colliders(self, objs):
@@ -6934,7 +6940,7 @@ def save_post_handler(dummy):
 
     cost = modifiers.calculate_triangles(objs)
 
-    if len(prefs.cataloguepath) > 0:
+    if prefs.cataloguepath:
         try:
             with open(prefs.cataloguepath, 'r') as input:
                 catalogue_dict = json.load(input)
@@ -8385,7 +8391,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
             col = layout.column()
             col.label(text='Libraries not loaded')
             col.label(text='Check Add-on Preferences')
-            if len(prefs.libraryfolder) > 0:
+            if prefs.libraryfolder:
                 col.operator('sx2.loadlibraries', text='Reload Libraries')
 
         elif objs:
@@ -9043,7 +9049,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                     elif scene.exportmode == 'EXPORT':
                         row_exporttype = export_panel.row(align=True)
                         row_exporttype.prop(scene, 'exporttype', expand=True)
-                        if len(prefs.cataloguepath) > 0:
+                        if prefs.cataloguepath:
                             row_batchexport = export_panel.row()
                             row_batchexport.prop(
                                 scene, 'expandbatchexport',
@@ -11282,7 +11288,7 @@ class SXTOOLS2_OT_catalogue_add(bpy.types.Operator):
     assetTags: bpy.props.StringProperty(name='Tags')
 
     def load_asset_data(self, catalogue_path):
-        if len(catalogue_path) > 0:
+        if catalogue_path:
             try:
                 with open(catalogue_path, 'r') as input:
                     temp_dict = {}
@@ -11301,7 +11307,7 @@ class SXTOOLS2_OT_catalogue_add(bpy.types.Operator):
 
 
     def save_asset_data(self, catalogue_path, data_dict):
-        if len(catalogue_path) > 0:
+        if catalogue_path:
             with open(catalogue_path, 'w') as output:
                 json.dump(data_dict, output, indent=4)
                 output.close()
@@ -11349,7 +11355,7 @@ class SXTOOLS2_OT_catalogue_add(bpy.types.Operator):
         file_path = bpy.data.filepath
 
         # Check if the open scene has been saved to a file
-        if len(file_path) == 0:
+        if not file_path:
             message_box('Current file not saved!', 'SX Tools Error', 'ERROR')
             return {'FINISHED'}
 
@@ -11385,7 +11391,7 @@ class SXTOOLS2_OT_catalogue_remove(bpy.types.Operator):
 
 
     def load_asset_data(self, catalogue_path):
-        if len(catalogue_path) > 0:
+        if catalogue_path:
             try:
                 with open(catalogue_path, 'r') as input:
                     temp_dict = {}
@@ -11404,7 +11410,7 @@ class SXTOOLS2_OT_catalogue_remove(bpy.types.Operator):
 
 
     def save_asset_data(self, catalogue_path, data_dict):
-        if len(catalogue_path) > 0:
+        if catalogue_path:
             with open(catalogue_path, 'w') as output:
                 json.dump(data_dict, output, indent=4)
                 output.close()
@@ -11420,7 +11426,7 @@ class SXTOOLS2_OT_catalogue_remove(bpy.types.Operator):
             return {'FINISHED'}
 
         file_path = bpy.data.filepath
-        if len(file_path) == 0:
+        if not file_path:
             message_box('Current file not saved!', 'SX Tools Error', 'ERROR')
             return {'FINISHED'}
 
@@ -11767,7 +11773,7 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
             raw_palette = utils.find_colors_by_frequency(objs, 'Composite')
             palette = []
             for color in raw_palette:
-                if len(palette) == 0:
+                if not palette:
                     palette.append(color)
                 else:
                     match = False
@@ -11777,7 +11783,7 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
                     if not match:
                         palette.append(color)
 
-            grid = 1 if len(palette) == 0 else 2**math.ceil(math.log2(math.sqrt(len(palette))))
+            grid = 1 if not palette else 2**math.ceil(math.log2(math.sqrt(len(palette))))
 
             # assign UV coords per palette color
             color_uv_coords = {}
