@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 9, 12),
+    'version': (2, 9, 13),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -694,14 +694,27 @@ class SXTOOLS2_utils(object):
 
 
     def get_selection_bounding_box(self, objs):
-        vert_pos_list = []
-        for obj in objs:
-            mesh = obj.data
-            mat = obj.matrix_world
-            for vert in mesh.vertices:
-                if vert.select:
-                    vert_pos_list.append(mat @ vert.co)
 
+        def get_selected_vertex_positions(objs):
+            vert_pos_list = []
+            
+            for obj in objs:
+                mesh = obj.data
+                mat = obj.matrix_world
+                
+                select_states = [False] * len(mesh.vertices)
+                mesh.vertices.foreach_get('select', select_states)
+                coords = [0.0] * (len(mesh.vertices) * 3)
+                mesh.vertices.foreach_get('co', coords)
+
+                for i, selected in enumerate(select_states):
+                    if selected:
+                        co = Vector((coords[i*3], coords[i*3+1], coords[i*3+2]))
+                        vert_pos_list.append(mat @ co)
+    
+            return vert_pos_list
+
+        vert_pos_list = get_selected_vertex_positions(objs)
         bbx = [[None, None], [None, None], [None, None]]
         for i, fvPos in enumerate(vert_pos_list):
             # first vert
@@ -723,8 +736,9 @@ class SXTOOLS2_utils(object):
         bbx_x = []
         bbx_y = []
         bbx_z = []
+        edg = bpy.context.evaluated_depsgraph_get()
+
         for obj in objs:
-            edg = bpy.context.evaluated_depsgraph_get()
             obj_eval = obj.evaluated_get(edg)
             if (mode == 'local'):
                 corners = [Vector(corner) for corner in obj_eval.bound_box]
@@ -3467,6 +3481,7 @@ class SXTOOLS2_export(object):
                     # Map color regions to mesh islands
                     color_to_faces = defaultdict(list)
                     color_ref_obj = {}
+                    edg = bpy.context.evaluated_depsgraph_get()
 
                     for obj in cid_objs:
                         if obj.type == 'MESH':
@@ -3476,7 +3491,6 @@ class SXTOOLS2_export(object):
                                 obj.modifiers['sxSubdivision'].levels = 1 if org_subdiv > 1 else org_subdiv
 
                             # Get evaluated mesh at subdiv 1
-                            edg = bpy.context.evaluated_depsgraph_get()
                             temp_mesh = obj.evaluated_get(edg).to_mesh()
                             bm = bmesh.new()
                             bm.from_mesh(temp_mesh)
