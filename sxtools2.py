@@ -1424,6 +1424,10 @@ class SXTOOLS2_generate(object):
 
 
     def occlusion_list(self, obj, raycount=250, blend=0.5, dist=10.0, groundplane=False, groundheight=-0.5, masklayer=None):
+        vert_dict = self.vertex_data_dict(obj, masklayer, dots=True)
+        if not vert_dict:
+            return None
+
         if sxglobals.benchmark_ao:
             then = time.perf_counter()
 
@@ -1443,10 +1447,7 @@ class SXTOOLS2_generate(object):
                 modifiers.add_modifiers([obj, ])
             obj.modifiers['sxTiler'].show_viewport = True
 
-        vert_occ_dict = {}
-        vert_dict = self.vertex_data_dict(obj, masklayer, dots=True)
-        if not vert_dict:
-            return None
+        vert_occ_dict = {vert_id: 0.0 for vert_id in vert_dict}
 
         if (blend > 0.0) and groundplane:
             pivot = utils.find_root_pivot([obj, ])
