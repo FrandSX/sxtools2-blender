@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 9, 17),
+    'version': (2, 9, 19),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -231,7 +231,8 @@ class SXTOOLS2_files(object):
         groupNames = []
         for group in groups:
             bpy.context.view_layer.objects.active = group
-            bpy.ops.object.select_all(action='DESELECT')
+            # bpy.ops.object.select_all(action='DESELECT')
+            utils.deselect_all_objs()
             group.select_set(True)
             org_loc = group.location.copy()
             group.location = (0, 0, 0)
@@ -388,7 +389,8 @@ class SXTOOLS2_files(object):
         obj_names = []
         for obj in objs:
             bpy.context.view_layer.objects.active = obj
-            bpy.ops.object.select_all(action='DESELECT')
+            # bpy.ops.object.select_all(action='DESELECT')
+            utils.deselect_all_objs()
             obj.select_set(True)
             org_loc = obj.location.copy()
             if reset_locations:
@@ -519,6 +521,25 @@ class SXTOOLS2_utils(object):
             mesh.edges.foreach_set('select', [False] * len(mesh.edges))
             mesh.polygons.foreach_set('select', [False] * len(mesh.polygons))
             mesh.update()
+
+
+    # types=(vert, edge, poly)
+    def select_all_components(self, obj, types=(False, False, False)):
+        mesh = obj.data
+        if types[0]:
+            mesh.vertices.foreach_set('select', [True] * len(mesh.vertices))
+        if types[1]:
+            mesh.edges.foreach_set('select', [True] * len(mesh.edges))
+        if types[2]:
+            mesh.polygons.foreach_set('select', [True] * len(mesh.polygons))
+        if types[0] or types[1] or types[2]:
+            mesh.update()        
+
+
+    def deselect_all_objs(self):
+        bpy.context.view_layer.objects.active = None
+        for obj in bpy.context.view_layer.objects.selected:
+            obj.select_set(False)
 
 
     def create_collection(self, collection_name):
@@ -3204,7 +3225,8 @@ class SXTOOLS2_export(object):
                     source_objects.objects.link(obj)
 
             active = view_layer.objects.active
-            bpy.ops.object.select_all(action='DESELECT')
+            # bpy.ops.object.select_all(action='DESELECT')
+            utils.deselect_all_objs()
             for obj in sep_objs:
                 obj.select_set(True)
                 view_layer.objects.active = obj
@@ -3224,8 +3246,9 @@ class SXTOOLS2_export(object):
                 else:
                     ref_loc = obj.matrix_world.to_translation()
 
+                utils.select_all_components(obj, (True, True, True))
                 bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                bpy.ops.mesh.select_all(action='SELECT')
+                # bpy.ops.mesh.select_all(action='SELECT')
                 bpy.ops.mesh.separate(type='LOOSE')
 
                 bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
@@ -3330,7 +3353,8 @@ class SXTOOLS2_export(object):
 
                     new_obj.parent = bpy.context.view_layer.objects[obj.parent.name]
 
-                    bpy.ops.object.select_all(action='DESELECT')
+                    # bpy.ops.object.select_all(action='DESELECT')
+                    utils.deselect_all_objs()
                     new_obj.select_set(True)
                     bpy.context.view_layer.objects.active = new_obj
 
@@ -3367,8 +3391,9 @@ class SXTOOLS2_export(object):
             view_layer.objects.active = collider_obj
             if sxglobals.benchmark_cvx:
                 print(f'SX Tools: {collider_obj.name} Initial Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
+            utils.select_all_components(collider_obj, (True, True, True))
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-            bpy.ops.mesh.select_all(action='SELECT')
+            # bpy.ops.mesh.select_all(action='SELECT')
             bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(40.0), shape_threshold=math.radians(40.0), sharp=True)
             if sxglobals.benchmark_cvx:
                 print(f'SX Tools: {collider_obj.name} Convex Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
@@ -3379,9 +3404,10 @@ class SXTOOLS2_export(object):
             if collider_obj.sx2.collideroffsetfactor > 0.0:
                 bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
                 offset = -1.0 * min(collider_obj.sx2.collideroffsetfactor, utils.find_safe_mesh_offset(collider_obj))
+                utils.select_all_components(collider_obj, (True, False, False))
                 bpy.ops.object.mode_set(mode='EDIT', toggle=False)
                 bpy.context.tool_settings.mesh_select_mode = (True, False, False)
-                bpy.ops.mesh.select_all(action='SELECT')
+                # bpy.ops.mesh.select_all(action='SELECT')
                 bpy.ops.transform.shrink_fatten(value=offset)
 
                 # Weld after shrink to clean up clumped verts
@@ -3468,13 +3494,15 @@ class SXTOOLS2_export(object):
                 # collider_obj.modifiers["hullWeld"].merge_threshold = min(collider_obj.dimensions) * 0.15
                 # bpy.ops.object.modifier_apply(modifier='hullWeld')
 
+                utils.select_all_components(collider_obj, (True, True, True))
                 bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                bpy.ops.mesh.select_all(action='SELECT')
+                # bpy.ops.mesh.select_all(action='SELECT')
                 bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(angle), shape_threshold=math.radians(angle))
                 bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
+            utils.select_all_components(collider_obj, (True, True, True))
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-            bpy.ops.mesh.select_all(action='SELECT')
+            # bpy.ops.mesh.select_all(action='SELECT')
             bpy.ops.mesh.dissolve_limited(angle_limit=math.radians(angle))
             bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
             bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
@@ -3678,7 +3706,8 @@ class SXTOOLS2_export(object):
 
                 view_layer.objects.active = new_obj
                 bpy.context.scene.cursor.location = pivot_loc
-                bpy.ops.object.select_all(action='DESELECT')
+                # bpy.ops.object.select_all(action='DESELECT')
+                utils.deselect_all_objs()
                 new_obj.select_set(True)
                 bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
                 parent_pivot = new_obj.parent.matrix_world.to_translation() if new_obj.parent else (0.0, 0.0, 0.0)
@@ -3735,7 +3764,8 @@ class SXTOOLS2_export(object):
             if (new_obj.sx2.preserveborders) or (not new_obj.sx2.separate_cids):
                 new_objs.append(new_obj)
             else:
-                bpy.ops.object.select_all(action='DESELECT')
+                # bpy.ops.object.select_all(action='DESELECT')
+                utils.deselect_all_objs()
                 view_layer.objects.active = new_obj
                 sep_objs = self.smart_separate([new_obj, ], override=True, parent=False)
                 # print('Hull Mesh:', new_obj.name, 'Mergefragments:', new_obj.sx2.mergefragments)
@@ -3786,7 +3816,8 @@ class SXTOOLS2_export(object):
 
                     for i, bucket in enumerate([left, right, center_x, top, bottom, center_y, front, back, center_z]):
                         if len(bucket) > 1:
-                            bpy.ops.object.select_all(action='DESELECT')
+                            # bpy.ops.object.select_all(action='DESELECT')
+                            utils.deselect_all_objs()
                             view_layer.objects.active = bucket[0]
                             cleanup = []
                             for bucket_object in bucket:
@@ -3813,7 +3844,8 @@ class SXTOOLS2_export(object):
             print(f'SX Tools: Convex hull generation: fragment merging done. Time: {now-then}')
 
         for new_obj in new_hull_objs:
-            bpy.ops.object.select_all(action='DESELECT')
+            # bpy.ops.object.select_all(action='DESELECT')
+            utils.deselect_all_objs()
             sep_objs = self.smart_separate([new_obj, ], parent=False)
 
             if sep_objs:
@@ -3825,7 +3857,8 @@ class SXTOOLS2_export(object):
             new_objs += separated_objs
             
 
-        bpy.ops.object.select_all(action='DESELECT')
+        # bpy.ops.object.select_all(action='DESELECT')
+        utils.deselect_all_objs()
         for new_obj in new_objs:
             shrink_colliders(new_obj)
 
@@ -3886,15 +3919,17 @@ class SXTOOLS2_export(object):
 
         modifiers.apply_modifiers(new_objs)
 
-        bpy.ops.object.select_all(action='DESELECT')
+        # bpy.ops.object.select_all(action='DESELECT')
+        utils.deselect_all_objs()
         for new_obj in new_objs:
             new_obj.select_set(True)
         bpy.context.view_layer.objects.active = new_objs[0]
 
         if obj.sx2.collideroffset:
             offset = -1.0 * obj.sx2.collideroffsetfactor * utils.find_safe_mesh_offset(obj)
+            utils.select_all_components(obj, (True, True, True))
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-            bpy.ops.mesh.select_all(action='SELECT')
+            # bpy.ops.mesh.select_all(action='SELECT')
             bpy.ops.transform.shrink_fatten(value=offset)
             bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
@@ -3903,7 +3938,8 @@ class SXTOOLS2_export(object):
         for src_obj in collision_source_objs.objects:
             bpy.data.objects.remove(src_obj, do_unlink=True)
 
-        bpy.ops.object.select_all(action='DESELECT')
+        # bpy.ops.object.select_all(action='DESELECT')
+        utils.deselect_all_objs()
 
         # grab hulls generated by vhacd
         for obj in bpy.context.view_layer.objects:
@@ -3937,7 +3973,8 @@ class SXTOOLS2_export(object):
         #     bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
         #     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
-        bpy.ops.object.select_all(action='DESELECT')
+        # bpy.ops.object.select_all(action='DESELECT')
+        utils.deselect_all_objs()
         for obj in org_objs:
             obj.select_set(True)
         bpy.context.view_layer.objects.active = active_obj
@@ -4459,9 +4496,11 @@ class SXTOOLS2_export(object):
 
     # Check for loose geometry
     def validate_loose(self, objs):
+        for obj in objs:
+            utils.select_all_components(obj, (True, False, False))
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
         bpy.context.tool_settings.mesh_select_mode = (True, False, False)
-        bpy.ops.mesh.select_all(action='SELECT')
+        # bpy.ops.mesh.select_all(action='SELECT')
         bpy.ops.mesh.select_loose()
 
         loose_objs = []
@@ -4489,7 +4528,7 @@ class SXTOOLS2_export(object):
     def validate_parents(self, objs):
         for obj in objs:
             if obj.parent is None:
-                message_box('Object is not in a group: ' + obj.name)
+                message_box(f'Object is not in a group: {obj.name}')
                 print(f'SX Tools Error: {obj.name} is not in a group')
                 return False
 
@@ -4872,7 +4911,8 @@ class SXTOOLS2_magic(object):
 
             if non_lod_objs:
                 lod_objs = export.generate_lods(non_lod_objs)
-                bpy.ops.object.select_all(action='DESELECT')
+                # bpy.ops.object.select_all(action='DESELECT')
+                utils.deselect_all_objs()
                 for obj in non_lod_objs:
                     obj.select_set(True)
                 for obj in lod_objs:
@@ -11238,7 +11278,8 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
                 for group in groups:
                     filtered_objs += utils.find_children(group, recursive=True, child_type='MESH')
 
-            bpy.ops.object.select_all(action='DESELECT')
+            # bpy.ops.object.select_all(action='DESELECT')
+            utils.deselect_all_objs()
             for obj in filtered_objs:
                 obj.select_set(True)
 
@@ -11275,7 +11316,8 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
                     else:
                         export.generate_hulls(source_objs)
 
-                    bpy.ops.object.select_all(action='DESELECT')
+                    # bpy.ops.object.select_all(action='DESELECT')
+                    utils.deselect_all_objs()
                     for obj in objs:
                         obj.select_set(True)
                     sxglobals.refresh_in_progress = False
