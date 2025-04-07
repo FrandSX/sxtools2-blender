@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 9, 20),
+    'version': (2, 9, 22),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3385,16 +3385,54 @@ class SXTOOLS2_export(object):
         def sign(x):
             return 1 if x >= 0 else -1
 
+        def bmesh_convex_hull(mesh):
+            bm = bmesh.new()
+            bm.from_mesh(mesh)
+            bmesh.ops.convex_hull(bm, input=bm.verts, use_existing_faces=False)
+            return bm
+
+        def bmesh_safe_offset(bm):
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+            safe_distance = None
+            bvh = BVHTree.FromBMesh(bm)
+            for vert in bm.verts:
+                ray_origin = vert.co - vert.normal * 0.005
+                ray_direction = -vert.normal
+
+                hit, location, normal, index = bvh.ray_cast(ray_origin, ray_direction)
+                
+                if hit:
+                    dist = (location - vert.co).length
+                    if (safe_distance is None) or (dist < safe_distance):
+                        safe_distance = dist
+            
+            return safe_distance if safe_distance is not None else 0.0
+
+        def bmesh_shrink_hull(bm, offset_value):          
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+            for vert in bm.verts:
+                normal = vert.normal.normalized()
+                vert.co -= normal * offset_value
+            
+            return bm
+
+        def bmesh_commit(bm, mesh):
+            bm.to_mesh(mesh)
+            mesh.update()
+            bm.free()
+            return mesh
+
         def shrink_colliders(collider_obj):
             collider_obj.select_set(True)
             collider_obj.sx2.smartseparate = False
             view_layer.objects.active = collider_obj
             if sxglobals.benchmark_cvx:
                 print(f'SX Tools: {collider_obj.name} Initial Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
-            utils.select_all_components(collider_obj, (True, True, True))
-            bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+            # utils.select_all_components(collider_obj, (True, True, True))
+            # bpy.ops.object.mode_set(mode='EDIT', toggle=False)
             # bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(40.0), shape_threshold=math.radians(40.0), sharp=True)
+            # bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(40.0), shape_threshold=math.radians(40.0), sharp=True)
+            bm = bmesh_convex_hull(collider_obj.data)
             if sxglobals.benchmark_cvx:
                 print(f'SX Tools: {collider_obj.name} Convex Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
             tri_opt = False
@@ -3402,13 +3440,16 @@ class SXTOOLS2_export(object):
 
             # Shrink hull according to factor
             if collider_obj.sx2.collideroffsetfactor > 0.0:
-                bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                offset = -1.0 * min(collider_obj.sx2.collideroffsetfactor, utils.find_safe_mesh_offset(collider_obj))
-                utils.select_all_components(collider_obj, (True, False, False))
-                bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                bpy.context.tool_settings.mesh_select_mode = (True, False, False)
-                # bpy.ops.mesh.select_all(action='SELECT')
-                bpy.ops.transform.shrink_fatten(value=offset)
+                # bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                # offset = -1.0 * min(collider_obj.sx2.collideroffsetfactor, utils.find_safe_mesh_offset(collider_obj))
+                offset = -1.0 * min(collider_obj.sx2.collideroffsetfactor, bmesh_safe_offset(bm))
+                # utils.select_all_components(collider_obj, (True, False, False))
+                # bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+                # bpy.context.tool_settings.mesh_select_mode = (True, False, False)
+                ## bpy.ops.mesh.select_all(action='SELECT')
+                # bpy.ops.transform.shrink_fatten(value=offset)
+                bm = bmesh_shrink_hull(bm, offset)
+            collider_obj.data = bmesh_commit(bm, collider_obj.data)
 
                 # Weld after shrink to clean up clumped verts
                 # bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
@@ -3522,6 +3563,7 @@ class SXTOOLS2_export(object):
         if not (hull_objs or cid_objs):
             return
 
+        then_base = time.perf_counter()
         if sxglobals.benchmark_cvx:
             then = time.perf_counter()
             print(f'SX Tools: Convex hull generation starting')
@@ -3882,9 +3924,8 @@ class SXTOOLS2_export(object):
         if not bpy.app.background:
             setup.update_sx2material(bpy.context)
 
-        if sxglobals.benchmark_cvx:
-            now = time.perf_counter()
-            print(f'SX Tools: Convex hull generation finished. Time: {now-then}')
+        now = time.perf_counter()
+        print(f'SX Tools: Convex hull generation finished. Time: {now-then_base}')
 
 
     def generate_mesh_colliders(self, objs):
@@ -4038,7 +4079,7 @@ class SXTOOLS2_export(object):
     def remove_exports(self):
         if 'ExportObjects' in bpy.data.collections:
             export_objects = bpy.data.collections['ExportObjects'].objects
-            print('Export Objects:', export_objects.keys())
+            # print('Export Objects:', export_objects.keys())
             for obj in export_objects:
                 mesh = obj.data if obj.type == 'MESH' else None
                 bpy.data.objects.remove(obj, do_unlink=True)
@@ -4047,7 +4088,7 @@ class SXTOOLS2_export(object):
 
         if 'SXColliders' in bpy.data.collections:
             collider_objects = bpy.data.collections['SXColliders'].objects
-            print('Collider Objects:', collider_objects.keys())
+            # print('Collider Objects:', collider_objects.keys())
             for obj in collider_objects:
                 mesh = obj.data if obj.type == 'MESH' else None
                 bpy.data.objects.remove(obj, do_unlink=True)
@@ -4056,7 +4097,7 @@ class SXTOOLS2_export(object):
 
         if 'SourceObjects' in bpy.data.collections:
             source_objects = bpy.data.collections['SourceObjects'].objects
-            print('Source Objects:', source_objects.keys())
+            # print('Source Objects:', source_objects.keys())
             self.set_pivots(source_objects)
             tags = sxglobals.keywords
             for obj in source_objects:
