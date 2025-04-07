@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 9, 19),
+    'version': (2, 9, 20),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -537,7 +537,7 @@ class SXTOOLS2_utils(object):
 
 
     def deselect_all_objs(self):
-        bpy.context.view_layer.objects.active = None
+        # bpy.context.view_layer.objects.active = None
         for obj in bpy.context.view_layer.objects.selected:
             obj.select_set(False)
 
@@ -3207,6 +3207,7 @@ class SXTOOLS2_export(object):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         scene = bpy.context.scene.sx2
         view_layer = bpy.context.view_layer
+        active = view_layer.objects.active
         mode = objs[0].mode
         objs = objs[:]
         separated_objs = []
@@ -3224,7 +3225,6 @@ class SXTOOLS2_export(object):
                 if (scene.exportquality == 'LO') and (obj.name not in source_objects.objects.keys()) and (obj.name not in export_objects.objects.keys()) and (obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror):
                     source_objects.objects.link(obj)
 
-            active = view_layer.objects.active
             # bpy.ops.object.select_all(action='DESELECT')
             utils.deselect_all_objs()
             for obj in sep_objs:
@@ -3304,7 +3304,7 @@ class SXTOOLS2_export(object):
                                 obj.parent = view_layer.objects[new_parent_name]
                                 obj.matrix_parent_inverse = obj.parent.matrix_world.inverted()
 
-            view_layer.objects.active = active
+        view_layer.objects.active = active
         bpy.ops.object.mode_set(mode=mode)
         return separated_objs
 
