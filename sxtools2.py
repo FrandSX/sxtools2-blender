@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 9, 22),
+    'version': (2, 10, 3),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -33,12 +33,6 @@ from contextlib import redirect_stdout
 # ------------------------------------------------------------------------
 class SXTOOLS2_sxglobals(object):
     def __init__(self):
-        self.benchmark_modifiers = False
-        self.benchmark_tool = False
-        self.benchmark_ao = False
-        self.benchmark_magic = False
-        self.benchmark_cvx = False
-
         self.libraries_status = False
         self.refresh_in_progress = False
         self.layer_update_in_progress = False
@@ -219,10 +213,22 @@ class SXTOOLS2_files(object):
         self.save_file('gradients')
 
 
-    # In paletted export mode, gradients and overlays are
-    # not composited as that will be
-    # done by the shader on the game engine side
     def export_files(self, groups):
+        """
+        Export selected object groups to game-ready FBX/GLTF files with proper formatting.
+        
+        Processes objects by applying appropriate modifiers, generating UV channels, 
+        and handling vertex color compositing before export. 
+        
+        In paletted export mode, gradients and overlays are not composited as that will be
+        done by the shader on the game engine side.
+        
+        Args:
+            groups: List of root objects (empties) to be exported with their children
+            
+        Returns:
+            None
+        """
         scene = bpy.context.scene.sx2
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         export_dict = {'LIN': 'LINEAR', 'SRGB': 'SRGB'}
@@ -493,6 +499,25 @@ class SXTOOLS2_utils(object):
 
 
     def mode_manager(self, objs, set_mode=False, mode_id=None):
+        """
+        Temporarily switches objects to OBJECT mode and restores original mode when done.
+        Ensures that the mode used by the calling function is restored correctly.
+        
+        Args:
+            objs: List of objects to manage mode for 
+            set_mode: True to enter OBJECT mode, False to restore original mode
+            mode_id: The name of the calling function. Must match between paired calls to properly restore mode
+        """
+        # Safety check: if current mode doesn't match stored mode, reset the stored mode_id
+        if not set_mode and sxglobals.mode_id is not None:
+            current_mode = bpy.context.mode
+            stored_mode = sxglobals.mode
+            if current_mode != stored_mode and current_mode != 'OBJECT':
+                print(f"SX Tools: Mode manager reset.")
+                sxglobals.mode_id = None
+                sxglobals.mode = current_mode
+                return
+
         if set_mode:
             if sxglobals.mode_id is None:
                 sxglobals.mode_id = mode_id
@@ -890,10 +915,14 @@ class SXTOOLS2_utils(object):
 
     # uses raycheck to calculate safe distance for shrinking mesh colliders
     def find_safe_mesh_offset(self, obj):
+        utils.mode_manager([obj, ], set_mode=False, mode_id='find_safe_mesh_offset')
         bias = 0.005
 
         mesh = obj.data
         safe_distance = None
+
+        edg = bpy.context.evaluated_depsgraph_get()
+        bvh = BVHTree.FromObject(obj, edg, epsilon=0.0001)
 
         for vert in mesh.vertices:
             vert_loc = vert.co
@@ -901,13 +930,15 @@ class SXTOOLS2_utils(object):
             bias_vec = inv_normal * bias
             ray_origin = vert_loc + bias_vec
 
-            hit, loc, normal, index = obj.ray_cast(ray_origin, inv_normal)
+            # hit, loc, normal, index = obj.ray_cast(ray_origin, inv_normal)
+            hit, loc, normal, index = bvh.ray_cast(ray_origin, inv_normal)
 
             if hit:
                 dist = (loc - vert_loc).length
                 if (safe_distance is None) or (dist < safe_distance):
                     safe_distance = dist
 
+        utils.mode_manager([obj, ], set_mode=False, mode_id='find_safe_mesh_offset')
         return safe_distance if safe_distance is not None else 0
 
 
@@ -1445,11 +1476,12 @@ class SXTOOLS2_generate(object):
 
 
     def occlusion_list(self, obj, raycount=250, blend=0.5, dist=10.0, groundplane=False, groundheight=-0.5, masklayer=None):
+        scene2 = bpy.context.scene.sx2
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=True)
         if not vert_dict:
             return None
 
-        if sxglobals.benchmark_ao:
+        if scene2.benchmark_ao:
             then = time.perf_counter()
 
         Vec = Vector
@@ -1479,7 +1511,7 @@ class SXTOOLS2_generate(object):
         edg = bpy.context.evaluated_depsgraph_get()
         # edg.update()
         # obj_eval = obj.evaluated_get(edg)
-        bvh = BVHTree.FromObject(obj, edg)
+        bvh = BVHTree.FromObject(obj, edg, epsilon=0.0001)
 
         for vert_id in vert_dict:
             bias = 0.001
@@ -1571,7 +1603,7 @@ class SXTOOLS2_generate(object):
         vert_occ_list = generate.vert_dict_to_loop_list(obj, vert_occ_dict, 1, 4)
         result = self.mask_list(obj, vert_occ_list, masklayer)
 
-        if sxglobals.benchmark_ao:
+        if scene2.benchmark_ao:
             now = time.perf_counter()
             print(f'SX Tools: {obj.name} AO rendered in {round(now-then, 4)} seconds')
 
@@ -2545,7 +2577,8 @@ class SXTOOLS2_tools(object):
         if not objs:
             return
         
-        if sxglobals.benchmark_tool:
+        scene = bpy.context.scene.sx2
+        if scene.benchmark_tool:
             then = time.perf_counter()
 
         utils.mode_manager(objs, set_mode=True, mode_id='apply_tool')
@@ -2611,7 +2644,7 @@ class SXTOOLS2_tools(object):
                     layers.set_layer(obj, colors, targetlayer)
 
         utils.mode_manager(objs, set_mode=False, mode_id='apply_tool')
-        if sxglobals.benchmark_tool:
+        if scene.benchmark_tool:
             now = time.perf_counter()
             print(f'Apply tool {scene.toolmode} duration: {round(now-then, 4)} seconds')
 
@@ -2927,8 +2960,9 @@ class SXTOOLS2_modifiers(object):
 
 
     def add_modifiers(self, objs):
+        scene = bpy.context.scene.sx2
         for obj in objs:
-            if sxglobals.benchmark_modifiers:
+            if scene.benchmark_modifiers:
                 then = time.perf_counter()
 
             if 'sxMirror' not in obj.modifiers:
@@ -2942,7 +2976,7 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxMirror'].use_clip = True
                 obj.modifiers['sxMirror'].use_mirror_merge = True
 
-                if sxglobals.benchmark_modifiers:
+                if scene.benchmark_modifiers:
                     now = time.perf_counter()
                     print(f'SX Tools: Mirror: {obj.name} {round(now-then, 4)} seconds')
                     then = time.perf_counter()
@@ -2962,7 +2996,7 @@ class SXTOOLS2_modifiers(object):
                 tiler.show_viewport = False
                 tiler.show_expanded = False
 
-                if sxglobals.benchmark_modifiers:
+                if scene.benchmark_modifiers:
                     now = time.perf_counter()
                     print(f'SX Tools: Tiler: {obj.name} {round(now-then, 4)} seconds')
                     then = time.perf_counter()
@@ -2983,7 +3017,7 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxSubdivision'].show_only_control_edges = True
                 obj.modifiers['sxSubdivision'].show_on_cage = True
 
-                if sxglobals.benchmark_modifiers:
+                if scene.benchmark_modifiers:
                     now = time.perf_counter()
                     print(f'SX Tools: Subdivision: {obj.name} {round(now-then, 4)} seconds')
                     then = time.perf_counter()
@@ -3003,7 +3037,7 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxBevel'].limit_method = 'WEIGHT'
                 obj.modifiers['sxBevel'].miter_outer = 'MITER_ARC'
 
-                if sxglobals.benchmark_modifiers:
+                if scene.benchmark_modifiers:
                     now = time.perf_counter()
                     print(f'SX Tools: Bevel: {obj.name} {round(now-then, 4)} seconds')
                     then = time.perf_counter()
@@ -3014,7 +3048,7 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxWeld'].show_expanded = False
                 obj.modifiers['sxWeld'].merge_threshold = obj.sx2.weldthreshold
 
-                if sxglobals.benchmark_modifiers:
+                if scene.benchmark_modifiers:
                     now = time.perf_counter()
                     print(f'SX Tools: Weld: {obj.name} {round(now-then, 4)} seconds')
                     then = time.perf_counter()
@@ -3028,7 +3062,7 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxDecimate'].use_dissolve_boundaries = True
                 obj.modifiers['sxDecimate'].delimit = {'SHARP', 'UV'}
 
-                if sxglobals.benchmark_modifiers:
+                if scene.benchmark_modifiers:
                     now = time.perf_counter()
                     print(f'SX Tools: Decimate1: {obj.name} {round(now-then, 4)} seconds')
                     then = time.perf_counter()
@@ -3041,7 +3075,7 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxDecimate2'].ratio = 0.99
                 obj.modifiers['sxDecimate2'].use_collapse_triangulate = True
 
-                if sxglobals.benchmark_modifiers:
+                if scene.benchmark_modifiers:
                     now = time.perf_counter()
                     print(f'SX Tools: Decimate2: {obj.name} {round(now-then, 4)} seconds')
                     then = time.perf_counter()
@@ -3072,59 +3106,44 @@ class SXTOOLS2_modifiers(object):
 
                 # obj.sx2.smoothangle = obj.sx2.smoothangle
 
-                if sxglobals.benchmark_modifiers:
+                if scene.benchmark_modifiers:
                     now = time.perf_counter()
                     print(f'SX Tools: Weighted Normals: {obj.name} {round(now-then, 4)} seconds')
                     then = time.perf_counter()
 
 
     def apply_modifiers(self, objs):
+        modifiers = ['Auto Smooth', 'sxMirror', 'sxTiler', 'sxAO', 'sxGeometryNodes', 'sxSubdivision', 'sxBevel', 'sxWeld', 'sxDecimate', 'sxDecimate2', 'sxEdgeSplit', 'sxSmoothNormals', 'sxWeightedNormal']
+        if not objs:
+            return
+        
+        edg = bpy.context.evaluated_depsgraph_get()
+        
         for obj in objs:
-            bpy.context.view_layer.objects.active = obj
-            if 'sxMirror' in obj.modifiers:
-                if obj.modifiers['sxMirror'].show_viewport is False:
-                    bpy.ops.object.modifier_remove(modifier='sxMirror')
-                else:
-                    bpy.ops.object.modifier_apply(modifier='sxMirror')
-            if 'sxTiler' in obj.modifiers:
-                bpy.ops.object.modifier_remove(modifier='sxTiler')
-            if 'sxAO' in obj.modifiers:
-                bpy.ops.object.modifier_apply(modifier='sxAO')
-            if 'sxSubdivision' in obj.modifiers:
-                if obj.modifiers['sxSubdivision'].levels == 0:
-                    bpy.ops.object.modifier_remove(modifier='sxSubdivision')
-                else:
-                    bpy.ops.object.modifier_apply(modifier='sxSubdivision')
-            if 'sxBevel' in obj.modifiers:
-                if obj.sx2.bevelsegments == 0:
-                    bpy.ops.object.modifier_remove(modifier='sxBevel')
-                else:
-                    bpy.ops.object.modifier_apply(modifier='sxBevel')
-            if 'sxWeld' in obj.modifiers:
-                if obj.sx2.weldthreshold == 0:
-                    bpy.ops.object.modifier_remove(modifier='sxWeld')
-                else:
-                    bpy.ops.object.modifier_apply(modifier='sxWeld')
-            if 'sxDecimate' in obj.modifiers:
-                if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
-                    bpy.ops.object.modifier_remove(modifier='sxDecimate')
-                else:
-                    bpy.ops.object.modifier_apply(modifier='sxDecimate')
-            if 'sxDecimate2' in obj.modifiers:
-                if (obj.sx2.subdivisionlevel == 0) or (obj.sx2.decimation == 0.0):
-                    bpy.ops.object.modifier_remove(modifier='sxDecimate2')
-                else:
-                    bpy.ops.object.modifier_apply(modifier='sxDecimate2')
-            if 'sxSmoothNormals' in obj.modifiers:
-                if obj.sx2.smoothangle == 0:
-                    bpy.ops.object.modifier_remove(modifier='sxSmoothNormals')
-                else:
-                    bpy.ops.object.modifier_apply(modifier='sxSmoothNormals')
-            if 'sxWeightedNormal' in obj.modifiers:
-                if not obj.sx2.weightednormals:
-                    bpy.ops.object.modifier_remove(modifier='sxWeightedNormal')
-                else:
-                    bpy.ops.object.modifier_apply(modifier='sxWeightedNormal')
+            modifier_visibilies = {}
+            for mod in obj.modifiers:
+                if mod.name not in modifiers:
+                    modifier_visibilies[mod.name] = mod.show_viewport
+                    mod.show_viewport = False
+
+            obj.modifiers.update()
+
+            obj_eval = obj.evaluated_get(edg)
+            eval_mesh = bpy.data.meshes.new_from_object(obj_eval)
+            old_mesh = obj.data
+            old_mesh_name = old_mesh.name
+            obj.data = eval_mesh
+
+            if old_mesh.users == 0:
+                bpy.data.meshes.remove(old_mesh)
+
+            obj.data.name = old_mesh_name
+            obj.data.update()
+
+            for modname, vis in modifier_visibilies.items():
+                obj.modifiers[modname].show_viewport = vis
+
+        self.remove_modifiers(objs)
 
 
     def remove_modifiers(self, objs, reset=False):
@@ -3158,17 +3177,59 @@ class SXTOOLS2_modifiers(object):
 
 
     def calculate_triangles(self, objs):
-        count = 0
-        edg = bpy.context.evaluated_depsgraph_get()
         utils.mode_manager(objs, set_mode=True, mode_id='calculate_triangles')
+        edg = bpy.context.evaluated_depsgraph_get()
+        count = 0
         for obj in objs:
             if obj.type == 'MESH':
                 eval_data = obj.evaluated_get(edg).data
                 for face in eval_data.polygons:
                     count += len(face.vertices) - 2
         utils.mode_manager(objs, set_mode=False, mode_id='calculate_triangles')
+        return count
 
-        return str(count)
+
+    def calculate_volume_area(self, obj):
+        """
+        Calculate the volume and area of an object with modifiers applied.
+        Uses the signed tetrahedron method for volume calculation.
+        
+        Args:
+            mesh: Blender mesh data
+            
+        Returns:
+            tuple: (volume, area)
+        """
+        if obj.type != 'MESH':
+            return 0.0, 0.0
+        
+        utils.mode_manager([obj, ], set_mode=True, mode_id='calculate_volume_area')
+
+        edg = bpy.context.evaluated_depsgraph_get()
+        eval_data = obj.evaluated_get(edg).data
+        
+        volume = 0.0
+        area = 0.0
+
+        for face in eval_data.polygons:
+            if len(face.vertices) < 3:
+                continue
+
+            v0 = eval_data.vertices[face.vertices[0]].co
+            v1 = eval_data.vertices[face.vertices[1]].co
+            v2 = eval_data.vertices[face.vertices[2]].co
+            
+            # Calculate the signed volume of tetrahedron formed by face and origin
+            # Formula: V = (1/6) * |(v1 - v0) × (v2 - v0)) · v0|
+            cross_product = (v1 - v0).cross(v2 - v0)
+            tet_volume = v0.dot(cross_product) / 6.0
+            volume += tet_volume
+
+            area += face.area
+
+        utils.mode_manager([obj, ], set_mode=False, mode_id='calculate_volume_area')
+        return abs(volume), area
+
 
 
     def __del__(self):
@@ -3308,6 +3369,7 @@ class SXTOOLS2_export(object):
         bpy.ops.object.mode_set(mode=mode)
         return separated_objs
 
+
     # NOTE: In case of bevels, prefer even-numbered segment counts!
     #       Odd-numbered bevels often generate incorrect vertex colors
     def generate_lods(self, objs):
@@ -3381,175 +3443,234 @@ class SXTOOLS2_export(object):
     # Multi-pass convex hull generator
     def generate_hulls(self, objs, group=None):
         Vec = Vector
+        scene = bpy.context.scene.sx2
 
         def sign(x):
             return 1 if x >= 0 else -1
 
-        def bmesh_convex_hull(mesh):
-            bm = bmesh.new()
-            bm.from_mesh(mesh)
-            bmesh.ops.convex_hull(bm, input=bm.verts, use_existing_faces=False)
-            return bm
 
-        def bmesh_safe_offset(bm):
-            bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-            safe_distance = None
-            bvh = BVHTree.FromBMesh(bm)
-            for vert in bm.verts:
-                ray_origin = vert.co - vert.normal * 0.005
-                ray_direction = -vert.normal
-
-                hit, location, normal, index = bvh.ray_cast(ray_origin, ray_direction)
-                
-                if hit:
-                    dist = (location - vert.co).length
-                    if (safe_distance is None) or (dist < safe_distance):
-                        safe_distance = dist
+        def shrink_hull(obj, offset_factor):
+            utils.mode_manager([obj, ], set_mode=True, mode_id='shrink_hull')
+            mesh = obj.data
+            normals = [0.0] * (len(mesh.vertices) * 3)
+            mesh.vertices.foreach_get('normal', normals)
+            coords = [0.0] * (len(mesh.vertices) * 3)
+            mesh.vertices.foreach_get('co', coords)
+            Vec = Vector
             
-            return safe_distance if safe_distance is not None else 0.0
-
-        def bmesh_shrink_hull(bm, offset_value):          
-            bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-            for vert in bm.verts:
-                normal = vert.normal.normalized()
-                vert.co -= normal * offset_value
+            for i in range(len(mesh.vertices)):
+                idx = i * 3
+                normal = Vec((normals[idx], normals[idx+1], normals[idx+2])).normalized() * offset_factor
+                coords[idx] += normal.x
+                coords[idx+1] += normal.y
+                coords[idx+2] += normal.z
             
-            return bm
-
-        def bmesh_commit(bm, mesh):
-            bm.to_mesh(mesh)
+            mesh.vertices.foreach_set('co', coords)
             mesh.update()
-            bm.free()
-            return mesh
-
-        def shrink_colliders(collider_obj):
-            collider_obj.select_set(True)
-            collider_obj.sx2.smartseparate = False
-            view_layer.objects.active = collider_obj
-            if sxglobals.benchmark_cvx:
-                print(f'SX Tools: {collider_obj.name} Initial Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
-            # utils.select_all_components(collider_obj, (True, True, True))
-            # bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-            # bpy.ops.mesh.select_all(action='SELECT')
-            # bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(40.0), shape_threshold=math.radians(40.0), sharp=True)
-            bm = bmesh_convex_hull(collider_obj.data)
-            if sxglobals.benchmark_cvx:
-                print(f'SX Tools: {collider_obj.name} Convex Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
-            tri_opt = False
-            angle = 0.0
-
-            # Shrink hull according to factor
-            if collider_obj.sx2.collideroffsetfactor > 0.0:
-                # bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                # offset = -1.0 * min(collider_obj.sx2.collideroffsetfactor, utils.find_safe_mesh_offset(collider_obj))
-                offset = -1.0 * min(collider_obj.sx2.collideroffsetfactor, bmesh_safe_offset(bm))
-                # utils.select_all_components(collider_obj, (True, False, False))
-                # bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                # bpy.context.tool_settings.mesh_select_mode = (True, False, False)
-                ## bpy.ops.mesh.select_all(action='SELECT')
-                # bpy.ops.transform.shrink_fatten(value=offset)
-                bm = bmesh_shrink_hull(bm, offset)
-            collider_obj.data = bmesh_commit(bm, collider_obj.data)
-
-                # Weld after shrink to clean up clumped verts
-                # bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                # collider_obj.modifiers.new(type='WELD', name='hullWeld')
-                # collider_obj.modifiers["hullWeld"].merge_threshold = min(collider_obj.dimensions) * 0.15
-                # bpy.ops.object.modifier_apply(modifier='hullWeld')
-
-            if sxglobals.benchmark_cvx:
-                print(f'SX Tools: {collider_obj.name} Pre-Optimized Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
+            utils.mode_manager([obj, ], set_mode=False, mode_id='shrink_hull')
 
 
-            if int(modifiers.calculate_triangles([collider_obj, ])) > collider_obj.sx2.hulltrimax:
-                # Decimate until below tri count limit
-                if sxglobals.benchmark_cvx:
-                    then_iterate = time.perf_counter()
+        def optimize_hull(obj, target_tris, shape_threshold=0.05):
+            """
+            Optimize hull decimation using a two-pass approach:
+            1. First dissolve coplanar faces to preserve shape
+            2. Then use collapse decimation to further reduce triangles while still preserving shape
+            
+            Args:
+                obj: The mesh object to decimate
+                target_tris: Maximum triangle count allowed
+                shape_threshold: Maximum acceptable shape deviation ratio (0.0-1.0)
+                                Controls how much shape can change (higher = less detail)
+            """
+            if obj.type != 'MESH':
+                return 0.0, 1.0
 
-                bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                collider_obj.modifiers.new(type='DECIMATE', name='hullDecimate')
-                collider_obj.modifiers['hullDecimate'].show_viewport = True
-                collider_obj.modifiers['hullDecimate'].show_expanded = False
-                collider_obj.modifiers['hullDecimate'].decimate_type = 'DISSOLVE'
-                collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
-                collider_obj.modifiers['hullDecimate'].use_dissolve_boundaries = False
+            utils.mode_manager([obj, ], set_mode=True, mode_id='find_optimal_decimation_ratio')
+            bpy.context.view_layer.objects.active = obj
 
-                # Slow iterator
-                # while (int(modifiers.calculate_triangles([collider_obj, ])) > collider_obj.sx2.hulltrimax) and (angle < 180.0):
-                #     angle += 1.5   # 0.5
-                #     collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
+            # Store original mesh data to compare against
+            original_volume, original_area = modifiers.calculate_volume_area(obj)
+            original_tri_count = modifiers.calculate_triangles([obj])
+            
+            if scene.benchmark_cvx:
+                print(f"SX Tools: Optimizing {obj.name}")
+                print(f"SX Tools: volume: {original_volume:.6f}, area: {original_area:.6f}, triangles: {original_tri_count}")
+                print(f"SX Tools: shape threshold: {shape_threshold:.4f}, tri limit: {target_tris}")
+            
+            # PHASE 1: DISSOLVE DECIMATION
+            dissolve_mod = obj.modifiers.new(type='DECIMATE', name='TempDissolve')
+            dissolve_mod.decimate_type = 'DISSOLVE'
+            dissolve_mod.use_dissolve_boundaries = True
+            # dissolve_mod.delimit = {'SHARP', 'UV'}
+            
+            # Binary search to find maximum angle that preserves shape
+            low_angle = 0.1
+            high_angle = 180.0
+            best_angle = None
+            best_shape_score = float('inf')
+            best_tri_count = original_tri_count
+            epsilon = 0.5  # Precision in the binary search
+            
+            # First, try to find an angle that preserves shape
+            while high_angle - low_angle > epsilon:
+                mid_angle = (low_angle + high_angle) / 2.0
+                dissolve_mod.angle_limit = math.radians(mid_angle)
+                
+                # Calculate shape preservation metrics
+                test_volume, test_area = modifiers.calculate_volume_area(obj)
+                
+                # Calculate deviation metrics with greater weight to volume
+                volume_ratio = abs(test_volume - original_volume) / original_volume
+                area_ratio = abs(test_area - original_area) / original_area
+                shape_score = (volume_ratio * 0.3) + (area_ratio * 0.7)
+                
+                tri_count = modifiers.calculate_triangles([obj, ])
+                
+                # if scene.benchmark_cvx:
+                #     print(f"SX Tools: Dissolve phase - Angle {mid_angle:.2f}°, Tris {tri_count}, Volume diff {volume_ratio:.4f}, Area diff {area_ratio:.4f}, Score {shape_score:.4f}")
+                        
+                if shape_score <= shape_threshold:
+                    # This angle preserves shape well enough
+                    # We can try a higher angle for fewer triangles
+                    best_angle = mid_angle
+                    best_shape_score = shape_score
+                    best_tri_count = tri_count
+                    low_angle = mid_angle
+                else:
+                    # Shape is too distorted, try a lower angle
+                    high_angle = mid_angle
+            
+            if best_angle is None:
+                # If no angle preserves shape well enough, use a very conservative angle
+                dissolve_angle = 1.0
+            else:
+                dissolve_angle = best_angle
+            
+            # Apply the dissolve modifier to get a clean mesh for the collapse phase
+            dissolve_mod.angle_limit = math.radians(dissolve_angle)
+            # bpy.context.view_layer.update()
+            
+            # Apply the modifier to the temporary object
+            bpy.ops.object.modifier_apply(modifier='TempDissolve')
+            dissolve_tri_count = modifiers.calculate_triangles([obj, ])
+            
+            if scene.benchmark_cvx:
+                if best_angle is None:
+                    print(f"SX Tools: No angle preserves shape within threshold {shape_threshold}. Using conservative angle {dissolve_angle}°")
+                else:    
+                    print(f"SX Tools: Dissolve phase - Selected angle {dissolve_angle:.2f}°, triangles: {dissolve_tri_count}, shape score: {best_shape_score:.4f}")
+            
+            # obj.data.update()
 
-                # Use binary search approach for decimation angle
-                lower_bound = collider_obj.sx2.hulltrimax * collider_obj.sx2.hulltrifactor
 
-                # Initialize search range
-                low_angle = 0.0
-                high_angle = 180.0
-                angle = high_angle
-                fallback_angle = high_angle
-                best_result = collider_obj.sx2.hulltrimax
-                fallback_result = 0
-                epsilon = 0.5
-                best_found = False
+            # PHASE 2: COLLAPSE DECIMATION (always enter this phase)
+            collapse_ratio = 1.0  # Default to no collapse (ratio of 1.0)
+            
+            shape_threshold = min(1.0, shape_threshold * 2.0)  # Increase threshold for collapse phase
 
-                while high_angle - low_angle > epsilon:
-                    mid_angle = (low_angle + high_angle) / 2.0
-                    collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(mid_angle)
-                    triangle_count = int(modifiers.calculate_triangles([collider_obj]))
-
-                    if sxglobals.benchmark_cvx:
-                        print(f'SX Tools: Low: {low_angle}, High: {high_angle}, Mid: {mid_angle}, Best: {angle}, Triangles: {triangle_count}')
-
-                    if triangle_count > collider_obj.sx2.hulltrimax:
-                        low_angle = mid_angle
-                    elif (best_result >= triangle_count >= lower_bound):
-                        best_found = True
-                        angle = mid_angle
-                        best_result = triangle_count
-                        high_angle = mid_angle
-                    elif (lower_bound > triangle_count > fallback_result):
-                        fallback_angle = mid_angle
-                        fallback_result = triangle_count
-                        high_angle = mid_angle
+            # Add collapse modifier after the dissolve modifier
+            collapse_mod = obj.modifiers.new(type='DECIMATE', name='TempCollapse')
+            collapse_mod.decimate_type = 'COLLAPSE'
+            collapse_mod.symmetry_axis = 'X'
+            collapse_mod.use_collapse_triangulate = False
+            
+            # Binary search for optimal collapse ratio that preserves shape
+            low_ratio = 0.1  # Don't go below 10% to prevent complete destruction
+            high_ratio = 1.0  # Start from no decimation
+            best_ratio = None
+            best_collapse_score = float('inf')
+            best_collapse_tri_count = dissolve_tri_count
+            ratio_epsilon = 0.01
+            
+            while high_ratio - low_ratio > ratio_epsilon:
+                mid_ratio = (low_ratio + high_ratio) / 2.0
+                collapse_mod.ratio = mid_ratio
+                # bpy.context.view_layer.update()
+                
+                # Calculate shape preservation metrics
+                test_volume, test_area = modifiers.calculate_volume_area(obj)
+                # Calculate shape deviation metrics
+                volume_ratio = abs(test_volume - original_volume) / original_volume
+                area_ratio = abs(test_area - original_area) / original_area
+                collapse_score = (volume_ratio * 0.8) + (area_ratio * 0.2)  # Favor volume preservation
+                
+                collapse_tri_count = modifiers.calculate_triangles([obj, ])
+                # Check if we have at least 4 triangles (minimum for a valid hull)
+                valid_hull = collapse_tri_count >= 4
+                
+                # if scene.benchmark_cvx:
+                #     print(f"SX Tools: Collapse phase - Ratio {mid_ratio:.3f}, Tris {collapse_tri_count}, Score {collapse_score:.4f}, Valid: {valid_hull}")
+                
+                # First make sure we have enough triangles for a valid hull
+                if not valid_hull:
+                    # Not enough triangles, need less aggressive decimation
+                    low_ratio = mid_ratio
+                # Then check shape preservation
+                elif collapse_score <= shape_threshold:
+                    # Shape is preserved and we have enough triangles
+                    if collapse_tri_count <= target_tris:
+                        # Perfect: under triangle target and within shape threshold
+                        best_ratio = mid_ratio
+                        best_collapse_score = collapse_score
+                        best_collapse_tri_count = collapse_tri_count
+                        high_ratio = mid_ratio  # Try for even fewer triangles
                     else:
-                        high_angle = mid_angle
+                        # Shape is good but still too many triangles, need more aggressive collapse
+                        high_ratio = mid_ratio
+                else:
+                    # Shape is not preserved within threshold
+                    low_ratio = mid_ratio
+            
+            # If we've found a valid collapse ratio that preserves shape and meets triangle target
+            if best_ratio is not None:
+                collapse_ratio = best_ratio
+                if scene.benchmark_cvx:
+                    print(f"SX Tools: Collapse phase - Selected ratio {collapse_ratio:.3f}, triangles: {best_collapse_tri_count}, shape score: {best_collapse_score:.4f}")
+            
+            # If still over triangle target, try a direct ratio calculation as fallback, but ensure we maintain at least 4 triangles
+            elif dissolve_tri_count > target_tris:
+                # Base calculation 
+                desired_ratio = max(0.05, target_tris / dissolve_tri_count)
+                
+                # Test the desired ratio to make sure we don't collapse too much
+                collapse_mod.ratio = desired_ratio
+                # bpy.context.view_layer.update()
+                test_tri_count = modifiers.calculate_triangles([obj, ])
+                
+                if test_tri_count < 4:
+                    # Increase ratio until we have at least 4 triangles
+                    test_ratio = desired_ratio
+                    while test_tri_count < 4 and test_ratio < 1.0:
+                        test_ratio += 0.05
+                        collapse_mod.ratio = test_ratio
+                        # bpy.context.view_layer.update()
+                        test_tri_count = modifiers.calculate_triangles([obj, ])
+                    
+                    collapse_ratio = test_ratio
+                else:
+                    collapse_ratio = desired_ratio
+                    
+                if scene.benchmark_cvx:
+                    print(f"SX Tools: Adjusted collapse ratio to {collapse_ratio:.3f} to ensure valid hull with at least 4 triangles")
 
-                if not best_found:
-                    angle = fallback_angle
+            final_tri_count = modifiers.calculate_triangles([obj, ])
 
-                collider_obj.modifiers['hullDecimate'].angle_limit = math.radians(angle)
-                bpy.ops.object.modifier_apply(modifier='hullDecimate')
+            # Apply temporary modifier
+            bpy.ops.object.modifier_apply(modifier='TempCollapse')
 
-                if sxglobals.benchmark_cvx:
-                    now = time.perf_counter()
-                    print(f'SX Tools: {collider_obj.name} Tris/limit: {modifiers.calculate_triangles([collider_obj, ])}/{collider_obj.sx2.hulltrimax} Angle: {angle} Iteration Time: {now-then_iterate}')
 
-                tri_opt = True
+            bpy.ops.object.modifier_add(type='WELD')
+            bpy.context.object.modifiers["Weld"].mode = 'CONNECTED'
+            bpy.context.object.modifiers["Weld"].merge_threshold = 0.025
+            bpy.ops.object.modifier_apply(modifier="Weld")
 
-            # Final convex conversion
-            if tri_opt:
-                pass
-                # Weld after shrink to clean up clumped verts
-                # bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                # collider_obj.modifiers.new(type='WELD', name='hullWeld')
-                # collider_obj.modifiers["hullWeld"].merge_threshold = min(collider_obj.dimensions) * 0.15
-                # bpy.ops.object.modifier_apply(modifier='hullWeld')
 
-                utils.select_all_components(collider_obj, (True, True, True))
-                bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                # bpy.ops.mesh.select_all(action='SELECT')
-                bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(angle), shape_threshold=math.radians(angle))
-                bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
-            utils.select_all_components(collider_obj, (True, True, True))
-            bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-            # bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.dissolve_limited(angle_limit=math.radians(angle))
-            bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
-            bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-
-            if sxglobals.benchmark_cvx:
-                print(f'SX Tools: {collider_obj.name} Tri Count {modifiers.calculate_triangles([collider_obj, ])}')
+            if scene.benchmark_cvx:
+                print(f"SX Tools: Final {obj.name} decimation parameters - Dissolve angle: {dissolve_angle:.2f}°, Collapse ratio: {collapse_ratio:.3f}, Triangles: {final_tri_count}")
+            
+            bpy.context.view_layer.update()
+            utils.mode_manager([obj, ], set_mode=False, mode_id='find_optimal_decimation_ratio')
 
 
         if not objs:
@@ -3564,7 +3685,7 @@ class SXTOOLS2_export(object):
             return
 
         then_base = time.perf_counter()
-        if sxglobals.benchmark_cvx:
+        if scene.benchmark_cvx:
             then = time.perf_counter()
             print(f'SX Tools: Convex hull generation starting')
 
@@ -3630,13 +3751,13 @@ class SXTOOLS2_export(object):
                                 color = tuple((c + 10) * s for c, s in zip(color, signs))
 
                             if (color not in color_ref_obj):
-                                color_ref_obj[color] = (obj.location.copy(), obj.matrix_world.inverted(), obj.sx2.hulltrimax, obj.name)
+                                color_ref_obj[color] = (obj.location.copy(), obj.matrix_world.inverted(), obj.sx2.hulltrimax, obj.name, obj.sx2.hulltrifactor)
                             color_to_faces[color].append(transformed_face_verts)
                     
                     bm.free()
                     obj.evaluated_get(edg).to_mesh_clear()
 
-            if sxglobals.benchmark_cvx:
+            if scene.benchmark_cvx:
                 now = time.perf_counter()
                 print(f'SX Tools: Convex hull generation: faces mapped to color regions. Time: {now-then}')
 
@@ -3687,6 +3808,7 @@ class SXTOOLS2_export(object):
                 new_obj.location = color_ref_obj[color][0]
                 new_obj.parent = group
                 new_obj.sx2.hulltrimax = color_ref_obj[color][2]
+                new_obj.sx2.hulltrifactor = color_ref_obj[color][4]
                 new_obj.sx2.mirrorobject = view_layer.objects[color_ref_obj[color][3]].sx2.mirrorobject
                 new_obj.sx2.xmirror = view_layer.objects[color_ref_obj[color][3]].sx2.xmirror
                 new_obj.sx2.ymirror = view_layer.objects[color_ref_obj[color][3]].sx2.ymirror
@@ -3761,7 +3883,7 @@ class SXTOOLS2_export(object):
                 new_obj.sx2.decimation = 0.0
                 new_cid_objs.append(new_obj)
 
-            if sxglobals.benchmark_cvx:
+            if scene.benchmark_cvx:
                 now = time.perf_counter()
                 print(f'SX Tools: Convex hull generation: collision ID objects created. Time: {now-then}')
                 
@@ -3784,6 +3906,8 @@ class SXTOOLS2_export(object):
                     new_obj.sx2.subdivisionlevel = 1 if org_subdiv > 1 else org_subdiv
                     new_obj.modifiers['sxSubdivision'].levels = 1 if org_subdiv > 1 else org_subdiv
 
+                new_obj.sx2.hulltrimax = obj.sx2.hulltrimax
+                new_obj.sx2.hulltrifactor = obj.sx2.hulltrifactor
                 new_obj.sx2.smartseparate = obj.sx2.smartseparate
                 new_obj.sx2.generatelodmeshes = False
                 new_obj.sx2.generateemissionmeshes = False
@@ -3796,7 +3920,7 @@ class SXTOOLS2_export(object):
                 # Clear existing modifier stacks
                 modifiers.apply_modifiers([new_obj, ])
 
-            if sxglobals.benchmark_cvx:
+            if scene.benchmark_cvx:
                 now = time.perf_counter()
                 print(f'SX Tools: Convex hull generation: hull objects created. Time: {now-then}')
 
@@ -3881,12 +4005,11 @@ class SXTOOLS2_export(object):
                 if sep_objs:
                     separated_objs += sep_objs
 
-        if sxglobals.benchmark_cvx:
+        if scene.benchmark_cvx:
             now = time.perf_counter()
             print(f'SX Tools: Convex hull generation: fragment merging done. Time: {now-then}')
 
         for new_obj in new_hull_objs:
-            # bpy.ops.object.select_all(action='DESELECT')
             utils.deselect_all_objs()
             sep_objs = self.smart_separate([new_obj, ], parent=False)
 
@@ -3897,13 +4020,40 @@ class SXTOOLS2_export(object):
 
         if separated_objs:
             new_objs += separated_objs
-            
 
-        # bpy.ops.object.select_all(action='DESELECT')
         utils.deselect_all_objs()
-        for new_obj in new_objs:
-            shrink_colliders(new_obj)
+        for hull_obj in new_objs:
+            hull_obj.select_set(True)
+            hull_obj.sx2.smartseparate = False
+            view_layer.objects.active = hull_obj
 
+            if scene.benchmark_cvx:
+                print(f'SX Tools: {hull_obj.name} Initial Tri Count {modifiers.calculate_triangles([hull_obj, ])}')
+            
+            # Create convex hull
+            utils.select_all_components(hull_obj, (True, True, True))
+            bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+            bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(40.0), shape_threshold=math.radians(40.0), sharp=True)
+
+            # Shrink hull according to factor
+            if hull_obj.sx2.collideroffsetfactor > 0.0:
+                bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                offset = -min(hull_obj.sx2.collideroffsetfactor, utils.find_safe_mesh_offset(hull_obj) * 0.5)
+                shrink_hull(hull_obj, offset)
+
+            # Iterate to find best decimation values
+            optimize_hull(hull_obj, hull_obj.sx2.hulltrimax, shape_threshold=hull_obj.sx2.hulltrifactor)
+
+            utils.select_all_components(hull_obj, (True, True, True))
+            bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+            bpy.ops.mesh.convex_hull(use_existing_faces=True)
+            bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
+            bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+
+            if scene.benchmark_cvx:
+                print(f'SX Tools: {hull_obj.name} Optimized Tri Count {modifiers.calculate_triangles([hull_obj, ])}')
+
+            # Add to collections
             if new_obj.name not in bpy.context.scene.collection.objects:
                 bpy.context.scene.collection.objects.link(new_obj)
 
@@ -4261,6 +4411,7 @@ class SXTOOLS2_export(object):
     # ROOT == base of bbox, ORG == world origin, PAR == pivot of parent, CID == used with submesh convex hulls,
     # CUR == 3D cursor, force == set mirror axis to mirrorobj
     def set_pivots(self, objs, pivotmode=None, force=False):
+        scene = bpy.context.scene.sx2
 
         def pivot_no_change(obj):
             pivot_loc = obj.matrix_world.to_translation()
@@ -4369,13 +4520,13 @@ class SXTOOLS2_export(object):
 
             # print(f'SX Tools: Setting pivot for {obj.name} to mode {mode})
 
-            if sxglobals.benchmark_magic:
+            if scene.benchmark_magic:
                 then = time.perf_counter()
 
             if mode in pivotmodes:
                 pivotmodes[mode](obj)
 
-            if sxglobals.benchmark_magic:
+            if scene.benchmark_magic:
                 now = time.perf_counter()
                 print(f'SX Tools: {obj.name} pivot set: {round(now-then, 4)} seconds')
 
@@ -4720,7 +4871,7 @@ class SXTOOLS2_magic(object):
         # Prepare modifiers
         modifiers.remove_modifiers(objs)
 
-        if sxglobals.benchmark_magic:
+        if scene.benchmark_magic:
             now = time.perf_counter()
             print(f'SX Tools: Modifier stack removed: {round(now-then, 4)} seconds')
             then2 = now
@@ -4729,7 +4880,7 @@ class SXTOOLS2_magic(object):
             obj.sx2.modifiervisibility = True
         modifiers.add_modifiers(objs)
 
-        if sxglobals.benchmark_magic:
+        if scene.benchmark_magic:
             now = time.perf_counter()
             print(f'SX Tools: Modifier stack added: {round(now-then2, 4)} seconds')
             then2 = now
@@ -4800,7 +4951,7 @@ class SXTOOLS2_magic(object):
             if ('sxSubdivision' in obj.modifiers) and (obj.sx2.subdivisionlevel > 1):
                 obj.modifiers['sxSubdivision'].levels = 1
 
-        if sxglobals.benchmark_magic:
+        if scene.benchmark_magic:
             now = time.perf_counter()
             print(f'SX Tools: Setup 1: {round(now-then2, 4)} seconds')
             then2 = now
@@ -4808,7 +4959,7 @@ class SXTOOLS2_magic(object):
         # Place pivots
         export.set_pivots(objs, force=True)
 
-        if sxglobals.benchmark_magic:
+        if scene.benchmark_magic:
             now = time.perf_counter()
             print(f'SX Tools: Setup 2: {round(now-then2, 4)} seconds')
             then2 = now
@@ -4816,7 +4967,7 @@ class SXTOOLS2_magic(object):
         # Fix transforms
         utils.clear_parent_inverse_matrix(objs)
 
-        if sxglobals.benchmark_magic:
+        if scene.benchmark_magic:
             now = time.perf_counter()
             print(f'SX Tools: Setup 3: {round(now-then2, 4)} seconds')
             then2 = now
@@ -4839,7 +4990,7 @@ class SXTOOLS2_magic(object):
         # Mandatory to update visibility?
         # viewlayer.update()
 
-        if sxglobals.benchmark_magic:
+        if scene.benchmark_magic:
             now = time.perf_counter()
             print(f'SX Tools: Mesh setup and viewlayer update: {round(now-then2, 4)} seconds')
             then2 = now
@@ -4923,7 +5074,7 @@ class SXTOOLS2_magic(object):
                         obj.select_set(False)
                         obj.hide_viewport = True
 
-                if sxglobals.benchmark_magic:
+                if scene.benchmark_magic:
                     now = time.perf_counter()
                     print(f'SX Tools: {category} / {len(group_list)} groups duration: {round(now-then2, 4)} seconds')
                     then2 = now
@@ -6320,13 +6471,21 @@ class SXTOOLS2_setup(object):
 #    Update Functions
 # ------------------------------------------------------------------------
 def start_modal():
-    if (not sxglobals.selection_modal_status) and (len(bpy.data.objects) > 0):
-        bpy.ops.sx2.selectionmonitor('EXEC_DEFAULT')
-        sxglobals.selection_modal_status = True
-
-    if not sxglobals.key_modal_status:
-        bpy.ops.sx2.keymonitor('EXEC_DEFAULT')
-        sxglobals.key_modal_status = True
+    context = bpy.context
+    if context.area and context.area.type == 'VIEW_3D':
+        if not sxglobals.selection_modal_status and len(bpy.data.objects) > 0:
+            try:
+                bpy.ops.sx2.selectionmonitor('EXEC_DEFAULT')
+                sxglobals.selection_modal_status = True
+            except RuntimeError:
+                print("SX Tools: Could not start selection monitor - invalid context")
+        
+        if not sxglobals.key_modal_status:
+            try:
+                bpy.ops.sx2.keymonitor('EXEC_DEFAULT')
+                sxglobals.key_modal_status = True
+            except RuntimeError:
+                print("SX Tools: Could not start key monitor - invalid context")
 
 
 # Return value eliminates duplicates
@@ -7046,7 +7205,7 @@ def save_post_handler(dummy):
             if obj['revision'] > revision:
                 revision = obj['revision']
 
-    cost = modifiers.calculate_triangles(objs)
+    cost = str(modifiers.calculate_triangles(objs))
 
     if prefs.cataloguepath:
         try:
@@ -7583,20 +7742,20 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
 
     hulltrimax: bpy.props.IntProperty(
         name='Max Hull Triangles',
-        description='Max number of triangles allowed in the convex hull',
+        description='Max number of triangles allowed per convex hull',
         min=4,
         max=1000,
         default=250,
         update=lambda self, context: update_obj_props(self, context, 'hulltrimax'))
 
     hulltrifactor: bpy.props.FloatProperty(
-        name='Low Bound Factor',
-        description='Sets requested low bound factor for generated hull.',
+        name='Hull Shape Error Factor',
+        description='Controls how close the collider must match the original mesh.\nThe value range 0-1 goes from less error to more error.\nHigher values mean lower poly counts but coarser hulls.',
         min=0.0,
         max=1.0,
         step=0.1,
-        precision=2,
-        default=0.7,
+        precision=3,
+        default=0.05,
         update=lambda self, context: update_obj_props(self, context, 'hulltrifactor'))
 
     collideroffset: bpy.props.BoolProperty(
@@ -7605,7 +7764,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         update=lambda self, context: update_obj_props(self, context, 'collideroffset'))
 
     collideroffsetfactor: bpy.props.FloatProperty(
-        name='Auto-Offset Factor',
+        name='Hull Shrink Distance',
         description='Requested shrink distance in world units, default shrink 0.01 is 1cm.\nRequested distance is capped by internally calculated max safe shrink to prevent mesh inversion.',
         min=0.0,
         max=1.0,
@@ -7703,6 +7862,26 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
 
 
 class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
+
+    benchmark_modifiers: bpy.props.BoolProperty(
+        name='Benchmark Modifiers',
+        default=False)
+
+    benchmark_tool: bpy.props.BoolProperty(
+        name='Benchmark Tool',
+        default=False)
+    
+    benchmark_ao: bpy.props.BoolProperty(
+        name='Benchmark AO',
+        default=False)
+    
+    benchmark_magic: bpy.props.BoolProperty(
+        name='Benchmark Magic',
+        default=False)
+    
+    benchmark_cvx: bpy.props.BoolProperty(
+        name='Benchmark Convex Hulls',
+        default=False)
 
     layerpalette1: bpy.props.FloatVectorProperty(
         name='Layer Palette 1',
@@ -8906,7 +9085,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             if obj.sx2.decimation > 0.0:
                                 row_tris = col3_sds.row()
                                 row_tris.label(text='Selection Tris:')
-                                row_tris.label(text=modifiers.calculate_triangles(objs))
+                                row_tris.label(text=str(modifiers.calculate_triangles(objs)))
                         col3_sds.separator()
                         col3_sds.prop(sx2, 'weightednormals', text='Weighted Normals', toggle=True)
                         col4_sds = modifiers_panel.column(align=True)
@@ -9069,8 +9248,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 box_cids.prop(sx2, 'preserveborders', text='Preserve CID borders')
                             if sx2.generatehulls:
                                 col_hulls.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
-                                col_hulls.prop(sx2, 'hulltrifactor', text='Hull Low Bound Factor')
-                                col_hulls.prop(sx2, 'collideroffsetfactor', text='Convex Hull Shrink Distance', slider=True)
+                                col_hulls.prop(sx2, 'hulltrifactor', text='Hull Shape Error Factor')
+                                col_hulls.prop(sx2, 'collideroffsetfactor', text='Hull Shrink Distance', slider=True)
                             col_hulls.enabled = sx2.generatehulls
 
                             if hasattr(bpy.types, bpy.ops.object.vhacd.idname()):
@@ -9152,6 +9331,12 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             col_debug.operator('sx2.generatelods', text='Debug: Create LOD Meshes')
                             col_debug.operator('sx2.resetscene', text='Debug: Reset scene (warning!)')
                             col_debug.operator('sx2.testbutton', text='Debug: Test button')
+                            col_debug.separator()
+                            col_debug.prop(scene, 'benchmark_modifiers', text='Benchmark Modifiers', toggle=True)
+                            col_debug.prop(scene, 'benchmark_tool', text='Benchmark Tool', toggle=True)
+                            col_debug.prop(scene, 'benchmark_ao', text='Benchmark AO', toggle=True)
+                            col_debug.prop(scene, 'benchmark_magic', text='Benchmark Magic', toggle=True)
+                            col_debug.prop(scene, 'benchmark_cvx', text='Benchmark Hulls', toggle=True)
 
                     elif scene.exportmode == 'EXPORT':
                         row_exporttype = export_panel.row(align=True)
@@ -9465,13 +9650,14 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        if not bpy.app.background:
-            if (context.area is not None) and (context.area.type == 'VIEW_3D'):
-                return context.active_object is not None
-            else:
-                return False
-        else:
+        if bpy.app.background:
             return context.active_object is not None
+        
+        return (context.area is not None and
+                context.area.type == 'VIEW_3D' and
+                context.region is not None and
+                context.region.type == 'WINDOW' and
+                context.active_object is not None)
 
 
     def modal(self, context, event):
@@ -9487,6 +9673,17 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
             sxglobals.libraries_status = False
             load_libraries(self, context)
             return {'PASS_THROUGH'}
+
+        # Check if mode_id is stuck after user manual mode switch
+        if sxglobals.mode_id is not None:
+            current_mode = context.mode
+            stored_mode = sxglobals.mode
+            
+            # If user has manually switched modes, reset the mode_manager state
+            if current_mode != stored_mode and current_mode != 'OBJECT':
+                print(f"SX Tools: Mode changed manually. Resetting mode manager.")
+                sxglobals.mode_id = None
+                sxglobals.mode = current_mode
 
         objs = mesh_selection_validator(self, context)
         if (len(objs) == 0) and (context.active_object is not None) and (context.object.mode == 'EDIT'):
@@ -11451,7 +11648,7 @@ class SXTOOLS2_OT_catalogue_add(bpy.types.Operator):
         asset_category = objs[0].sx2.category.lower()
         asset_tags = self.assetTags.split(' ')
         groups = utils.find_groups(exportready=True)
-        cost = modifiers.calculate_triangles(objs)
+        cost = str(modifiers.calculate_triangles(objs))
 
         revision = 1
         for obj in bpy.data.objects:
