@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 10),
+    'version': (2, 10, 11),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -6579,14 +6579,18 @@ def refresh_swatches(self, context):
 
         scene = context.scene.sx2
         objs = mesh_selection_validator(self, context)
+        if not objs:
+            return
+        
+        obj = objs[0]
+        mode = obj.sx2.shadingmode
+        utils.mode_manager(objs, set_mode=True, mode_id='refresh_swatches')
 
-        if objs:
-            obj = objs[0]
-            mode = obj.sx2.shadingmode
-            utils.mode_manager(objs, set_mode=True, mode_id='refresh_swatches')
-
-            if obj.sx2layers:
-                layer = obj.sx2layers[obj.sx2.selectedlayer]
+        if obj.sx2layers:
+            layer = obj.sx2layers[obj.sx2.selectedlayer]
+            layer_name = layer.name
+            common_layer = all(layer_name in ob.sx2layers for ob in objs)
+            if common_layer:
                 colors = utils.find_colors_by_frequency(objs, layer.name, 8, alphavalues=(mode == 'ALPHA'))
 
                 # Refresh SX Tools UI to latest selection
@@ -6615,8 +6619,8 @@ def refresh_swatches(self, context):
                 # elif (scene.toolmode == 'MAT'):
                 #     layers.material_layers_to_swatches(objs)
 
-            utils.mode_manager(objs, set_mode=False, mode_id='refresh_swatches')
-            # sxglobals.refresh_in_progress = False
+        utils.mode_manager(objs, set_mode=False, mode_id='refresh_swatches')
+        # sxglobals.refresh_in_progress = False
 
 
 def message_box(message='', title='SX Tools', icon='INFO'):
