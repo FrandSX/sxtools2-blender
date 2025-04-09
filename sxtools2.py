@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 3),
+    'version': (2, 10, 6),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3470,7 +3470,7 @@ class SXTOOLS2_export(object):
             utils.mode_manager([obj, ], set_mode=False, mode_id='shrink_hull')
 
 
-        def optimize_hull(obj, target_tris, shape_threshold=0.05):
+        def optimize_hull(obj, target_tris, shape_threshold=0.05, score_bias_p1=0.5, score_bias_p2=0.5):
             """
             Optimize hull decimation using a two-pass approach:
             1. First dissolve coplanar faces to preserve shape
@@ -3495,7 +3495,7 @@ class SXTOOLS2_export(object):
             if scene.benchmark_cvx:
                 print(f"SX Tools: Optimizing {obj.name}")
                 print(f"SX Tools: volume: {original_volume:.6f}, area: {original_area:.6f}, triangles: {original_tri_count}")
-                print(f"SX Tools: shape threshold: {shape_threshold:.4f}, tri limit: {target_tris}")
+                print(f"SX Tools: shape threshold: {shape_threshold:.4f}, bias1: {score_bias_p1}, bias2: {score_bias_p2}, tri limit: {target_tris}")
             
             # PHASE 1: DISSOLVE DECIMATION
             dissolve_mod = obj.modifiers.new(type='DECIMATE', name='TempDissolve')
@@ -3522,7 +3522,7 @@ class SXTOOLS2_export(object):
                 # Calculate deviation metrics with greater weight to volume
                 volume_ratio = abs(test_volume - original_volume) / original_volume
                 area_ratio = abs(test_area - original_area) / original_area
-                shape_score = (volume_ratio * 0.3) + (area_ratio * 0.7)
+                shape_score = (volume_ratio * score_bias_p1) + (area_ratio * (1.0 - score_bias_p1))
                 
                 tri_count = modifiers.calculate_triangles([obj, ])
                 
@@ -3592,7 +3592,7 @@ class SXTOOLS2_export(object):
                 # Calculate shape deviation metrics
                 volume_ratio = abs(test_volume - original_volume) / original_volume
                 area_ratio = abs(test_area - original_area) / original_area
-                collapse_score = (volume_ratio * 0.8) + (area_ratio * 0.2)  # Favor volume preservation
+                collapse_score = (volume_ratio * score_bias_p2) + (area_ratio * (1.0 - score_bias_p2))  # Favor volume preservation
                 
                 collapse_tri_count = modifiers.calculate_triangles([obj, ])
                 # Check if we have at least 4 triangles (minimum for a valid hull)
@@ -3658,13 +3658,13 @@ class SXTOOLS2_export(object):
             # Apply temporary modifier
             bpy.ops.object.modifier_apply(modifier='TempCollapse')
 
+            # PHASE 3: WELDING
+            # Add a weld modifier to merge close vertices
+            weld_mod = obj.modifiers.new(type='WELD', name='TempWeld')
+            weld_mod.mode = 'CONNECTED'
+            weld_mod.merge_threshold = 0.025
 
-            bpy.ops.object.modifier_add(type='WELD')
-            bpy.context.object.modifiers["Weld"].mode = 'CONNECTED'
-            bpy.context.object.modifiers["Weld"].merge_threshold = 0.025
-            bpy.ops.object.modifier_apply(modifier="Weld")
-
-
+            bpy.ops.object.modifier_apply(modifier="TempWeld")
 
             if scene.benchmark_cvx:
                 print(f"SX Tools: Final {obj.name} decimation parameters - Dissolve angle: {dissolve_angle:.2f}°, Collapse ratio: {collapse_ratio:.3f}, Triangles: {final_tri_count}")
@@ -3817,6 +3817,8 @@ class SXTOOLS2_export(object):
                 new_obj.sx2.mergefragments = view_layer.objects[color_ref_obj[color][3]].sx2.mergefragments
                 new_obj.sx2.preserveborders = view_layer.objects[color_ref_obj[color][3]].sx2.preserveborders
                 new_obj.sx2.collideroffsetfactor = view_layer.objects[color_ref_obj[color][3]].sx2.collideroffsetfactor
+                new_obj.sx2.evalbias_p1 = view_layer.objects[color_ref_obj[color][3]].sx2.evalbias_p1
+                new_obj.sx2.evalbias_p2 = view_layer.objects[color_ref_obj[color][3]].sx2.evalbias_p2
                 new_obj.sx2.pivotmode = 'CID'
                 new_obj['group_id'] = view_layer.objects[color_ref_obj[color][3]].parent.name
 
@@ -3908,6 +3910,8 @@ class SXTOOLS2_export(object):
 
                 new_obj.sx2.hulltrimax = obj.sx2.hulltrimax
                 new_obj.sx2.hulltrifactor = obj.sx2.hulltrifactor
+                new_obj.sx2.evalbias_p1 = obj.sx2.evalbias_p1
+                new_obj.sx2.evalbias_p2 = obj.sx2.evalbias_p2
                 new_obj.sx2.smartseparate = obj.sx2.smartseparate
                 new_obj.sx2.generatelodmeshes = False
                 new_obj.sx2.generateemissionmeshes = False
@@ -4042,7 +4046,7 @@ class SXTOOLS2_export(object):
                 shrink_hull(hull_obj, offset)
 
             # Iterate to find best decimation values
-            optimize_hull(hull_obj, hull_obj.sx2.hulltrimax, shape_threshold=hull_obj.sx2.hulltrifactor)
+            optimize_hull(hull_obj, hull_obj.sx2.hulltrimax, shape_threshold=hull_obj.sx2.hulltrifactor, score_bias_p1=hull_obj.sx2.evalbias_p1, score_bias_p2=hull_obj.sx2.evalbias_p2)
 
             utils.select_all_components(hull_obj, (True, True, True))
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
@@ -4105,6 +4109,8 @@ class SXTOOLS2_export(object):
             new_obj.parent = bpy.context.view_layer.objects[obj.parent.name]
             new_obj.sx2.subdivisionlevel = scene.sourcesubdivision
             new_obj.sx2.collideroffsetfactor = obj.sx2.collideroffsetfactor
+            new_obj.sx2.evalbias_p1 = obj.sx2.evalbias_p1
+            new_obj.sx2.evalbias_p2 = obj.sx2.evalbias_p2
 
             new_objs.append(new_obj)
 
@@ -7773,6 +7779,26 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         default=0.01,
         update=lambda self, context: update_obj_props(self, context, 'collideroffsetfactor'))
 
+    evalbias_p1: bpy.props.FloatProperty(
+        name='Phase 1 Evaluation Bias',
+        description='Bias of volume vs. surface area in hull quality evaluation.\nLower values favor volume preservation.\nPhase 1 is angle-based decimation.',
+        min=0.0,
+        max=1.0,
+        step=0.01,
+        precision=2,
+        default=0.3,
+        update=lambda self, context: update_obj_props(self, context, 'evalbias_p1'))
+
+    evalbias_p2: bpy.props.FloatProperty(
+        name='Phase 2 Evaluation Bias',
+        description='Bias of volume vs. surface area in hull quality evaluation.\nLower values favor volume preservation.\nPhase 2 is collapse decimation.',
+        min=0.0,
+        max=1.0,
+        step=0.01,
+        precision=2,
+        default=0.8,
+        update=lambda self, context: update_obj_props(self, context, 'evalbias_p2'))
+
     generateemissionmeshes: bpy.props.BoolProperty(
         name='Generate Emission Meshes',
         default=False,
@@ -9247,9 +9273,11 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 box_cids.prop(sx2, 'mergefragments', text='Merge CID fragments')
                                 box_cids.prop(sx2, 'preserveborders', text='Preserve CID borders')
                             if sx2.generatehulls:
+                                col_hulls.prop(sx2, 'collideroffsetfactor', text='Hull Shrink Distance', slider=True)
                                 col_hulls.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
                                 col_hulls.prop(sx2, 'hulltrifactor', text='Hull Shape Error Factor')
-                                col_hulls.prop(sx2, 'collideroffsetfactor', text='Hull Shrink Distance', slider=True)
+                                col_hulls.prop(sx2, 'evalbias_p1', text='Phase 1 Evaluation Bias', slider=True)
+                                col_hulls.prop(sx2, 'evalbias_p2', text='Phase 2 Evaluation Bias', slider=True)
                             col_hulls.enabled = sx2.generatehulls
 
                             if hasattr(bpy.types, bpy.ops.object.vhacd.idname()):
