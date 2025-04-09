@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 6),
+    'version': (2, 10, 10),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3470,20 +3470,37 @@ class SXTOOLS2_export(object):
             utils.mode_manager([obj, ], set_mode=False, mode_id='shrink_hull')
 
 
-        def optimize_hull(obj, target_tris, shape_threshold=0.05, score_bias_p1=0.5, score_bias_p2=0.5):
+        def optimize_hull(obj, target_tris, shape_threshold=0.05, phase1=True, phase2=True, phase3=True, score_bias_p1=0.5, score_bias_p2=0.5):
             """
-            Optimize hull decimation using a two-pass approach:
-            1. First dissolve coplanar faces to preserve shape
-            2. Then use collapse decimation to further reduce triangles while still preserving shape
+            Optimize hull decimation using a multi-phase approach to preserve shape while reducing triangle count.
+            
+            The function uses three phases:
+            1. Dissolve coplanar faces to preserve shape (angle-based decimation)
+            2. Collapse decimation to further reduce triangles while preserving shape
+            3. Optional welding to clean up the final mesh
+            
+            A minimum of 12 triangles is enforced for hulls (enough for a basic cube) to ensure
+            functional convex colliders. The algorithm strives to find the best balance between
+            triangle reduction and shape preservation for each hull.
             
             Args:
                 obj: The mesh object to decimate
                 target_tris: Maximum triangle count allowed
                 shape_threshold: Maximum acceptable shape deviation ratio (0.0-1.0)
-                                Controls how much shape can change (higher = less detail)
+                            Controls how much shape can change (higher = less detail)
+                phase1: Enable dissolve phase
+                phase2: Enable collapse phase
+                phase3: Enable final welding phase
+                score_bias_p1: Bias between volume and surface preservation in phase 1 (0-1)
+                            Lower values favor volume preservation
+                score_bias_p2: Bias between volume and surface preservation in phase 2 (0-1)
+                            Lower values favor volume preservation
+            
+            Returns:
+                None, modifies the input object directly
             """
-            if obj.type != 'MESH':
-                return 0.0, 1.0
+            if (obj.type != 'MESH') or (not phase1 and not phase2 and not phase3):
+                return
 
             utils.mode_manager([obj, ], set_mode=True, mode_id='find_optimal_decimation_ratio')
             bpy.context.view_layer.objects.active = obj
@@ -3497,179 +3514,184 @@ class SXTOOLS2_export(object):
                 print(f"SX Tools: volume: {original_volume:.6f}, area: {original_area:.6f}, triangles: {original_tri_count}")
                 print(f"SX Tools: shape threshold: {shape_threshold:.4f}, bias1: {score_bias_p1}, bias2: {score_bias_p2}, tri limit: {target_tris}")
             
+            min_triangles = 12  # Minimum triangles for a valid hull
+            dissolve_angle = 0.0
+            collapse_ratio = 1.0  # Default to no collapse (ratio of 1.0)
+
             # PHASE 1: DISSOLVE DECIMATION
-            dissolve_mod = obj.modifiers.new(type='DECIMATE', name='TempDissolve')
-            dissolve_mod.decimate_type = 'DISSOLVE'
-            dissolve_mod.use_dissolve_boundaries = True
-            # dissolve_mod.delimit = {'SHARP', 'UV'}
-            
-            # Binary search to find maximum angle that preserves shape
-            low_angle = 0.1
-            high_angle = 180.0
-            best_angle = None
-            best_shape_score = float('inf')
-            best_tri_count = original_tri_count
-            epsilon = 0.5  # Precision in the binary search
-            
-            # First, try to find an angle that preserves shape
-            while high_angle - low_angle > epsilon:
-                mid_angle = (low_angle + high_angle) / 2.0
-                dissolve_mod.angle_limit = math.radians(mid_angle)
+            if phase1:
+                dissolve_mod = obj.modifiers.new(type='DECIMATE', name='TempDissolve')
+                dissolve_mod.decimate_type = 'DISSOLVE'
+                dissolve_mod.use_dissolve_boundaries = True
+                # dissolve_mod.delimit = {'SHARP', 'UV'}
                 
-                # Calculate shape preservation metrics
-                test_volume, test_area = modifiers.calculate_volume_area(obj)
+                # Binary search to find maximum angle that preserves shape
+                low_angle = 0.1
+                high_angle = 180.0
+                best_angle = None
+                best_shape_score = float('inf')
+                best_tri_count = original_tri_count
+                epsilon = 0.5  # Precision in the binary search
                 
-                # Calculate deviation metrics with greater weight to volume
-                volume_ratio = abs(test_volume - original_volume) / original_volume
-                area_ratio = abs(test_area - original_area) / original_area
-                shape_score = (volume_ratio * score_bias_p1) + (area_ratio * (1.0 - score_bias_p1))
+                # First, try to find an angle that preserves shape
+                while high_angle - low_angle > epsilon:
+                    mid_angle = (low_angle + high_angle) / 2.0
+                    dissolve_mod.angle_limit = math.radians(mid_angle)
+                    
+                    # Calculate shape preservation metrics
+                    test_volume, test_area = modifiers.calculate_volume_area(obj)
+                    
+                    # Calculate deviation metrics with greater weight to volume
+                    volume_ratio = abs(test_volume - original_volume) / original_volume
+                    area_ratio = abs(test_area - original_area) / original_area
+                    shape_score = (volume_ratio * score_bias_p1) + (area_ratio * (1.0 - score_bias_p1))
+                    
+                    tri_count = modifiers.calculate_triangles([obj, ])
+                    
+                    # if scene.benchmark_cvx:
+                    #     print(f"SX Tools: Dissolve phase - Angle {mid_angle:.2f}°, Tris {tri_count}, Volume diff {volume_ratio:.4f}, Area diff {area_ratio:.4f}, Score {shape_score:.4f}")
+                            
+                    if shape_score <= shape_threshold:
+                        # This angle preserves shape well enough
+                        # We can try a higher angle for fewer triangles
+                        best_angle = mid_angle
+                        best_shape_score = shape_score
+                        best_tri_count = tri_count
+                        low_angle = mid_angle
+                    else:
+                        # Shape is too distorted, try a lower angle
+                        high_angle = mid_angle
                 
-                tri_count = modifiers.calculate_triangles([obj, ])
-                
-                # if scene.benchmark_cvx:
-                #     print(f"SX Tools: Dissolve phase - Angle {mid_angle:.2f}°, Tris {tri_count}, Volume diff {volume_ratio:.4f}, Area diff {area_ratio:.4f}, Score {shape_score:.4f}")
-                        
-                if shape_score <= shape_threshold:
-                    # This angle preserves shape well enough
-                    # We can try a higher angle for fewer triangles
-                    best_angle = mid_angle
-                    best_shape_score = shape_score
-                    best_tri_count = tri_count
-                    low_angle = mid_angle
-                else:
-                    # Shape is too distorted, try a lower angle
-                    high_angle = mid_angle
-            
-            if best_angle is None:
-                # If no angle preserves shape well enough, use a very conservative angle
-                dissolve_angle = 1.0
-            else:
-                dissolve_angle = best_angle
-            
-            # Apply the dissolve modifier to get a clean mesh for the collapse phase
-            dissolve_mod.angle_limit = math.radians(dissolve_angle)
-            # bpy.context.view_layer.update()
-            
-            # Apply the modifier to the temporary object
-            bpy.ops.object.modifier_apply(modifier='TempDissolve')
-            dissolve_tri_count = modifiers.calculate_triangles([obj, ])
-            
-            if scene.benchmark_cvx:
                 if best_angle is None:
-                    print(f"SX Tools: No angle preserves shape within threshold {shape_threshold}. Using conservative angle {dissolve_angle}°")
-                else:    
-                    print(f"SX Tools: Dissolve phase - Selected angle {dissolve_angle:.2f}°, triangles: {dissolve_tri_count}, shape score: {best_shape_score:.4f}")
-            
-            # obj.data.update()
+                    # If no angle preserves shape well enough, use a very conservative angle
+                    dissolve_angle = 1.0
+                else:
+                    dissolve_angle = best_angle
+                
+                # Apply the dissolve modifier to get a clean mesh for the collapse phase
+                dissolve_mod.angle_limit = math.radians(dissolve_angle)
+                # bpy.context.view_layer.update()
+                
+                # Apply the modifier to the temporary object
+                bpy.ops.object.modifier_apply(modifier='TempDissolve')
+                dissolve_tri_count = modifiers.calculate_triangles([obj, ])
+                
+                if scene.benchmark_cvx:
+                    if best_angle is None:
+                        print(f"SX Tools: No angle preserves shape within threshold {shape_threshold}. Using conservative angle {dissolve_angle}°")
+                    else:    
+                        print(f"SX Tools: Dissolve phase - Selected angle {dissolve_angle:.2f}°, triangles: {dissolve_tri_count}, shape score: {best_shape_score:.4f}")
+                
+                # obj.data.update()
 
 
             # PHASE 2: COLLAPSE DECIMATION (always enter this phase)
-            collapse_ratio = 1.0  # Default to no collapse (ratio of 1.0)
-            
-            shape_threshold = min(1.0, shape_threshold * 2.0)  # Increase threshold for collapse phase
-
-            # Add collapse modifier after the dissolve modifier
-            collapse_mod = obj.modifiers.new(type='DECIMATE', name='TempCollapse')
-            collapse_mod.decimate_type = 'COLLAPSE'
-            collapse_mod.symmetry_axis = 'X'
-            collapse_mod.use_collapse_triangulate = False
-            
-            # Binary search for optimal collapse ratio that preserves shape
-            low_ratio = 0.1  # Don't go below 10% to prevent complete destruction
-            high_ratio = 1.0  # Start from no decimation
-            best_ratio = None
-            best_collapse_score = float('inf')
-            best_collapse_tri_count = dissolve_tri_count
-            ratio_epsilon = 0.01
-            
-            while high_ratio - low_ratio > ratio_epsilon:
-                mid_ratio = (low_ratio + high_ratio) / 2.0
-                collapse_mod.ratio = mid_ratio
-                # bpy.context.view_layer.update()
+            if phase2:
+                # Add collapse modifier after the dissolve modifier
+                collapse_mod = obj.modifiers.new(type='DECIMATE', name='TempCollapse')
+                collapse_mod.decimate_type = 'COLLAPSE'
+                collapse_mod.symmetry_axis = 'X'
+                collapse_mod.use_collapse_triangulate = False
                 
-                # Calculate shape preservation metrics
-                test_volume, test_area = modifiers.calculate_volume_area(obj)
-                # Calculate shape deviation metrics
-                volume_ratio = abs(test_volume - original_volume) / original_volume
-                area_ratio = abs(test_area - original_area) / original_area
-                collapse_score = (volume_ratio * score_bias_p2) + (area_ratio * (1.0 - score_bias_p2))  # Favor volume preservation
+                # Binary search for optimal collapse ratio that preserves shape
+                low_ratio = 0.1  # Don't go below 10% to prevent complete destruction
+                high_ratio = 1.0  # Start from no decimation
+                best_ratio = None
+                best_collapse_score = float('inf')
+                best_collapse_tri_count = dissolve_tri_count
+                ratio_epsilon = 0.01
                 
-                collapse_tri_count = modifiers.calculate_triangles([obj, ])
-                # Check if we have at least 4 triangles (minimum for a valid hull)
-                valid_hull = collapse_tri_count >= 4
-                
-                # if scene.benchmark_cvx:
-                #     print(f"SX Tools: Collapse phase - Ratio {mid_ratio:.3f}, Tris {collapse_tri_count}, Score {collapse_score:.4f}, Valid: {valid_hull}")
-                
-                # First make sure we have enough triangles for a valid hull
-                if not valid_hull:
-                    # Not enough triangles, need less aggressive decimation
-                    low_ratio = mid_ratio
-                # Then check shape preservation
-                elif collapse_score <= shape_threshold:
-                    # Shape is preserved and we have enough triangles
-                    if collapse_tri_count <= target_tris:
-                        # Perfect: under triangle target and within shape threshold
-                        best_ratio = mid_ratio
-                        best_collapse_score = collapse_score
-                        best_collapse_tri_count = collapse_tri_count
-                        high_ratio = mid_ratio  # Try for even fewer triangles
+                while high_ratio - low_ratio > ratio_epsilon:
+                    mid_ratio = (low_ratio + high_ratio) / 2.0
+                    collapse_mod.ratio = mid_ratio
+                    # bpy.context.view_layer.update()
+                    
+                    # Calculate shape preservation metrics
+                    test_volume, test_area = modifiers.calculate_volume_area(obj)
+                    # Calculate shape deviation metrics
+                    volume_ratio = abs(test_volume - original_volume) / original_volume
+                    area_ratio = abs(test_area - original_area) / original_area
+                    collapse_score = (volume_ratio * score_bias_p2) + (area_ratio * (1.0 - score_bias_p2))  # Favor volume preservation
+                    
+                    collapse_tri_count = modifiers.calculate_triangles([obj, ])
+                    # Check if we have at least 4 triangles (minimum for a valid hull)
+                    valid_hull = collapse_tri_count >= min_triangles
+                    
+                    # if scene.benchmark_cvx:
+                    #     print(f"SX Tools: Collapse phase - Ratio {mid_ratio:.3f}, Tris {collapse_tri_count}, Score {collapse_score:.4f}, Valid: {valid_hull}")
+                    
+                    # First make sure we have enough triangles for a valid hull
+                    if not valid_hull:
+                        # Not enough triangles, need less aggressive decimation
+                        low_ratio = mid_ratio
+                    # Then check shape preservation
+                    elif collapse_score <= shape_threshold:
+                        # Shape is preserved and we have enough triangles
+                        if collapse_tri_count <= target_tris:
+                            # Perfect: under triangle target and within shape threshold
+                            best_ratio = mid_ratio
+                            best_collapse_score = collapse_score
+                            best_collapse_tri_count = collapse_tri_count
+                            high_ratio = mid_ratio  # Try for even fewer triangles
+                        else:
+                            # Shape is good but still too many triangles, need more aggressive collapse
+                            high_ratio = mid_ratio
                     else:
-                        # Shape is good but still too many triangles, need more aggressive collapse
-                        high_ratio = mid_ratio
-                else:
-                    # Shape is not preserved within threshold
-                    low_ratio = mid_ratio
-            
-            # If we've found a valid collapse ratio that preserves shape and meets triangle target
-            if best_ratio is not None:
-                collapse_ratio = best_ratio
-                if scene.benchmark_cvx:
-                    print(f"SX Tools: Collapse phase - Selected ratio {collapse_ratio:.3f}, triangles: {best_collapse_tri_count}, shape score: {best_collapse_score:.4f}")
-            
-            # If still over triangle target, try a direct ratio calculation as fallback, but ensure we maintain at least 4 triangles
-            elif dissolve_tri_count > target_tris:
-                # Base calculation 
-                desired_ratio = max(0.05, target_tris / dissolve_tri_count)
+                        # Shape is not preserved within threshold
+                        low_ratio = mid_ratio
                 
-                # Test the desired ratio to make sure we don't collapse too much
-                collapse_mod.ratio = desired_ratio
-                # bpy.context.view_layer.update()
-                test_tri_count = modifiers.calculate_triangles([obj, ])
+                # If we've found a valid collapse ratio that preserves shape and meets triangle target
+                if best_ratio is not None:
+                    collapse_ratio = best_ratio
+                    if scene.benchmark_cvx:
+                        print(f"SX Tools: Collapse phase - Selected ratio {collapse_ratio:.3f}, triangles: {best_collapse_tri_count}, shape score: {best_collapse_score:.4f}")
                 
-                if test_tri_count < 4:
-                    # Increase ratio until we have at least 4 triangles
-                    test_ratio = desired_ratio
-                    while test_tri_count < 4 and test_ratio < 1.0:
-                        test_ratio += 0.05
-                        collapse_mod.ratio = test_ratio
-                        # bpy.context.view_layer.update()
-                        test_tri_count = modifiers.calculate_triangles([obj, ])
+                # If still over triangle target, try a direct ratio calculation as fallback, but ensure we maintain at least 4 triangles
+                elif dissolve_tri_count > target_tris:
+                    # Base calculation 
+                    desired_ratio = max(0.05, target_tris / dissolve_tri_count)
                     
-                    collapse_ratio = test_ratio
-                else:
-                    collapse_ratio = desired_ratio
+                    # Test the desired ratio to make sure we don't collapse too much
+                    collapse_mod.ratio = desired_ratio
+                    # bpy.context.view_layer.update()
+                    test_tri_count = modifiers.calculate_triangles([obj, ])
                     
-                if scene.benchmark_cvx:
-                    print(f"SX Tools: Adjusted collapse ratio to {collapse_ratio:.3f} to ensure valid hull with at least 4 triangles")
+                    if test_tri_count < min_triangles:
+                        # Increase ratio until we have at least min_triangles
+                        test_ratio = desired_ratio
+                        while test_tri_count < min_triangles and test_ratio < 1.0:
+                            test_ratio += 0.05
+                            collapse_mod.ratio = test_ratio
+                            # bpy.context.view_layer.update()
+                            test_tri_count = modifiers.calculate_triangles([obj, ])
+                        
+                        collapse_ratio = test_ratio
+                    else:
+                        collapse_ratio = desired_ratio
+                        
+                    if scene.benchmark_cvx:
+                        print(f"SX Tools: Adjusted collapse ratio to {collapse_ratio:.3f} to ensure valid hull with at least 4 triangles")
+
+                # Apply temporary modifier
+                bpy.ops.object.modifier_apply(modifier='TempCollapse')
 
             final_tri_count = modifiers.calculate_triangles([obj, ])
 
-            # Apply temporary modifier
-            bpy.ops.object.modifier_apply(modifier='TempCollapse')
-
             # PHASE 3: WELDING
-            # Add a weld modifier to merge close vertices
-            weld_mod = obj.modifiers.new(type='WELD', name='TempWeld')
-            weld_mod.mode = 'CONNECTED'
-            weld_mod.merge_threshold = 0.025
-
-            bpy.ops.object.modifier_apply(modifier="TempWeld")
+            if phase3:
+                weld_threshold = 0.025
+                xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ])
+                min_dimension = min(xmax - xmin, ymax - ymin, zmax - zmin)
+                if (final_tri_count > min_triangles) and (min_dimension > weld_threshold):
+                    weld_mod = obj.modifiers.new(type='WELD', name='TempWeld')
+                    weld_mod.mode = 'CONNECTED'
+                    weld_mod.merge_threshold = weld_threshold
+                    bpy.ops.object.modifier_apply(modifier="TempWeld")
 
             if scene.benchmark_cvx:
                 print(f"SX Tools: Final {obj.name} decimation parameters - Dissolve angle: {dissolve_angle:.2f}°, Collapse ratio: {collapse_ratio:.3f}, Triangles: {final_tri_count}")
             
-            bpy.context.view_layer.update()
+            # bpy.context.view_layer.update()
             utils.mode_manager([obj, ], set_mode=False, mode_id='find_optimal_decimation_ratio')
 
 
@@ -3819,6 +3841,9 @@ class SXTOOLS2_export(object):
                 new_obj.sx2.collideroffsetfactor = view_layer.objects[color_ref_obj[color][3]].sx2.collideroffsetfactor
                 new_obj.sx2.evalbias_p1 = view_layer.objects[color_ref_obj[color][3]].sx2.evalbias_p1
                 new_obj.sx2.evalbias_p2 = view_layer.objects[color_ref_obj[color][3]].sx2.evalbias_p2
+                new_obj.sx2.eval_p1 = view_layer.objects[color_ref_obj[color][3]].sx2.eval_p1
+                new_obj.sx2.eval_p2 = view_layer.objects[color_ref_obj[color][3]].sx2.eval_p2
+                new_obj.sx2.eval_p3 = view_layer.objects[color_ref_obj[color][3]].sx2.eval_p3
                 new_obj.sx2.pivotmode = 'CID'
                 new_obj['group_id'] = view_layer.objects[color_ref_obj[color][3]].parent.name
 
@@ -3912,6 +3937,9 @@ class SXTOOLS2_export(object):
                 new_obj.sx2.hulltrifactor = obj.sx2.hulltrifactor
                 new_obj.sx2.evalbias_p1 = obj.sx2.evalbias_p1
                 new_obj.sx2.evalbias_p2 = obj.sx2.evalbias_p2
+                new_obj.sx2.eval_p1 = obj.sx2.eval_p1
+                new_obj.sx2.eval_p2 = obj.sx2.eval_p2
+                new_obj.sx2.eval_p3 = obj.sx2.eval_p3
                 new_obj.sx2.smartseparate = obj.sx2.smartseparate
                 new_obj.sx2.generatelodmeshes = False
                 new_obj.sx2.generateemissionmeshes = False
@@ -4046,7 +4074,7 @@ class SXTOOLS2_export(object):
                 shrink_hull(hull_obj, offset)
 
             # Iterate to find best decimation values
-            optimize_hull(hull_obj, hull_obj.sx2.hulltrimax, shape_threshold=hull_obj.sx2.hulltrifactor, score_bias_p1=hull_obj.sx2.evalbias_p1, score_bias_p2=hull_obj.sx2.evalbias_p2)
+            optimize_hull(hull_obj, hull_obj.sx2.hulltrimax, shape_threshold=hull_obj.sx2.hulltrifactor, phase1=hull_obj.sx2.eval_p1, phase2=hull_obj.sx2.eval_p2, phase3=hull_obj.sx2.eval_p3, score_bias_p1=hull_obj.sx2.evalbias_p1, score_bias_p2=hull_obj.sx2.evalbias_p2)
 
             utils.select_all_components(hull_obj, (True, True, True))
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
@@ -4111,6 +4139,9 @@ class SXTOOLS2_export(object):
             new_obj.sx2.collideroffsetfactor = obj.sx2.collideroffsetfactor
             new_obj.sx2.evalbias_p1 = obj.sx2.evalbias_p1
             new_obj.sx2.evalbias_p2 = obj.sx2.evalbias_p2
+            new_obj.sx2.eval_p1 = obj.sx2.eval_p1
+            new_obj.sx2.eval_p2 = obj.sx2.eval_p2
+            new_obj.sx2.eval_p3 = obj.sx2.eval_p3
 
             new_objs.append(new_obj)
 
@@ -7759,9 +7790,9 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         description='Controls how close the collider must match the original mesh.\nThe value range 0-1 goes from less error to more error.\nHigher values mean lower poly counts but coarser hulls.',
         min=0.0,
         max=1.0,
-        step=0.1,
-        precision=3,
-        default=0.05,
+        step=0.0025,
+        precision=4,
+        default=0.0375,
         update=lambda self, context: update_obj_props(self, context, 'hulltrifactor'))
 
     collideroffset: bpy.props.BoolProperty(
@@ -7774,9 +7805,9 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         description='Requested shrink distance in world units, default shrink 0.01 is 1cm.\nRequested distance is capped by internally calculated max safe shrink to prevent mesh inversion.',
         min=0.0,
         max=1.0,
-        step=0.01,
-        precision=3,
-        default=0.01,
+        step=0.001,
+        precision=4,
+        default=0.005,
         update=lambda self, context: update_obj_props(self, context, 'collideroffsetfactor'))
 
     evalbias_p1: bpy.props.FloatProperty(
@@ -7786,7 +7817,7 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         max=1.0,
         step=0.01,
         precision=2,
-        default=0.3,
+        default=0.1,
         update=lambda self, context: update_obj_props(self, context, 'evalbias_p1'))
 
     evalbias_p2: bpy.props.FloatProperty(
@@ -7796,8 +7827,23 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         max=1.0,
         step=0.01,
         precision=2,
-        default=0.8,
+        default=0.0,
         update=lambda self, context: update_obj_props(self, context, 'evalbias_p2'))
+
+    eval_p1: bpy.props.BoolProperty(
+        name='Hull Evaluation Phase 1',
+        default=True,
+        update=lambda self, context: update_obj_props(self, context, 'eval_p1'))
+
+    eval_p2: bpy.props.BoolProperty(
+        name='Hull Evaluation Phase 2',
+        default=True,
+        update=lambda self, context: update_obj_props(self, context, 'eval_p2'))
+
+    eval_p3: bpy.props.BoolProperty(
+        name='Hull Evaluation Phase 3',
+        default=True,
+        update=lambda self, context: update_obj_props(self, context, 'eval_p3'))
 
     generateemissionmeshes: bpy.props.BoolProperty(
         name='Generate Emission Meshes',
@@ -9276,8 +9322,13 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                                 col_hulls.prop(sx2, 'collideroffsetfactor', text='Hull Shrink Distance', slider=True)
                                 col_hulls.prop(sx2, 'hulltrimax', text='Hull Triangle Limit')
                                 col_hulls.prop(sx2, 'hulltrifactor', text='Hull Shape Error Factor')
-                                col_hulls.prop(sx2, 'evalbias_p1', text='Phase 1 Evaluation Bias', slider=True)
-                                col_hulls.prop(sx2, 'evalbias_p2', text='Phase 2 Evaluation Bias', slider=True)
+                                col_hulls_p1 = col_hulls.row(align=True)
+                                col_hulls_p2 = col_hulls.row(align=True)
+                                col_hulls_p1.prop(sx2, 'eval_p1', text='Phase 1', toggle=True)
+                                col_hulls_p1.prop(sx2, 'evalbias_p1', text='Phase 1 Evaluation Bias', slider=True)
+                                col_hulls_p2.prop(sx2, 'eval_p2', text='Phase 2', toggle=True)
+                                col_hulls_p2.prop(sx2, 'evalbias_p2', text='Phase 2 Evaluation Bias', slider=True)
+                                col_hulls.prop(sx2, 'eval_p3', text='Final Weld', toggle=True)
                             col_hulls.enabled = sx2.generatehulls
 
                             if hasattr(bpy.types, bpy.ops.object.vhacd.idname()):
