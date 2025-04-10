@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 11),
+    'version': (2, 10, 12),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2665,9 +2665,9 @@ class SXTOOLS2_tools(object):
             offset = newValue
 
         for obj in objs:
-            colors = layers.get_layer(obj, layer)
-            colors = generate.mask_list(obj, colors)
-            if colors is not None:
+            org_colors = layers.get_layer(obj, layer)
+            colors = generate.mask_list(obj, org_colors)
+            if colors:
                 count = len(colors)//4
                 for i in range(count):
                     color = colors[(0+i*4):(3+i*4)]
@@ -2675,8 +2675,8 @@ class SXTOOLS2_tools(object):
                     hsl[hslmode] += offset
                     rgb = convert.hsl_to_rgb(hsl)
                     colors[(0+i*4):(3+i*4)] = [rgb[0], rgb[1], rgb[2]]
-                target_colors = layers.get_layer(obj, layer)
-                colors = self.blend_values(colors, target_colors, 'ALPHA', 1.0)
+                mask = generate.get_selection_mask(obj)[0]
+                colors = self.blend_values(colors, org_colors, 'REP', 1.0, mask)
                 layers.set_layer(obj, colors, layer)
 
         utils.mode_manager(objs, set_mode=False, mode_id='apply_hsl')
