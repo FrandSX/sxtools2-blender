@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 12),
+    'version': (2, 10, 13),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -50,8 +50,6 @@ class SXTOOLS2_sxglobals(object):
         self.selection_modal_status = False
         self.key_modal_status = False
 
-        self.prev_validated_selection = []
-        self.prev_selection_hash = None
         self.prev_selection = []
         self.prev_component_selection = []
         self.ramp_dict = {}
@@ -2582,47 +2580,37 @@ class SXTOOLS2_tools(object):
             then = time.perf_counter()
 
         utils.mode_manager(objs, set_mode=True, mode_id='apply_tool')
-        scene = bpy.context.scene.sx2
-        amplitude = scene.noiseamplitude
-        offset = scene.noiseoffset
-        mono = scene.noisemono
+
+        toolmode = 'DEF' if color else scene.toolmode
+        mergebbx = False if sxglobals.mode == 'EDIT' else scene.rampbbox
+
+        color_generators = {
+            'DEF': lambda obj, masklayer: generate.color_list(obj, color, masklayer),
+            'COL': lambda obj, masklayer: generate.color_list(obj, scene.fillcolor, masklayer),
+            'GRD': lambda obj, masklayer: generate.ramp_list(obj, objs, scene.rampmode, masklayer, mergebbx),
+            'NSE': lambda obj, masklayer: generate.noise_list(obj, scene.noiseamplitude, scene.noiseoffset, scene.noisemono, masklayer),
+            'CRV': lambda obj, masklayer: generate.curvature_list(obj, objs, masklayer),
+            'OCC': lambda obj, masklayer: generate.occlusion_list(obj, scene.occlusionrays, scene.occlusionblend, scene.occlusiondistance, scene.occlusiongroundplane, scene.occlusiongroundheight, masklayer),
+            'THK': lambda obj, masklayer: generate.thickness_list(obj, scene.occlusionrays, masklayer),
+            'DIR': lambda obj, masklayer: generate.direction_list(obj, masklayer),
+            'LUM': lambda obj, masklayer: generate.luminance_remap_list(obj, targetlayer, masklayer),
+            'BLR': lambda obj, masklayer: generate.blur_list(obj, targetlayer, masklayer),
+            'EMI': lambda obj, masklayer: generate.emission_list(obj, scene.occlusionrays, masklayer),
+        }
+
         blendvalue = scene.toolopacity
         blendmode = scene.toolblend
-        rampmode = scene.rampmode
-        if sxglobals.mode == 'EDIT':
-            mergebbx = False
-        else:
-            mergebbx = scene.rampbbox
 
         for obj in objs:
             if (masklayer is None) and (targetlayer.locked):
                 masklayer = targetlayer
 
-            # Get colorbuffer
-            if color is not None:
-                colors = generate.color_list(obj, color, masklayer)
-            elif scene.toolmode == 'COL':
-                colors = generate.color_list(obj, scene.fillcolor, masklayer)
-            elif scene.toolmode == 'GRD':
-                colors = generate.ramp_list(obj, objs, rampmode, masklayer, mergebbx)
-            elif scene.toolmode == 'NSE':
-                colors = generate.noise_list(obj, amplitude, offset, mono, masklayer)
-            elif scene.toolmode == 'CRV':
-                colors = generate.curvature_list(obj, objs, masklayer)
-            elif scene.toolmode == 'OCC':
-                colors = generate.occlusion_list(obj, scene.occlusionrays, scene.occlusionblend, scene.occlusiondistance, scene.occlusiongroundplane, scene.occlusiongroundheight, masklayer)
-            elif scene.toolmode == 'THK':
-                colors = generate.thickness_list(obj, scene.occlusionrays, masklayer)
-            elif scene.toolmode == 'DIR':
-                colors = generate.direction_list(obj, masklayer)
-            elif scene.toolmode == 'LUM':
-                colors = generate.luminance_remap_list(obj, targetlayer, masklayer)
-            elif scene.toolmode == 'BLR':
-                colors = generate.blur_list(obj, targetlayer, masklayer)
-            elif scene.toolmode == 'EMI':
-                colors = generate.emission_list(obj, scene.occlusionrays, masklayer)
+            colors = None
+            generator = color_generators.get(toolmode)
+            if generator:
+                colors = generator(obj, masklayer)
 
-            if colors is not None:
+            if colors:
                 mask = None
                 if (blendmode == 'REP') and (sxglobals.mode == 'EDIT'):
                     bpy.context.tool_settings.mesh_select_mode[2] = False
@@ -2630,12 +2618,19 @@ class SXTOOLS2_tools(object):
 
                 if channel:
                     grayscales = convert.colors_to_values(colors, as_rgba=True)
+                    grayvalues = convert.colors_to_values(colors, as_rgba=False)
                     values = layers.get_layer_mask(obj, targetlayer, channel)[0]
+                    union = [values[i] * grayvalues[i] for i in range(len(grayvalues))]
+                    print(f'Values: {values}')
+                    print(f'Grayvalues: {grayvalues}')
+                    print(f'Union: {union}')
                     target_grayscales = convert.values_to_colors(values)
+                    print(f'Pre-blend Grayscales: {target_grayscales}')
 
-                    target_grayscales = self.blend_values(grayscales, target_grayscales, blendmode, blendvalue, selectionmask=mask)
-
+                    target_grayscales = self.blend_values(grayscales, target_grayscales, blendmode, blendvalue, selectionmask=union)
+                    print(f'Post-blend Grayscales: {target_grayscales}')
                     target_values = convert.colors_to_values(target_grayscales)
+                    print(f'Post-blend Values: {target_values}')
                     layers.set_channel(obj, targetlayer.color_attribute, target_values, channel)
                 else:
                     target_colors = layers.get_layer(obj, targetlayer)
@@ -6526,27 +6521,7 @@ def start_modal():
 
 
 # Return value eliminates duplicates
-def mesh_selection_validator(self, context):
-    current_selection = frozenset(obj.name for obj in context.view_layer.objects.selected)
-
-    if not current_selection:
-        sxglobals.prev_selection_hash = current_selection
-        sxglobals.prev_validated_selection = []
-        return []
-
-    if current_selection == sxglobals.prev_selection_hash:
-        valid_objects = []
-        for obj in sxglobals.prev_validated_selection:
-            try:
-                name = obj.name
-                if name in context.view_layer.objects:
-                    valid_objects.append(obj)
-            except ReferenceError:
-                continue
-        
-        sxglobals.prev_validated_selection = valid_objects
-        return valid_objects
-    
+def mesh_selection_validator(self, context):    
     mesh_objs = []
     for obj in context.view_layer.objects.selected:
         if obj is None:
@@ -6556,12 +6531,7 @@ def mesh_selection_validator(self, context):
         elif obj.type == 'ARMATURE':
             mesh_objs += utils.find_children(obj, recursive=True, child_type='MESH')
 
-    result = list(set(mesh_objs))
-
-    sxglobals.prev_selection_hash = current_selection
-    sxglobals.prev_validated_selection = result
-
-    return result
+    return list(set(mesh_objs))
 
 
 def layer_validator(self, context):
@@ -7193,8 +7163,6 @@ def export_validator(self, context):
 def load_post_handler(dummy):
     prefs = bpy.context.preferences.addons['sxtools2'].preferences
 
-    sxglobals.prev_selection_hash = None
-    sxglobals.prev_validated_selection = []
     sxglobals.prev_selection = []
     sxglobals.prev_component_selection = []
     sxglobals.copy_buffer.clear()
