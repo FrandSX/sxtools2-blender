@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 15),
+    'version': (2, 10, 17),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3440,6 +3440,24 @@ class SXTOOLS2_export(object):
             return 1 if x >= 0 else -1
 
 
+        def cull_hulls(objs):
+            test_objs = objs
+            culled = []
+            for obj in test_objs:
+                tri_count = modifiers.calculate_triangles([obj])
+                if tri_count < 4:
+                    culled.append(obj)
+                    print(f"SX Tools Warning: {obj.name} has fewer than 4 triangles and will be removed")
+            
+            for hull_obj in culled:
+                mesh = hull_obj.data
+                bpy.data.objects.remove(hull_obj, do_unlink=True)
+                if mesh:
+                    bpy.data.meshes.remove(mesh)
+
+            return list(set(test_objs) - set(culled))
+
+
         def shrink_hull(obj, offset_factor):
             utils.mode_manager([obj, ], set_mode=True, mode_id='shrink_hull')
             mesh = obj.data
@@ -3499,7 +3517,7 @@ class SXTOOLS2_export(object):
             # Store original mesh data to compare against
             original_volume, original_area = modifiers.calculate_volume_area(obj)
             original_tri_count = modifiers.calculate_triangles([obj])
-            
+
             if scene.benchmark_cvx:
                 print(f"SX Tools: Optimizing {obj.name}")
                 print(f"SX Tools: volume: {original_volume:.6f}, area: {original_area:.6f}, triangles: {original_tri_count}")
@@ -3508,6 +3526,13 @@ class SXTOOLS2_export(object):
             min_triangles = 12  # Minimum triangles for a valid hull
             dissolve_angle = 0.0
             collapse_ratio = 1.0  # Default to no collapse (ratio of 1.0)
+
+            tri_count = modifiers.calculate_triangles([obj])
+            if tri_count < 4:
+                phase1 = False
+                phase2 = False
+                phase3 = False
+                print(f"SX Tools: {obj.name} skipped - mesh has fewer than 4 faces")
 
             # PHASE 1: DISSOLVE DECIMATION
             if phase1:
@@ -3528,7 +3553,24 @@ class SXTOOLS2_export(object):
                 while high_angle - low_angle > epsilon:
                     mid_angle = (low_angle + high_angle) / 2.0
                     dissolve_mod.angle_limit = math.radians(mid_angle)
-                    
+    
+                    # Check face count first - prevent error if getting too low
+                    tri_count = modifiers.calculate_triangles([obj, ])
+                    if tri_count < 4:
+                        temp_angle = low_angle  # Start from known safe value
+                        while temp_angle < mid_angle:
+                            test_angle = (temp_angle + mid_angle) / 2.0
+                            dissolve_mod.angle_limit = math.radians(test_angle)
+                            test_tri_count = modifiers.calculate_triangles([obj, ])
+                            if test_tri_count >= 4:
+                                temp_angle = test_angle
+                            else:
+                                break
+                                
+                        # Set high angle to last known safe value
+                        high_angle = temp_angle
+                        continue
+
                     # Calculate shape preservation metrics
                     test_volume, test_area = modifiers.calculate_volume_area(obj)
                     
@@ -3536,8 +3578,6 @@ class SXTOOLS2_export(object):
                     volume_ratio = abs(test_volume - original_volume) / original_volume
                     area_ratio = abs(test_area - original_area) / original_area
                     shape_score = (volume_ratio * score_bias_p1) + (area_ratio * (1.0 - score_bias_p1))
-                    
-                    tri_count = modifiers.calculate_triangles([obj, ])
                     
                     # if scene.benchmark_cvx:
                     #     print(f"SX Tools: Dissolve phase - Angle {mid_angle:.2f}°, Tris {tri_count}, Volume diff {volume_ratio:.4f}, Area diff {area_ratio:.4f}, Score {shape_score:.4f}")
@@ -4044,37 +4084,39 @@ class SXTOOLS2_export(object):
         if separated_objs:
             new_objs += separated_objs
 
+        new_objs = cull_hulls(new_objs)
+
         utils.deselect_all_objs()
-        for hull_obj in new_objs:
-            hull_obj.select_set(True)
-            hull_obj.sx2.smartseparate = False
-            view_layer.objects.active = hull_obj
+        for new_obj in new_objs:
+            new_obj.select_set(True)
+            new_obj.sx2.smartseparate = False
+            view_layer.objects.active = new_obj
 
             if scene.benchmark_cvx:
-                print(f'SX Tools: {hull_obj.name} Initial Tri Count {modifiers.calculate_triangles([hull_obj, ])}')
+                print(f'SX Tools: {new_obj.name} Initial Tri Count {modifiers.calculate_triangles([new_obj, ])}')
             
             # Create convex hull
-            utils.select_all_components(hull_obj, (True, True, True))
+            utils.select_all_components(new_obj, (True, True, True))
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
             bpy.ops.mesh.convex_hull(use_existing_faces=False, face_threshold=math.radians(40.0), shape_threshold=math.radians(40.0), sharp=True)
 
             # Shrink hull according to factor
-            if hull_obj.sx2.collideroffsetfactor > 0.0:
+            if new_obj.sx2.collideroffsetfactor > 0.0:
                 bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-                offset = -min(hull_obj.sx2.collideroffsetfactor, utils.find_safe_mesh_offset(hull_obj) * 0.5)
-                shrink_hull(hull_obj, offset)
+                offset = -min(new_obj.sx2.collideroffsetfactor, utils.find_safe_mesh_offset(new_obj) * 0.5)
+                shrink_hull(new_obj, offset)
 
             # Iterate to find best decimation values
-            optimize_hull(hull_obj, hull_obj.sx2.hulltrimax, shape_threshold=hull_obj.sx2.hulltrifactor, phase1=hull_obj.sx2.eval_p1, phase2=hull_obj.sx2.eval_p2, phase3=hull_obj.sx2.eval_p3, score_bias_p1=hull_obj.sx2.evalbias_p1, score_bias_p2=hull_obj.sx2.evalbias_p2)
+            optimize_hull(new_obj, new_obj.sx2.hulltrimax, shape_threshold=new_obj.sx2.hulltrifactor, phase1=new_obj.sx2.eval_p1, phase2=new_obj.sx2.eval_p2, phase3=new_obj.sx2.eval_p3, score_bias_p1=new_obj.sx2.evalbias_p1, score_bias_p2=new_obj.sx2.evalbias_p2)
 
-            utils.select_all_components(hull_obj, (True, True, True))
+            utils.select_all_components(new_obj, (True, True, True))
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
             bpy.ops.mesh.convex_hull(use_existing_faces=True)
             bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
             bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
             if scene.benchmark_cvx:
-                print(f'SX Tools: {hull_obj.name} Optimized Tri Count {modifiers.calculate_triangles([hull_obj, ])}')
+                print(f'SX Tools: {new_obj.name} Optimized Tri Count {modifiers.calculate_triangles([new_obj, ])}')
 
             # Add to collections
             if new_obj.name not in bpy.context.scene.collection.objects:
