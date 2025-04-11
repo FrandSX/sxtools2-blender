@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 13),
+    'version': (2, 10, 15),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2487,7 +2487,7 @@ class SXTOOLS2_tools(object):
             return result
         
         def blend_mul(top, base, a):
-            result = Vec([0.0, 0.0, 0.0, 0.0])
+            result = Vec([0.0, 0.0, 0.0, base[3]])
             for j in range(3):
                 result[j] = base[j] * top[j] * a + base[j] * (1 - a)
             return result
@@ -2511,10 +2511,7 @@ class SXTOOLS2_tools(object):
             return result
         
         def blend_rep(top, base, a):
-            if (selectionmask is None) or (selectionmask[i] != 0.0):
-                return top
-            else:
-                return base
+            return top
 
         blend_functions = {
             'ALPHA': blend_alpha,
@@ -2553,7 +2550,10 @@ class SXTOOLS2_tools(object):
                 ])
                 a = top[3] * blendvalue
 
-                result = blend_func(top, base, a)
+                if (selectionmask is None) or (selectionmask[i] != 0.0):
+                    result = blend_func(top, base, a)
+                else:
+                    result = base
 
                 # Screen: (A+B) - (A*B)
                 # elif blendmode == 'SCR':
@@ -2612,25 +2612,21 @@ class SXTOOLS2_tools(object):
 
             if colors:
                 mask = None
-                if (blendmode == 'REP') and (sxglobals.mode == 'EDIT'):
+                if sxglobals.mode == 'EDIT':
                     bpy.context.tool_settings.mesh_select_mode[2] = False
-                    mask, empty = generate.get_selection_mask(obj)
+                    sel_mask, empty = generate.get_selection_mask(obj)
+                    col_mask = convert.colors_to_values(colors, as_rgba=False)
+
+                    # union of selection and color mask
+                    mask = [sel_mask[i] * col_mask[i] for i in range(len(col_mask))]
 
                 if channel:
                     grayscales = convert.colors_to_values(colors, as_rgba=True)
-                    grayvalues = convert.colors_to_values(colors, as_rgba=False)
-                    values = layers.get_layer_mask(obj, targetlayer, channel)[0]
-                    union = [values[i] * grayvalues[i] for i in range(len(grayvalues))]
-                    print(f'Values: {values}')
-                    print(f'Grayvalues: {grayvalues}')
-                    print(f'Union: {union}')
-                    target_grayscales = convert.values_to_colors(values)
-                    print(f'Pre-blend Grayscales: {target_grayscales}')
+                    values, _ = layers.get_layer_mask(obj, targetlayer, channel)
 
-                    target_grayscales = self.blend_values(grayscales, target_grayscales, blendmode, blendvalue, selectionmask=union)
-                    print(f'Post-blend Grayscales: {target_grayscales}')
+                    target_grayscales = convert.values_to_colors(values)
+                    target_grayscales = self.blend_values(grayscales, target_grayscales, blendmode, blendvalue, selectionmask=mask)
                     target_values = convert.colors_to_values(target_grayscales)
-                    print(f'Post-blend Values: {target_values}')
                     layers.set_channel(obj, targetlayer.color_attribute, target_values, channel)
                 else:
                     target_colors = layers.get_layer(obj, targetlayer)
