@@ -4245,7 +4245,7 @@ class SXTOOLS2_export(object):
         if not objs:
             return []
         
-        utils.mode_manager([obj, ], set_mode=True, mode_id='generate_emission_meshes')
+        utils.mode_manager(objs, set_mode=True, mode_id='generate_emission_meshes')
         export_objects = utils.create_collection('ExportObjects')
         sxglobals.refresh_in_progress = True
         offset = 0.001
@@ -4296,7 +4296,7 @@ class SXTOOLS2_export(object):
 
         bpy.context.view_layer.objects.active = active_obj
         sxglobals.refresh_in_progress = False
-        utils.mode_manager([obj, ], set_mode=False, mode_id='generate_emission_meshes')
+        utils.mode_manager(objs, set_mode=False, mode_id='generate_emission_meshes')
 
         return emission_objs
 
