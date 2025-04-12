@@ -2761,12 +2761,13 @@ class SXTOOLS2_tools(object):
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
 
 
-    def select_mask(self, objs, layer, invertmask=False):
+    def select_mask(self, objs, layer, invertmask=False, editmode=True):
         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
         active = bpy.context.view_layer.objects.active
         bpy.context.view_layer.objects.active = objs[0]
         utils.clear_component_selection(objs)
         select_mode = bpy.context.tool_settings.mesh_select_mode[2]
+        epsilon = 0.001
     
         for obj in objs:
             mesh = obj.data
@@ -2774,13 +2775,14 @@ class SXTOOLS2_tools(object):
             
             if select_mode:
                 for poly in mesh.polygons:
-                    poly.select = any((mask[loop_idx] > 0.0) ^ invertmask for loop_idx in poly.loop_indices)
+                    poly.select = any((mask[loop_idx] > epsilon) ^ invertmask for loop_idx in poly.loop_indices)
             else:
                 for poly in mesh.polygons:
                     for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        mesh.vertices[vert_idx].select = (mask[loop_idx] > 0.0) ^ invertmask
+                        mesh.vertices[vert_idx].select = (mask[loop_idx] > epsilon) ^ invertmask
 
-        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+        if editmode:
+            bpy.ops.object.mode_set(mode='EDIT', toggle=False)
         bpy.context.view_layer.objects.active = active
 
 
@@ -4256,43 +4258,45 @@ class SXTOOLS2_export(object):
         for obj in objs:
             if obj.type == 'MESH':
                 # Check if emission layer is empty
-                if not layers.get_layer_mask(obj, obj.sx2layers['Emission'])[1]:
-                    bpy.context.view_layer.objects.active = obj
-                    emission_obj = obj.copy()
-                    emission_obj.data = obj.data.copy()
-                    bpy.context.collection.objects.link(emission_obj)
-                    export_objects.objects.link(emission_obj)
-                    emission_obj.name = obj.name + '_emission'
-                    emission_obj.data.name = emission_obj.name + '_mesh'
-                    emission_obj.sx2.smartseparate = True
-                    emission_obj.sx2.generatehulls = False
-                    emission_obj.sx2.generatelodmeshes = False
-                    emission_obj.sx2.generateemissionmeshes = False
-                    emission_objs.append(emission_obj)
+                _, empty = layers.get_layer_mask(obj, obj.sx2layers['Emission'])
+                if empty:
+                    continue
 
-                    modifiers.apply_modifiers([emission_obj, ])
-                    tools.select_mask([emission_obj, ], emission_obj.sx2layers['Emission'])
-                    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+                bpy.context.view_layer.objects.active = obj
+                emission_obj = obj.copy()
+                emission_obj.data = obj.data.copy()
+                bpy.context.collection.objects.link(emission_obj)
+                export_objects.objects.link(emission_obj)
+                emission_obj.name = obj.name + '_emission'
+                emission_obj.data.name = emission_obj.name + '_mesh'
+                emission_obj.sx2.smartseparate = True
+                emission_obj.sx2.generatehulls = False
+                emission_obj.sx2.generatelodmeshes = False
+                emission_obj.sx2.generateemissionmeshes = False
+                emission_objs.append(emission_obj)
 
-                    mesh = emission_obj.data
-                    bm = bmesh.new()
-                    bm.from_mesh(mesh)
+                modifiers.apply_modifiers([emission_obj, ])
+                tools.select_mask([emission_obj, ], emission_obj.sx2layers['Emission'], editmode=False)
 
-                    to_delete = []
-                    # Offset selected faces along their normals
-                    for face in bm.faces:
-                        if face.select:
-                            normal_offset = face.normal * offset
-                            for vert in face.verts:
-                                vert.co += normal_offset
-                        else:
-                            to_delete.append(face)
+                mesh = emission_obj.data
+                bm = bmesh.new()
+                bm.from_mesh(mesh)
 
-                    # Delete unselected faces
-                    bmesh.ops.delete(bm, geom=to_delete, context='FACES')
+                to_delete = []
+                # Offset selected faces along their normals
+                for face in bm.faces:
+                    if face.select:
+                        normal_offset = face.normal * offset
+                        for vert in face.verts:
+                            vert.co += normal_offset
+                    else:
+                        to_delete.append(face)
 
-                    bm.to_mesh(mesh)
-                    bm.free()
+                # Delete unselected faces
+                bmesh.ops.delete(bm, geom=to_delete, context='FACES')
+
+                bm.to_mesh(mesh)
+                bm.free()
 
         bpy.context.view_layer.objects.active = active_obj
         sxglobals.refresh_in_progress = False
