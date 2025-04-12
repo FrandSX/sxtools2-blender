@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 17),
+    'version': (2, 10, 18),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4242,6 +4242,10 @@ class SXTOOLS2_export(object):
 
 
     def generate_emission_meshes(self, objs):
+        if not objs:
+            return []
+        
+        utils.mode_manager([obj, ], set_mode=True, mode_id='generate_emission_meshes')
         export_objects = utils.create_collection('ExportObjects')
         sxglobals.refresh_in_progress = True
         offset = 0.001
@@ -4292,6 +4296,7 @@ class SXTOOLS2_export(object):
 
         bpy.context.view_layer.objects.active = active_obj
         sxglobals.refresh_in_progress = False
+        utils.mode_manager([obj, ], set_mode=False, mode_id='generate_emission_meshes')
 
         return emission_objs
 
