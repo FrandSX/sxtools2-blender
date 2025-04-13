@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 20),
+    'version': (2, 10, 21),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -707,7 +707,7 @@ class SXTOOLS2_utils(object):
         if child_type is not None:
             results = [child for child in results if child.type == child_type]
 
-        return results
+        return list(dict.fromkeys(results))
                         
 
     # Finds groups to be exported,
@@ -2021,8 +2021,9 @@ class SXTOOLS2_layers(object):
 
             for obj in objs:
                 if name and name in obj.sx2layers.keys():
+                    layer_dict[obj] = obj.sx2layers[name]
                     print(f'SX Tools Error: {obj.name} layer {name} already exists')
-                    break
+                    continue
                 else:
                     if name and name not in obj.sx2layers.keys():
                         layer_name = name
