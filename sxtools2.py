@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 18),
+    'version': (2, 10, 19),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -561,8 +561,9 @@ class SXTOOLS2_utils(object):
 
     def deselect_all_objs(self):
         # bpy.context.view_layer.objects.active = None
-        for obj in bpy.context.view_layer.objects.selected:
-            obj.select_set(False)
+        if bpy.context.view_layer.objects.selected:
+            for obj in bpy.context.view_layer.objects.selected:
+                obj.select_set(False)
 
 
     def create_collection(self, collection_name):
