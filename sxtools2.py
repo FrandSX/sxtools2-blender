@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 19),
+    'version': (2, 10, 20),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -561,8 +561,8 @@ class SXTOOLS2_utils(object):
 
     def deselect_all_objs(self):
         # bpy.context.view_layer.objects.active = None
-        if bpy.context.view_layer.objects.selected:
-            for obj in bpy.context.view_layer.objects.selected:
+        for obj in bpy.context.view_layer.objects.selected:
+            if obj:
                 obj.select_set(False)
 
 
@@ -3780,8 +3780,20 @@ class SXTOOLS2_export(object):
                     first_obj_matrix_world = obj.matrix_world.copy()
                     first_obj_matrix_world_inv = first_obj_matrix_world.inverted()
                     for face in bm.faces:
-                        color = face.loops[0][color_layer]
-                        color = tuple(round(c, 2) for c in color)
+                        face_colors = [face.loops[i][color_layer][:] for i in range(len(face.loops))]
+                        is_uniform = True
+                        first_color = face_colors[0]
+
+                        for color in face_colors[1:]:
+                            if not utils.color_compare(first_color, color, tolerance=0.01):
+                                is_uniform = False
+                                print(f"SX Tools Warning: {obj.name} has non-uniform Collider ID colors.")
+                                break
+                        
+                        if not is_uniform:
+                            continue
+
+                        color = tuple(round(c, 2) for c in first_color)
                         # color = tuple(round(c * 20) / 20 for c in color)
 
                         # Create color buckets, discard uncolored faces
