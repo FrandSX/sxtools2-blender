@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 21),
+    'version': (2, 10, 25),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -234,8 +234,10 @@ class SXTOOLS2_files(object):
 
         groupNames = []
         for group in groups:
+            if scene.benchmark_export:
+                then = time.perf_counter()
+
             bpy.context.view_layer.objects.active = group
-            # bpy.ops.object.select_all(action='DESELECT')
             utils.deselect_all_objs()
             group.select_set(True)
             org_loc = group.location.copy()
@@ -376,6 +378,12 @@ class SXTOOLS2_files(object):
                     modifiers.add_modifiers(obj_list)
 
                     bpy.context.view_layer.objects.active = group
+
+            if scene.benchmark_export:
+                now = time.perf_counter()
+                elapsed = now - then
+                obj_names = [obj.name for obj in obj_list]
+                print(f'Exported: {group.name}\nElapsed time: {elapsed}\nContents: {obj_names}')
 
         if empty:
             message_box('No objects exported!')
@@ -3143,10 +3151,9 @@ class SXTOOLS2_modifiers(object):
 
     def remove_modifiers(self, objs, reset=False):
         modifiers = ['Auto Smooth', 'sxMirror', 'sxTiler', 'sxAO', 'sxGeometryNodes', 'sxSubdivision', 'sxBevel', 'sxWeld', 'sxDecimate', 'sxDecimate2', 'sxEdgeSplit', 'sxSmoothNormals', 'sxWeightedNormal']
-        if reset and ('sx_tiler' in bpy.data.node_groups):
-            bpy.data.node_groups.remove(bpy.data.node_groups['sx_tiler'], do_unlink=True)
-        if reset and ('sx_ao' in bpy.data.node_groups):
-            bpy.data.node_groups.remove(bpy.data.node_groups['sx_ao'], do_unlink=True)
+        for node_group in bpy.data.node_groups:
+            if node_group.name.startswith('sx_tiler') or node_group.name.startswith('sx_ao'):
+                bpy.data.node_groups.remove(node_group, do_unlink=True)
 
         for obj in objs:
             for modifier in modifiers:
@@ -3758,6 +3765,17 @@ class SXTOOLS2_export(object):
         # Create hull meshes via object copies or Collider IDs
         if cid_objs:
             org_objs += cid_objs[:]
+            cid_props = {}
+            for obj in cid_objs:
+                if obj.type == 'MESH':
+                    org_subdiv = obj.sx2.subdivisionlevel
+                    cid_props[obj] = org_subdiv
+                    obj.sx2.tile_preview = False
+                    if ('sxSubdivision' in obj.modifiers):
+                        obj.modifiers['sxSubdivision'].levels = 1 if org_subdiv > 1 else org_subdiv
+                    if ('sxTiler' in obj.modifiers):
+                        obj.modifiers['sxTiler'].show_viewport = False
+
             # Map color regions to mesh islands
             color_to_faces = defaultdict(list)
             color_ref_obj = {}
@@ -3766,9 +3784,6 @@ class SXTOOLS2_export(object):
             for obj in cid_objs:
                 if obj.type == 'MESH':
                     id_layer = obj.sx2layers['Collider IDs'].color_attribute
-                    org_subdiv = obj.sx2.subdivisionlevel
-                    if ('sxSubdivision' in obj.modifiers):
-                        obj.modifiers['sxSubdivision'].levels = 1 if org_subdiv > 1 else org_subdiv
 
                     # Get evaluated mesh at subdiv 1
                     temp_mesh = obj.evaluated_get(edg).to_mesh()
@@ -3776,7 +3791,7 @@ class SXTOOLS2_export(object):
                     bm.from_mesh(temp_mesh)
                     color_layer = bm.loops.layers.float_color[id_layer]
                     if ('sxSubdivision' in obj.modifiers):
-                        obj.modifiers['sxSubdivision'].levels = org_subdiv
+                        obj.modifiers['sxSubdivision'].levels = cid_props[obj]
                     
                     first_obj_matrix_world = obj.matrix_world.copy()
                     first_obj_matrix_world_inv = first_obj_matrix_world.inverted()
@@ -3882,6 +3897,7 @@ class SXTOOLS2_export(object):
                 new_obj.sx2.xmirror = view_layer.objects[color_ref_obj[color][3]].sx2.xmirror
                 new_obj.sx2.ymirror = view_layer.objects[color_ref_obj[color][3]].sx2.ymirror
                 new_obj.sx2.zmirror = view_layer.objects[color_ref_obj[color][3]].sx2.zmirror
+                new_obj.sx2.tile_preview = False
                 new_obj.sx2.separate_cids = view_layer.objects[color_ref_obj[color][3]].sx2.separate_cids
                 new_obj.sx2.mergefragments = view_layer.objects[color_ref_obj[color][3]].sx2.mergefragments
                 new_obj.sx2.preserveborders = view_layer.objects[color_ref_obj[color][3]].sx2.preserveborders
@@ -3980,6 +3996,10 @@ class SXTOOLS2_export(object):
                     new_obj.sx2.subdivisionlevel = 1 if org_subdiv > 1 else org_subdiv
                     new_obj.modifiers['sxSubdivision'].levels = 1 if org_subdiv > 1 else org_subdiv
 
+                if ('sxTiler' in obj.modifiers):
+                    new_obj.modifiers['sxTiler'].show_viewport = False
+
+                new_obj.sx2.tile_preview = False
                 new_obj.sx2.hulltrimax = obj.sx2.hulltrimax
                 new_obj.sx2.hulltrifactor = obj.sx2.hulltrifactor
                 new_obj.sx2.evalbias_p1 = obj.sx2.evalbias_p1
@@ -7988,6 +8008,10 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
         name='Benchmark Convex Hulls',
         default=False)
 
+    benchmark_export: bpy.props.BoolProperty(
+        name='Benchmark Export',
+        default=False)
+
     layerpalette1: bpy.props.FloatVectorProperty(
         name='Layer Palette 1',
         description='Color from the selected layer\nDrag and drop to Fill Color',
@@ -9449,6 +9473,7 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             col_debug.prop(scene, 'benchmark_ao', text='Benchmark AO', toggle=True)
                             col_debug.prop(scene, 'benchmark_magic', text='Benchmark Magic', toggle=True)
                             col_debug.prop(scene, 'benchmark_cvx', text='Benchmark Hulls', toggle=True)
+                            col_debug.prop(scene, 'benchmark_export', text='Benchmark Export', toggle=True)
 
                     elif scene.exportmode == 'EXPORT':
                         row_exporttype = export_panel.row(align=True)
