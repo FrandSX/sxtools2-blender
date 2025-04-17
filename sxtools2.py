@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 26),
+    'version': (2, 10, 27),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -551,7 +551,7 @@ class SXTOOLS2_utils(object):
             mesh.vertices.foreach_set('select', [False] * len(mesh.vertices))
             mesh.edges.foreach_set('select', [False] * len(mesh.edges))
             mesh.polygons.foreach_set('select', [False] * len(mesh.polygons))
-            mesh.update()
+            # mesh.update()
 
 
     # types=(vert, edge, poly)
@@ -7110,9 +7110,10 @@ def update_curvature_selection(self, context):
         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
         objs = mesh_selection_validator(self, context)
         sel_mode = context.tool_settings.mesh_select_mode[:]
-        limitvalue = context.scene.sx2.curvaturelimit
-        tolerance = context.scene.sx2.curvaturetolerance
+
         scene = context.scene.sx2
+        limitvalue = scene.curvaturelimit
+        tolerance = scene.curvaturetolerance
         normalize_convex = scene.normalizeconvex
         normalize_concave = scene.normalizeconcave
         scene.normalizeconvex = True
@@ -7124,9 +7125,16 @@ def update_curvature_selection(self, context):
         for obj in objs:
             vert_curv_dict = generate.curvature_list(obj, objs, returndict=True)
             mesh = obj.data
+            vert_count = len(mesh.vertices)
+            selection = [False] * vert_count
+            indices = [0] * vert_count
+            mesh.vertices.foreach_get('index', indices)
 
-            for vert in mesh.vertices:
-                vert.select = abs(vert_curv_dict[vert.index] - limitvalue) < tolerance
+            for i in range(vert_count):
+                selection[i] = abs(vert_curv_dict[indices[i]] - limitvalue) < tolerance
+            
+            mesh.vertices.foreach_set('select', selection)
+            # mesh.update()
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
         context.tool_settings.mesh_select_mode = sel_mode
