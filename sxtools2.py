@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 25),
+    'version': (2, 10, 26),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -924,22 +924,29 @@ class SXTOOLS2_utils(object):
     def find_safe_mesh_offset(self, obj):
         utils.mode_manager([obj, ], set_mode=False, mode_id='find_safe_mesh_offset')
         bias = 0.005
+        Vec = Vector
 
         mesh = obj.data
         safe_distance = None
+        vert_count = len(mesh.vertices)
+
+        coords = [0.0] * (vert_count * 3)
+        normals = [0.0] * (vert_count * 3)
+        mesh.vertices.foreach_get('co', coords)
+        mesh.vertices.foreach_get('normal', normals)
 
         edg = bpy.context.evaluated_depsgraph_get()
         bvh = BVHTree.FromObject(obj, edg, epsilon=0.0001)
 
-        for vert in mesh.vertices:
-            vert_loc = vert.co
-            inv_normal = -vert.normal.normalized()
+        for i in range(vert_count):
+            idx = i * 3
+            vert_loc = Vec((coords[idx], coords[idx+1], coords[idx+2]))
+            normal = Vec((normals[idx], normals[idx+1], normals[idx+2]))
+            inv_normal = -normal.normalized()
             bias_vec = inv_normal * bias
             ray_origin = vert_loc + bias_vec
 
-            # hit, loc, normal, index = obj.ray_cast(ray_origin, inv_normal)
             hit, loc, normal, index = bvh.ray_cast(ray_origin, inv_normal)
-
             if hit:
                 dist = (loc - vert_loc).length
                 if (safe_distance is None) or (dist < safe_distance):
@@ -3472,13 +3479,14 @@ class SXTOOLS2_export(object):
         def shrink_hull(obj, offset_factor):
             utils.mode_manager([obj, ], set_mode=True, mode_id='shrink_hull')
             mesh = obj.data
-            normals = [0.0] * (len(mesh.vertices) * 3)
+            vert_count = len(mesh.vertices)
+            normals = [0.0] * (vert_count * 3)
             mesh.vertices.foreach_get('normal', normals)
-            coords = [0.0] * (len(mesh.vertices) * 3)
+            coords = [0.0] * (vert_count * 3)
             mesh.vertices.foreach_get('co', coords)
             Vec = Vector
             
-            for i in range(len(mesh.vertices)):
+            for i in range(vert_count):
                 idx = i * 3
                 normal = Vec((normals[idx], normals[idx+1], normals[idx+2])).normalized() * offset_factor
                 coords[idx] += normal.x
