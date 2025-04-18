@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 27),
+    'version': (2, 10, 30),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1740,62 +1740,70 @@ class SXTOOLS2_generate(object):
 
     def mask_list(self, obj, colors, masklayer=None, maskcolor=None, as_tuple=False, override_mask=False):
         count = len(colors)//4
-        Vec = Vector
 
         # No mask, colors pass through
         if (masklayer is None) and (maskcolor is None) and (sxglobals.mode != 'EDIT'):
             if as_tuple:
-                rgba = [None] * count
-                for i in range(count):
-                    rgba[i] = tuple(colors[(0+i*4):(4+i*4)])
-                return rgba
+                return [tuple(colors[i*4:i*4+4]) for i in range(count)]
             else:
                 return colors
 
         # Colors are masked by selection or layer alpha
+        if masklayer is None:
+            mask, empty = self.get_selection_mask(obj, selected_color=maskcolor)
+            if empty:
+                return None
+        # Layer is locked and there is an edit mode component selection
+        elif (masklayer is not None) and (sxglobals.mode == 'EDIT'):
+            mask1, empty = self.get_selection_mask(obj, selected_color=maskcolor)
+            if empty:
+                return None
+            else:
+                mask2, empty = layers.get_layer_mask(obj, masklayer)
+                if empty:
+                    mask = mask1
+                else:
+                    mask = [0.0] * len(mask1)
+                    for i in range(len(mask1)):
+                        m1 = mask1[i]
+                        m2 = mask2[i]
+                        if (m1 > 0.0) and (m2 > 0.0):
+                            mask[i] = min(m1, m2)
         else:
-            if masklayer is None:
-                mask, empty = self.get_selection_mask(obj, selected_color=maskcolor)
-                if empty:
-                    return None
-            # Layer is locked and there is an edit mode component selection
-            elif (masklayer is not None) and (sxglobals.mode == 'EDIT'):
-                mask1, empty = self.get_selection_mask(obj, selected_color=maskcolor)
-                if empty:
-                    return None
-                else:
-                    mask2, empty = layers.get_layer_mask(obj, masklayer)
-                    if empty:
-                        mask = mask1
-                    else:
-                        mask = [0.0] * len(mask1)
-                        for i, (m1, m2) in enumerate(zip(mask1, mask2)):
-                            if (m1 > 0.0) and (m2 > 0.0):
-                                mask[i] = min(m1, m2)
-            else:
-                mask, empty = layers.get_layer_mask(obj, masklayer)
-                if empty:
-                    return None
+            mask, empty = layers.get_layer_mask(obj, masklayer)
+            if empty:
+                return None
 
-            if as_tuple:
-                rgba = [None] * count
+        if as_tuple:
+            result = [None] * count
+            for i in range(count):
+                idx = i * 4
+                mask_val = mask[i]
+                result[i] = (
+                    colors[idx] * mask_val,
+                    colors[idx+1] * mask_val,
+                    colors[idx+2] * mask_val,
+                    colors[idx+3] * mask_val
+                )                    
+            return result
+        else:
+            result = [0.0] * (count * 4)
+            if override_mask:
                 for i in range(count):
-                    rgba[i] = tuple(Vec(colors[(0+i*4):(4+i*4)]) * mask[i])
-                return rgba
+                    idx = i * 4
+                    result[idx] = colors[idx]
+                    result[idx+1] = colors[idx+1]
+                    result[idx+2] = colors[idx+2]
+                    result[idx+3] = mask[i]
             else:
-                color_list = [None, None, None, None] * count
-                if override_mask:
-                    for i in range(count):
-                        color = colors[(0+i*4):(4+i*4)]
-                        color[3] = mask[i]
-                        color_list[(0+i*4):(4+i*4)] = color
-                else:
-                    for i in range(count):
-                        color = colors[(0+i*4):(4+i*4)]
-                        color[3] *= mask[i]
-                        color_list[(0+i*4):(4+i*4)] = color
+                for i in range(count):
+                    idx = i * 4
+                    result[idx] = colors[idx]
+                    result[idx+1] = colors[idx+1]
+                    result[idx+2] = colors[idx+2]
+                    result[idx+3] = colors[idx+3] * mask[i]
 
-                return color_list
+            return result
 
 
     def color_list(self, obj, color, masklayer=None, as_tuple=False):
@@ -1873,101 +1881,118 @@ class SXTOOLS2_generate(object):
     def vert_dict_to_loop_list(self, obj, vert_dict, dictchannelcount, listchannelcount):
         mesh = obj.data
         loop_list = self.empty_list(obj, listchannelcount)
-
+        
+        loop_count = len(mesh.loops)
+        loop_vert_indices = [0] * loop_count
+        mesh.loops.foreach_get('vertex_index', loop_vert_indices)
+        
         if dictchannelcount < listchannelcount:
             if (dictchannelcount == 1) and (listchannelcount == 2):
-                for poly in mesh.polygons:
-                    for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        value = vert_dict.get(vert_idx, 0.0)
-                        loop_list[(0+loop_idx*listchannelcount):(listchannelcount+loop_idx*listchannelcount)] = [value, value]
+                for loop_idx, vert_idx in enumerate(loop_vert_indices):
+                    value = vert_dict.get(vert_idx, 0.0)
+                    loop_list[(loop_idx*2):(loop_idx*2+2)] = [value, value]
+                    
             elif (dictchannelcount == 1) and (listchannelcount == 4):
-                for poly in mesh.polygons:
-                    for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        value = vert_dict.get(vert_idx, 0.0)
-                        loop_list[(0+loop_idx*listchannelcount):(listchannelcount+loop_idx*listchannelcount)] = [value, value, value, 1.0]
+                for loop_idx, vert_idx in enumerate(loop_vert_indices):
+                    value = vert_dict.get(vert_idx, 0.0)
+                    loop_list[(loop_idx*4):(loop_idx*4+4)] = [value, value, value, 1.0]
+                    
             elif (dictchannelcount == 3) and (listchannelcount == 4):
-                for poly in mesh.polygons:
-                    for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        value = vert_dict.get(vert_idx, [0.0, 0.0, 0.0])
-                        loop_list[(0+loop_idx*listchannelcount):(listchannelcount+loop_idx*listchannelcount)] = [value[0], value[1], value[2], 1.0]
+                for loop_idx, vert_idx in enumerate(loop_vert_indices):
+                    value = vert_dict.get(vert_idx, [0.0, 0.0, 0.0])
+                    loop_list[(loop_idx*4):(loop_idx*4+4)] = [value[0], value[1], value[2], 1.0]
         else:
             if listchannelcount == 1:
-                for poly in mesh.polygons:
-                    for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        loop_list[loop_idx] = vert_dict.get(vert_idx, 0.0)
+                for loop_idx, vert_idx in enumerate(loop_vert_indices):
+                    loop_list[loop_idx] = vert_dict.get(vert_idx, 0.0)
             else:
-                for poly in mesh.polygons:
-                    for vert_idx, loop_idx in zip(poly.vertices, poly.loop_indices):
-                        loop_list[(0+loop_idx*listchannelcount):(listchannelcount+loop_idx*listchannelcount)] = vert_dict.get(vert_idx, [0.0] * listchannelcount)
-
+                for loop_idx, vert_idx in enumerate(loop_vert_indices):
+                    start_idx = loop_idx * listchannelcount
+                    end_idx = start_idx + listchannelcount
+                    loop_list[start_idx:end_idx] = vert_dict.get(vert_idx, [0.0] * listchannelcount)
+        
         return loop_list
 
 
     def vertex_data_dict(self, obj, masklayer=None, dots=False):
-
-        def add_to_dict(vert_id):
-            min_dot = None
-            if dots:
-                vert = bm.verts[vert_id]
-                num_connected = len(vert.link_edges)
-                if num_connected > 0:
-                    vert_normal_normalized = vert.normal.normalized()
-                    dot_list = []
-                    for edge in vert.link_edges:
-                        other_vec = (edge.other_vert(vert).co - vert.co).normalized()
-                        dot_list.append(vert_normal_normalized.dot(other_vec))
-                min_dot = min(dot_list)
-
-            vert = mesh.vertices[vert_id]
-            vert_co = vert.co
-            vert_normal = vert.normal
-
-            vertex_dict[vert_id] = (
-                vert_co,
-                vert_normal,
-                mat @ vert_co,
-                (mat @ vert_normal - origin).normalized(),
-                min_dot
-            )
-
-
+        Vec = Vector
         mesh = obj.data
         mat = obj.matrix_world
-        origin = mat @ Vector()
-        ids = self.vertex_id_list(obj)
-
+        origin = mat @ Vec()
+        vertex_dict = {}
+        
+        # Determine which vertices to process up front
+        process_all = sxglobals.mode != 'EDIT' and masklayer is None
+        vert_ids_to_process = set()
+        
+        vert_count = len(mesh.vertices)
+        coords = [0.0] * (vert_count * 3)
+        normals = [0.0] * (vert_count * 3)
+        indices = [0] * vert_count
+        mesh.vertices.foreach_get('co', coords)
+        mesh.vertices.foreach_get('normal', normals)
+        mesh.vertices.foreach_get('index', indices)
+        
+        # Process mask or edit mode selection if needed
+        if masklayer:
+            mask, empty = layers.get_layer_mask(obj, masklayer)
+            if empty:
+                return {}
+            
+            # Create a fast lookup set of vertices to process
+            for poly in mesh.polygons:
+                for vert_id, loop_idx in zip(poly.vertices, poly.loop_indices):
+                    if mask[loop_idx] > 0.0:
+                        vert_ids_to_process.add(vert_id)
+        
+        elif sxglobals.mode == 'EDIT':
+            vert_sel = [False] * vert_count
+            mesh.vertices.foreach_get('select', vert_sel)
+            
+            if True not in vert_sel:
+                return {}
+                
+            vert_ids_to_process = {indices[i] for i, sel in enumerate(vert_sel) if sel}
+        
+        # Create BMesh for dots calculation only if needed
+        bm = None
         if dots:
             bm = bmesh.new()
             bm.from_mesh(mesh)
             bm.normal_update()
             bmesh.types.BMVertSeq.ensure_lookup_table(bm.verts)
+        
+        # Process vertices
+        for i in range(vert_count):
+            vert_id = indices[i]
 
-        vertex_dict = {}
-        if masklayer is not None:
-            mask, empty = layers.get_layer_mask(obj, masklayer)
-            if empty:
-                return {}
+            if not process_all and vert_id not in vert_ids_to_process:
+                continue
+                
+            idx = i * 3
+            vert_co = Vec((coords[idx], coords[idx+1], coords[idx+2]))
+            vert_normal = Vec((normals[idx], normals[idx+1], normals[idx+2]))
+            world_co = mat @ vert_co
+            world_normal = (mat @ vert_normal - origin).normalized()
             
-            for poly in mesh.polygons:
-                for vert_id, loop_idx in zip(poly.vertices, poly.loop_indices):
-                    if mask[loop_idx] > 0.0:
-                        add_to_dict(vert_id)
-
-        elif sxglobals.mode == 'EDIT':
-            vert_sel = [None] * len(mesh.vertices)
-            mesh.vertices.foreach_get('select', vert_sel)
-            if True in vert_sel:
-                for vert_id, sel in enumerate(vert_sel):
-                    if sel:
-                        add_to_dict(vert_id)
-
-        else:
-            for vert_id in ids:
-                add_to_dict(vert_id)
-
-        if dots:
+            min_dot = None
+            if dots:
+                bm_vert = bm.verts[vert_id]
+                num_connected = len(bm_vert.link_edges)
+                if num_connected > 0:
+                    vert_normal_normalized = bm_vert.normal.normalized()
+                    dot_values = []
+                    for edge in bm_vert.link_edges:
+                        other_vert = edge.other_vert(bm_vert)
+                        edge_vec = (other_vert.co - bm_vert.co).normalized()
+                        dot_values.append(vert_normal_normalized.dot(edge_vec))
+                    min_dot = min(dot_values) if dot_values else None
+            
+            vertex_dict[vert_id] = (vert_co, vert_normal, world_co, world_normal, min_dot)
+        
+        if bm:
             bm.free()
-
+        
         return vertex_dict
 
 
