@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 30),
+    'version': (2, 10, 32),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -551,7 +551,6 @@ class SXTOOLS2_utils(object):
             mesh.vertices.foreach_set('select', [False] * len(mesh.vertices))
             mesh.edges.foreach_set('select', [False] * len(mesh.edges))
             mesh.polygons.foreach_set('select', [False] * len(mesh.polygons))
-            # mesh.update()
 
 
     # types=(vert, edge, poly)
@@ -562,9 +561,7 @@ class SXTOOLS2_utils(object):
         if types[1]:
             mesh.edges.foreach_set('select', [True] * len(mesh.edges))
         if types[2]:
-            mesh.polygons.foreach_set('select', [True] * len(mesh.polygons))
-        if types[0] or types[1] or types[2]:
-            mesh.update()        
+            mesh.polygons.foreach_set('select', [True] * len(mesh.polygons))     
 
 
     def deselect_all_objs(self):
@@ -865,27 +862,44 @@ class SXTOOLS2_utils(object):
 
     # if vertex pos x y z is at bbx limit, and mirror axis is set, round vertex position
     def round_tiling_verts(self, objs):
-        Vec = Vector
+        precision = 2
+
         for obj in objs:
             if obj.sx2.tiling:
                 vert_dict = generate.vertex_data_dict(obj)
-                if vert_dict:
-                    xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box([obj, ], mode='local')
-                    for vert_id in vert_dict:
-                        vertLoc = Vec(vert_dict[vert_id][0])
+                if not vert_dict:
+                    continue
 
-                        if (obj.sx2.tile_neg_x and (round(vertLoc[0], 2) == round(xmin, 2))) or (obj.sx2.tile_pos_x and (round(vertLoc[0], 2) == round(xmax, 2))):
-                            vertLoc[0] = round(vertLoc[0], 2)
-                        if (obj.sx2.tile_neg_y and (round(vertLoc[1], 2) == round(ymin, 2))) or (obj.sx2.tile_pos_y and (round(vertLoc[1], 2) == round(ymax, 2))):
-                            vertLoc[1] = round(vertLoc[1], 2)
-                        if (obj.sx2.tile_neg_z and (round(vertLoc[2], 2) == round(zmin, 2))) or (obj.sx2.tile_pos_z and (round(vertLoc[2], 2) == round(zmax, 2))):
-                            vertLoc[2] = round(vertLoc[2], 2)
+                xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box([obj, ], mode='local')
+                rxmin = round(xmin, precision)
+                rxmax = round(xmax, precision)
+                rymin = round(ymin, precision)
+                rymax = round(ymax, precision)
+                rzmin = round(zmin, precision)
+                rzmax = round(zmax, precision)
 
-                        if vertLoc != Vec(vert_dict[vert_id][0]):
-                            obj.data.vertices[vert_id].co = vertLoc
-                            obj.data.vertices[vert_id].select = True
+                for vert_id in vert_dict:
+                    vertLoc = vert_dict[vert_id][0]
+                    rx = round(vertLoc[0], precision)
+                    ry = round(vertLoc[1], precision)
+                    rz = round(vertLoc[2], precision)
 
-                    obj.data.update()
+                    changed = False
+                    if (obj.sx2.tile_neg_x and (rx == rxmin)) or (obj.sx2.tile_pos_x and (rx == rxmax)):
+                        vertLoc[0] = rx
+                        changed = True
+                    if (obj.sx2.tile_neg_y and (ry == rymin)) or (obj.sx2.tile_pos_y and (ry == rymax)):
+                        vertLoc[1] = ry
+                        changed = True
+                    if (obj.sx2.tile_neg_z and (rz == rzmin)) or (obj.sx2.tile_pos_z and (rz == rzmax)):
+                        vertLoc[2] = rz
+                        changed = True
+
+                    if changed:
+                        obj.data.vertices[vert_id].co = vertLoc
+                        obj.data.vertices[vert_id].select = True
+
+                obj.data.update()
 
 
     def clear_parent_inverse_matrix(self, objs):
@@ -1523,7 +1537,6 @@ class SXTOOLS2_generate(object):
             ground, groundmesh = self.ground_plane(size, pivot)
 
         edg = bpy.context.evaluated_depsgraph_get()
-        # edg.update()
         # obj_eval = obj.evaluated_get(edg)
         bvh = BVHTree.FromObject(obj, edg, epsilon=0.0001)
 
@@ -3343,7 +3356,6 @@ class SXTOOLS2_export(object):
 
                 utils.select_all_components(obj, (True, True, True))
                 bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-                # bpy.ops.mesh.select_all(action='SELECT')
                 bpy.ops.mesh.separate(type='LOOSE')
 
                 bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
@@ -3645,7 +3657,6 @@ class SXTOOLS2_export(object):
                 
                 # Apply the dissolve modifier to get a clean mesh for the collapse phase
                 dissolve_mod.angle_limit = math.radians(dissolve_angle)
-                # bpy.context.view_layer.update()
                 
                 # Apply the modifier to the temporary object
                 bpy.ops.object.modifier_apply(modifier='TempDissolve')
@@ -3679,7 +3690,6 @@ class SXTOOLS2_export(object):
                 while high_ratio - low_ratio > ratio_epsilon:
                     mid_ratio = (low_ratio + high_ratio) / 2.0
                     collapse_mod.ratio = mid_ratio
-                    # bpy.context.view_layer.update()
                     
                     # Calculate shape preservation metrics
                     test_volume, test_area = modifiers.calculate_volume_area(obj)
@@ -3728,7 +3738,6 @@ class SXTOOLS2_export(object):
                     
                     # Test the desired ratio to make sure we don't collapse too much
                     collapse_mod.ratio = desired_ratio
-                    # bpy.context.view_layer.update()
                     test_tri_count = modifiers.calculate_triangles([obj, ])
                     
                     if test_tri_count < min_triangles:
@@ -3737,7 +3746,6 @@ class SXTOOLS2_export(object):
                         while test_tri_count < min_triangles and test_ratio < 1.0:
                             test_ratio += 0.05
                             collapse_mod.ratio = test_ratio
-                            # bpy.context.view_layer.update()
                             test_tri_count = modifiers.calculate_triangles([obj, ])
                         
                         collapse_ratio = test_ratio
@@ -3766,7 +3774,6 @@ class SXTOOLS2_export(object):
             if scene.benchmark_cvx:
                 print(f"SX Tools: Final {obj.name} decimation parameters - Dissolve angle: {dissolve_angle:.2f}°, Collapse ratio: {collapse_ratio:.3f}, Triangles: {final_tri_count}")
             
-            # bpy.context.view_layer.update()
             utils.mode_manager([obj, ], set_mode=False, mode_id='find_optimal_decimation_ratio')
 
 
@@ -5003,7 +5010,6 @@ class SXTOOLS2_magic(object):
         for obj in objs:
             if obj.parent is None:
                 obj.hide_viewport = False
-                # viewlayer.objects.active = obj
                 export.group_objects([obj, ])
 
             if '_mesh' not in obj.data.name:
@@ -5133,9 +5139,6 @@ class SXTOOLS2_magic(object):
             if obj.type == 'MESH' and obj.hide_viewport is False:
                 obj.hide_viewport = True
 
-        # Mandatory to update visibility?
-        # viewlayer.update()
-
         if scene.benchmark_magic:
             now = time.perf_counter()
             print(f'SX Tools: Mesh setup and viewlayer update: {round(now-then2, 4)} seconds')
@@ -5235,7 +5238,6 @@ class SXTOOLS2_magic(object):
         for i, obj in enumerate(objs):
             if 'sxSubdivision' in obj.modifiers:
                 obj.modifiers['sxSubdivision'].levels = subdivision_list[i]
-        # viewlayer.update()
 
         # LOD mesh generation for low-detail
         if scene.exportquality == 'LO':
@@ -6515,8 +6517,6 @@ class SXTOOLS2_setup(object):
                 for mat in sx_mats:
                     bpy.data.materials.remove(mat, do_unlink=True)
 
-            # bpy.context.view_layer.update()
-
             # Get reference objects for material update
             ref_objs = []
             for value in sxglobals.sx2material_dict.values():
@@ -7159,7 +7159,6 @@ def update_curvature_selection(self, context):
                 selection[i] = abs(vert_curv_dict[indices[i]] - limitvalue) < tolerance
             
             mesh.vertices.foreach_set('select', selection)
-            # mesh.update()
 
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
         context.tool_settings.mesh_select_mode = sel_mode
