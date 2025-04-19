@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 32),
+    'version': (2, 10, 33),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -504,6 +504,92 @@ class SXTOOLS2_utils(object):
         return None
 
 
+    def get_data(self, obj, data_type, attribute_name=None):
+        """
+        Utility function to batch retrieve data using foreach_get
+        
+        Args:
+            obj: The object containing the data
+            data_type: Type of data to retrieve, must be one of:
+                - 'coords': Vertex coordinates (3D positions)
+                - 'normals': Vertex normals
+                - 'vert_ids': Vertex indices
+                - 'vert_select': Vertex selection states
+                - 'edge_select': Edge selection states
+                - 'face_select': Polygon selection states
+                - 'loop_ids': Loop vertex indices
+                - 'color': Color data (requires attribute_name)
+            attribute_name: Name of the color attribute (only needed for 'color' type)
+        
+        Returns:
+            List containing the requested data
+        
+        Raises:
+            ValueError: If data_type is not supported or attribute_name is missing for 'color' type
+        """
+        mesh = obj.data
+
+        def get_vertex_positions():
+            data = [0.0] * (len(mesh.vertices) * 3)
+            mesh.vertices.foreach_get('co', data)
+            return data
+        
+        def get_vertex_normals():
+            data = [0.0] * (len(mesh.vertices) * 3)
+            mesh.vertices.foreach_get('normal', data)
+            return data
+        
+        def get_vertex_indices():
+            data = [0] * len(mesh.vertices)
+            mesh.vertices.foreach_get('index', data)
+            return data
+        
+        def get_vertex_selection():
+            data = [False] * len(mesh.vertices)
+            mesh.vertices.foreach_get('select', data)
+            return data
+        
+        def get_edge_selection():
+            data = [False] * len(mesh.edges)
+            mesh.edges.foreach_get('select', data)
+            return data
+        
+        def get_poly_selection():
+            data = [False] * len(mesh.polygons)
+            mesh.polygons.foreach_get('select', data)
+            return data
+        
+        def get_loop_indices():
+            data = [0] * len(mesh.loops)
+            mesh.loops.foreach_get('vertex_index', data)
+            return data
+        
+        def get_color_data():
+            if not attribute_name:
+                raise ValueError("attribute_name must be provided for COLOR type")
+            color_data = mesh.color_attributes[attribute_name].data
+            data = [0.0] * (len(color_data) * 4)
+            color_data.foreach_get('color', data)
+            return data
+        
+
+        dispatch = {
+            'coords': get_vertex_positions,
+            'normals': get_vertex_normals,
+            'vert_ids': get_vertex_indices,
+            'vert_select': get_vertex_selection,
+            'edge_select': get_edge_selection,
+            'face_select': get_poly_selection,
+            'loop_ids': get_loop_indices,
+            'color': get_color_data
+        }
+        
+        if data_type in dispatch:
+            return dispatch[data_type]()
+        else:
+            raise ValueError(f"Unsupported data_type: {data_type}")
+
+
     def mode_manager(self, objs, set_mode=False, mode_id=None):
         """
         Temporarily switches objects to OBJECT mode and restores original mode when done.
@@ -749,10 +835,8 @@ class SXTOOLS2_utils(object):
                 mesh = obj.data
                 mat = obj.matrix_world
                 
-                select_states = [False] * len(mesh.vertices)
-                mesh.vertices.foreach_get('select', select_states)
-                coords = [0.0] * (len(mesh.vertices) * 3)
-                mesh.vertices.foreach_get('co', coords)
+                select_states = utils.get_data(obj, 'vert_select')
+                coords = utils.get_data(obj, 'coords')
 
                 for i, selected in enumerate(select_states):
                     if selected:
@@ -944,10 +1028,8 @@ class SXTOOLS2_utils(object):
         safe_distance = None
         vert_count = len(mesh.vertices)
 
-        coords = [0.0] * (vert_count * 3)
-        normals = [0.0] * (vert_count * 3)
-        mesh.vertices.foreach_get('co', coords)
-        mesh.vertices.foreach_get('normal', normals)
+        coords = utils.get_data(obj, 'coords')
+        normals = utils.get_data(obj, 'normals')    
 
         edg = bpy.context.evaluated_depsgraph_get()
         bvh = BVHTree.FromObject(obj, edg, epsilon=0.0001)
@@ -1235,26 +1317,33 @@ class SXTOOLS2_generate(object):
             bm.from_mesh(mesh)
             bm.normal_update()
 
+            vert_normals = {vert.index: vert.normal.normalized() for vert in bm.verts}
+            pi_inv = 1.0 / math.pi
+
             # pass 1: calculate curvatures
             for vert in bm.verts:
-                numConnected = len(vert.link_edges)
-                if numConnected > 0:
-                    edgeWeights = []
-                    angles = []
-                    for edge in vert.link_edges:
-                        edgeWeights.append(edge.calc_length())
-                        angles.append(math.acos(vert.normal.normalized() @ (edge.other_vert(vert).co - vert.co).normalized()))
+                vert_normal = vert_normals[vert.index]
+                vert_co = vert.co
+                connected_edges = vert.link_edges
+                edge_count = len(connected_edges)
 
-                    total_weight = sum(edgeWeights)
+                if edge_count > 0:
+                    # edge_weights = []
+                    angles = []
+                    for edge in connected_edges:
+                        # edge_weights.append(edge.calc_length())
+                        angles.append(math.acos(vert_normal.dot((edge.other_vert(vert).co - vert_co).normalized())))
+
+                    # total_weight = sum(edge_weights)
 
                     vtxCurvature = 0.0
-                    for i in range(numConnected):
-                        curvature = angles[i] / math.pi - 0.5
+                    for i in range(edge_count):
+                        curvature = angles[i] * pi_inv - 0.5
                         vtxCurvature += curvature
-                        # weighted_curvature = (curvature * edgeWeights[i]) / total_weight
+                        # weighted_curvature = (curvature * edge_weights[i]) / total_weight
                         # vtxCurvature += weighted_curvature
 
-                    vtxCurvature = min(vtxCurvature / float(numConnected), 1.0)
+                    vtxCurvature = min(vtxCurvature / float(edge_count), 1.0)
 
                     vert_curv_dict[vert.index] = round(vtxCurvature, 5)
                 else:
@@ -1344,30 +1433,28 @@ class SXTOOLS2_generate(object):
 
 
     def direction_list(self, obj, masklayer=None):
-        scene = bpy.context.scene.sx2
-        cone_angle = scene.dirCone
-        half_cone_angle = cone_angle * 0.5
-        Vec = Vector
-
         vert_dict = self.vertex_data_dict(obj, masklayer)
-
         if not vert_dict:
             return None
 
-        vert_dir_dict = {vert_id: 0.0 for vert_id in vert_dict}
+        Vec = Vector
+        scene = bpy.context.scene.sx2
+        cone_angle = scene.dirCone
+        half_cone_angle = cone_angle * 0.5
+        cone_normalizer = 1.0 / (90.0 + half_cone_angle)
+
         inclination = math.radians(scene.dirInclination - 90.0)
         angle = math.radians(scene.dirAngle + 90)
         direction = Vec((math.sin(inclination) * math.cos(angle), math.sin(inclination) * math.sin(angle), math.cos(inclination)))
 
+        vert_dir_dict = {}
         for vert_id in vert_dict:
             vert_world_normal = Vec(vert_dict[vert_id][3])
-            angle_diff = math.degrees(math.acos(min(1.0, max(-1.0, vert_world_normal @ direction))))
-            vert_dir_dict[vert_id] = max(0.0, (90.0 + half_cone_angle - angle_diff) / (90.0 + half_cone_angle))
+            angle_diff = math.degrees(math.acos(min(1.0, max(-1.0, vert_world_normal.dot(direction)))))
+            vert_dir_dict[vert_id] = max(0.0, (90.0 + half_cone_angle - angle_diff) * cone_normalizer)
 
         values = self.vert_dict_to_loop_list(obj, vert_dir_dict, 1, 1)
-        vert_dir_list = [None] * len(values) * 4
-        for i in range(len(values)):
-            vert_dir_list[(0+i*4):(4+i*4)] = [values[i], values[i], values[i], 1.0]
+        vert_dir_list = convert.values_to_colors(values)
 
         return self.mask_list(obj, vert_dir_list, masklayer)
 
@@ -1386,7 +1473,7 @@ class SXTOOLS2_generate(object):
             return col
 
         random.seed(sxglobals.randomseed)
-        vert_ids = self.vertex_id_list(obj)
+        vert_ids = utils.get_data(obj, 'vert_ids')
         noise_dict = {vtx_id: make_noise(amplitude, offset, mono) for vtx_id in vert_ids}
         noise_list = self.vert_dict_to_loop_list(obj, noise_dict, 4, 4)
         return self.mask_list(obj, noise_list, masklayer)
@@ -1881,45 +1968,35 @@ class SXTOOLS2_generate(object):
         return self.mask_list(obj, colors, masklayer)
 
 
-    def vertex_id_list(self, obj):
-        ids = [None] * len(obj.data.vertices)
-        obj.data.vertices.foreach_get('index', ids)
-        return ids
-
-
     def empty_list(self, obj, channelcount):
         return [0.0] * len(obj.data.loops) * channelcount
 
 
     def vert_dict_to_loop_list(self, obj, vert_dict, dictchannelcount, listchannelcount):
-        mesh = obj.data
         loop_list = self.empty_list(obj, listchannelcount)
-        
-        loop_count = len(mesh.loops)
-        loop_vert_indices = [0] * loop_count
-        mesh.loops.foreach_get('vertex_index', loop_vert_indices)
+        loop_ids = utils.get_data(obj, 'loop_ids')
         
         if dictchannelcount < listchannelcount:
             if (dictchannelcount == 1) and (listchannelcount == 2):
-                for loop_idx, vert_idx in enumerate(loop_vert_indices):
+                for loop_idx, vert_idx in enumerate(loop_ids):
                     value = vert_dict.get(vert_idx, 0.0)
                     loop_list[(loop_idx*2):(loop_idx*2+2)] = [value, value]
                     
             elif (dictchannelcount == 1) and (listchannelcount == 4):
-                for loop_idx, vert_idx in enumerate(loop_vert_indices):
+                for loop_idx, vert_idx in enumerate(loop_ids):
                     value = vert_dict.get(vert_idx, 0.0)
                     loop_list[(loop_idx*4):(loop_idx*4+4)] = [value, value, value, 1.0]
                     
             elif (dictchannelcount == 3) and (listchannelcount == 4):
-                for loop_idx, vert_idx in enumerate(loop_vert_indices):
+                for loop_idx, vert_idx in enumerate(loop_ids):
                     value = vert_dict.get(vert_idx, [0.0, 0.0, 0.0])
                     loop_list[(loop_idx*4):(loop_idx*4+4)] = [value[0], value[1], value[2], 1.0]
         else:
             if listchannelcount == 1:
-                for loop_idx, vert_idx in enumerate(loop_vert_indices):
+                for loop_idx, vert_idx in enumerate(loop_ids):
                     loop_list[loop_idx] = vert_dict.get(vert_idx, 0.0)
             else:
-                for loop_idx, vert_idx in enumerate(loop_vert_indices):
+                for loop_idx, vert_idx in enumerate(loop_ids):
                     start_idx = loop_idx * listchannelcount
                     end_idx = start_idx + listchannelcount
                     loop_list[start_idx:end_idx] = vert_dict.get(vert_idx, [0.0] * listchannelcount)
@@ -1939,13 +2016,10 @@ class SXTOOLS2_generate(object):
         vert_ids_to_process = set()
         
         vert_count = len(mesh.vertices)
-        coords = [0.0] * (vert_count * 3)
-        normals = [0.0] * (vert_count * 3)
-        indices = [0] * vert_count
-        mesh.vertices.foreach_get('co', coords)
-        mesh.vertices.foreach_get('normal', normals)
-        mesh.vertices.foreach_get('index', indices)
-        
+        coords = utils.get_data(obj, 'coords')
+        normals = utils.get_data(obj, 'normals')
+        ids = utils.get_data(obj, 'vert_ids')
+
         # Process mask or edit mode selection if needed
         if masklayer:
             mask, empty = layers.get_layer_mask(obj, masklayer)
@@ -1959,13 +2033,12 @@ class SXTOOLS2_generate(object):
                         vert_ids_to_process.add(vert_id)
         
         elif sxglobals.mode == 'EDIT':
-            vert_sel = [False] * vert_count
-            mesh.vertices.foreach_get('select', vert_sel)
+            vert_sel = utils.get_data(obj, 'vert_select')
             
             if True not in vert_sel:
                 return {}
                 
-            vert_ids_to_process = {indices[i] for i, sel in enumerate(vert_sel) if sel}
+            vert_ids_to_process = {ids[i] for i, sel in enumerate(vert_sel) if sel}
         
         # Create BMesh for dots calculation only if needed
         bm = None
@@ -1977,7 +2050,7 @@ class SXTOOLS2_generate(object):
         
         # Process vertices
         for i in range(vert_count):
-            vert_id = indices[i]
+            vert_id = ids[i]
 
             if not process_all and vert_id not in vert_ids_to_process:
                 continue
@@ -2015,8 +2088,7 @@ class SXTOOLS2_generate(object):
         mask = self.empty_list(obj, 1)
 
         if selected_color is None:
-            pre_check = [None] * len(mesh.vertices)
-            mesh.vertices.foreach_get('select', pre_check)
+            pre_check = utils.get_data(obj, 'vert_select')
             if True not in pre_check:
                 empty = True
             else:
@@ -2282,18 +2354,6 @@ class SXTOOLS2_layers(object):
 
 
     def set_colors(self, obj, target, colors):
-        target_colors = obj.data.color_attributes[target].data
-        target_colors.foreach_set('color', colors)
-        obj.data.update()
-
-
-    def set_alphas(self, obj, target, values):
-        colors = self.get_colors(obj, target)
-        count = len(values)
-        for i in range(count):
-            color = colors[(0+i*4):(4+i*4)]
-            color = [color[0], color[1], color[2], values[i]]
-            colors[(0+i*4):(4+i*4)] = color
         target_colors = obj.data.color_attributes[target].data
         target_colors.foreach_set('color', colors)
         obj.data.update()
@@ -2908,8 +2968,7 @@ class SXTOOLS2_modifiers(object):
                 # a second bevel modifier would need to be added before subdivision modifier
                 if (bpy.context.tool_settings.mesh_select_mode[0]):
                     weight_values = [None] * len(mesh.vertices)
-                    select_values = [None] * len(mesh.vertices)
-                    mesh.vertices.foreach_get('select', select_values)
+                    select_values = utils.get_data(obj, 'vert_select')
 
                     mode_dict = {'CRS': 'crease_vert', 'BEV': 'bevel_weight_vert'}
                     mesh.attributes[mode_dict[setmode]].data.foreach_get('value', weight_values)
@@ -2925,9 +2984,8 @@ class SXTOOLS2_modifiers(object):
                 else:
                     weight_values = [None] * len(mesh.edges)
                     sharp_values = [None] * len(mesh.edges)
-                    select_values = [None] * len(mesh.edges)
                     autocrease_values = [None] * len(mesh.edges)
-                    mesh.edges.foreach_get('select', select_values)
+                    select_values = utils.get_data(obj, 'edge_select')
 
                     mode_dict = {'CRS': 'crease_edge', 'BEV': 'bevel_weight_edge'}
                     mesh.attributes[mode_dict[setmode]].data.foreach_get('value', weight_values)
@@ -3517,10 +3575,8 @@ class SXTOOLS2_export(object):
             utils.mode_manager([obj, ], set_mode=True, mode_id='shrink_hull')
             mesh = obj.data
             vert_count = len(mesh.vertices)
-            normals = [0.0] * (vert_count * 3)
-            mesh.vertices.foreach_get('normal', normals)
-            coords = [0.0] * (vert_count * 3)
-            mesh.vertices.foreach_get('co', coords)
+            normals = utils.get_data(obj, 'normals')
+            coords = utils.get_data(obj, 'coords')
             Vec = Vector
             
             for i in range(vert_count):
@@ -4851,9 +4907,7 @@ class SXTOOLS2_export(object):
         loose_objs = []
         for obj in objs:
             obj.update_from_editmode()
-            mesh = obj.data
-            selection = [None] * len(mesh.vertices)
-            mesh.vertices.foreach_get('select', selection)
+            selection = obj.get_data(obj, 'vert_select')
 
             if True in selection:
                 loose_objs.append(obj.name)
@@ -7152,8 +7206,7 @@ def update_curvature_selection(self, context):
             mesh = obj.data
             vert_count = len(mesh.vertices)
             selection = [False] * vert_count
-            indices = [0] * vert_count
-            mesh.vertices.foreach_get('index', indices)
+            indices = utils.get_data(obj, 'vert_ids')
 
             for i in range(vert_count):
                 selection[i] = abs(vert_curv_dict[indices[i]] - limitvalue) < tolerance
@@ -9884,9 +9937,7 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
                 for obj in objs:
                     if obj.mode == 'EDIT':
                         obj.update_from_editmode()
-                        mesh = obj.data
-                        obj_selection = [None] * len(mesh.vertices)
-                        mesh.vertices.foreach_get('select', obj_selection)
+                        obj_selection = utils.get_data(obj, 'vert_select')
                         selection.extend(obj_selection)
                 # print('selectionmonitor: componentselection ', selection)
 
