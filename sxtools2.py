@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 33),
+    'version': (2, 10, 35),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -669,7 +669,7 @@ class SXTOOLS2_utils(object):
     # SX2Materials are generated according to differentiators combined in per-object mat_ids
     def get_mat_id(self, obj):
         sel_layer = obj.sx2.selectedlayer
-        mat_opaque = True if (self.find_color_layers(obj, 0) is not None) and (self.find_color_layers(obj, 0).opacity == 1.0) else False
+        mat_opaque = True if self.find_color_layers(obj, 0) and (self.find_color_layers(obj, 0).opacity == 1.0) else False
         mat_culling = obj.sx2.backfaceculling
         mat_specular = obj.sx2.mat_specular
         mat_anisotropic = obj.sx2.mat_anisotropic
@@ -699,7 +699,7 @@ class SXTOOLS2_utils(object):
             sxglobals.layer_stack_dict[obj.name] = stack_dict
 
         layer_data = stack_dict.get(index, None)
-        return obj.sx2layers[layer_data[0]] if layer_data is not None else None
+        return obj.sx2layers[layer_data[0]] if layer_data else None
 
 
     def find_layer_index_by_name(self, obj, name):
@@ -718,7 +718,7 @@ class SXTOOLS2_utils(object):
             else:
                 values = generate.mask_list(obj, layers.get_layer(obj, obj.sx2layers[layer_name]), masklayer=masklayer, maskcolor=maskcolor, as_tuple=True)
 
-            if values is not None:
+            if values:
                 color_list += values
 
         if alphavalues:
@@ -730,7 +730,7 @@ class SXTOOLS2_utils(object):
         quantized_colors = [(round_stepped(color[0]), round_stepped(color[1]), round_stepped(color[2]), 1.0) for color in colors]
         sort_list = [color for color, count in Counter(quantized_colors).most_common(numcolors)]
 
-        if numcolors is not None:
+        if numcolors:
             sort_colors = sort_list[:numcolors]
             sort_colors += [[0.0, 0.0, 0.0, 1.0]] * (numcolors - len(sort_colors))
             return sort_colors
@@ -752,7 +752,7 @@ class SXTOOLS2_utils(object):
         color_layers.sort(key=lambda x: x.index)
 
         index_layer = None
-        if index is not None:
+        if index:
             if index <= (len(color_layers) - 1):
                 index_layer = color_layers[index]
 
@@ -773,7 +773,7 @@ class SXTOOLS2_utils(object):
             for child in objs:
                 if child.parent == parent:
                     children.append(child)
-                elif (child.parent is not None) and (child.parent.type == 'ARMATURE') and (child.parent.parent == parent):
+                elif child.parent and (child.parent.type == 'ARMATURE') and (child.parent.parent == parent):
                     children.append(child)
             return children
 
@@ -795,7 +795,7 @@ class SXTOOLS2_utils(object):
         else:
             results = get_children(group)
 
-        if child_type is not None:
+        if child_type:
             results = [child for child in results if child.type == child_type]
 
         return list(dict.fromkeys(results))
@@ -814,9 +814,9 @@ class SXTOOLS2_utils(object):
                 groups.append(obj)
 
             parent = obj.parent
-            if (parent is not None) and (parent.type == 'EMPTY') and (parent.parent is None):
+            if parent and (parent.type == 'EMPTY') and (parent.parent is None):
                 groups.append(obj.parent)
-            elif (parent is not None) and (parent.type == 'ARMATURE') and (parent.parent is not None) and (parent.parent.type == 'EMPTY'):
+            elif parent and (parent.type == 'ARMATURE') and parent.parent and (parent.parent.type == 'EMPTY'):
                 groups.append(parent.parent)
 
         if exportready:
@@ -1049,7 +1049,7 @@ class SXTOOLS2_utils(object):
                     safe_distance = dist
 
         utils.mode_manager([obj, ], set_mode=False, mode_id='find_safe_mesh_offset')
-        return safe_distance if safe_distance is not None else 0
+        return safe_distance if safe_distance else 0
 
 
     def __del__(self):
@@ -1369,7 +1369,7 @@ class SXTOOLS2_generate(object):
                             if getattr(obj.sx2, prop) and (round(coord, 2) == round(bounds[i][j], 2)):
                                 bound_ids = (i, j)
 
-                    if bound_ids is not None:
+                    if bound_ids:
                         numConnected = len(vert.link_edges)
                         if numConnected > 0:
                             angles = []
@@ -1854,7 +1854,7 @@ class SXTOOLS2_generate(object):
             if empty:
                 return None
         # Layer is locked and there is an edit mode component selection
-        elif (masklayer is not None) and (sxglobals.mode == 'EDIT'):
+        elif masklayer and (sxglobals.mode == 'EDIT'):
             mask1, empty = self.get_selection_mask(obj, selected_color=maskcolor)
             if empty:
                 return None
@@ -2162,7 +2162,7 @@ class SXTOOLS2_layers(object):
                     layer = obj.sx2layers.add()
                     layer.name = layer_name
                     if layer_type not in alpha_mats:
-                        layer.color_attribute = color_attribute if color_attribute is not None else layer.name
+                        layer.color_attribute = color_attribute if color_attribute else layer.name
                     else:
                         layer.color_attribute = 'Alpha Materials'
                     layer.layer_type = 'COLOR' if layer_type is None else layer_type
@@ -2277,31 +2277,47 @@ class SXTOOLS2_layers(object):
             variant.name = new_names[i]
 
 
-    # wrapper for low-level functions, always returns layerdata in RGBA
     def get_layer(self, obj, sourcelayer, as_tuple=False, single_as_alpha=False, apply_layer_opacity=False):
-        dv = [1.0, 1.0, 1.0, 1.0]
+        """
+        Wrapper for low-level functions, always returns layerdata in RGBA
+        
+        Args:
+            obj: The object containing the data
+            sourcelayer: Layer to retrieve data from
+            as_tuple: Return colors as a list of tuples instead of flat array
+            single_as_alpha: For alpha_targets, store value in alpha channel instead of RGB
+            apply_layer_opacity: Apply layer opacity to alpha channel
+            
+        Returns:
+            RGBA values as flat array or list of tuples
+        """
+        if sourcelayer is None:
+            values = generate.empty_list(obj, 4)
+        else:
+            layer_type = sourcelayer.layer_type
 
-        if sourcelayer.layer_type in sxglobals.rgba_targets:
-            values = self.get_colors(obj, sourcelayer.color_attribute)
+            if sourcelayer.layer_type in sxglobals.rgba_targets:
+                values = self.get_colors(obj, sourcelayer.color_attribute)
 
-        elif sourcelayer.layer_type in sxglobals.alpha_targets:
-            source_values = self.get_colors(obj, sourcelayer.color_attribute)
-            values = [None] * len(source_values)
-            for i in range(len(source_values)//4):
-                value_slice = source_values[(0+i*4):(4+i*4)]
-                value = value_slice[sxglobals.alpha_targets[sourcelayer.layer_type]]
-                if single_as_alpha:
-                    if value > 0.0:
-                        values[(0+i*4):(4+i*4)] = [dv[0], dv[1], dv[2], value]
+            elif sourcelayer.layer_type in sxglobals.alpha_targets:
+                channel_index = sxglobals.alpha_targets[layer_type]
+                channel_values = self.get_channel(obj, sourcelayer.color_attribute, channel_index)
+                values = [None] * (len(channel_values) * 4)
+
+                for i, value in enumerate(channel_values):
+                    idx = i * 4
+                    if single_as_alpha:
+                        if value > 0.0:
+                            values[idx:idx+4] = [1.0, 1.0, 1.0, value]
+                        else:
+                            values[idx:idx+4] = [0.0, 0.0, 0.0, 0.0]
                     else:
-                        values[(0+i*4):(4+i*4)] = [0.0, 0.0, 0.0, value]
-                else:
-                    values[(0+i*4):(4+i*4)] = [value, value, value, 1.0]
+                        values[idx:idx+4] = [value, value, value, 1.0]
 
-        if apply_layer_opacity and sourcelayer.opacity != 1.0:
-            count = len(values)//4
-            for i in range(count):
-                values[3+i*4] *= sourcelayer.opacity
+            if apply_layer_opacity and sourcelayer.opacity != 1.0:
+                count = len(values)//4
+                for i in range(count):
+                    values[3+i*4] *= sourcelayer.opacity
 
         if as_tuple:
             count = len(values)//4
@@ -2309,7 +2325,6 @@ class SXTOOLS2_layers(object):
             for i in range(count):
                 rgba[i] = tuple(values[(0+i*4):(4+i*4)])
             return rgba
-
         else:
             return values
 
@@ -2319,31 +2334,23 @@ class SXTOOLS2_layers(object):
         target_type = targetlayer.layer_type
 
         if target_type in sxglobals.rgba_targets:
-            layers.set_colors(obj, targetlayer.color_attribute, colors)
+            self.set_colors(obj, targetlayer.color_attribute, colors)
 
         elif target_type in sxglobals.alpha_targets:
-            target_values = self.get_colors(obj, 'Alpha Materials')
-            values = layers.get_luminances(obj, sourcelayer=None, colors=colors, as_rgba=False)
-            for i in range(len(values)):
-                target_values[sxglobals.alpha_targets[target_type]+i*4] = values[i]
-            self.set_colors(obj, 'Alpha Materials', target_values)
+            values = self.get_luminances(obj, sourcelayer=None, colors=colors, as_rgba=False)
+            self.set_channel(obj, 'Alpha Materials', values, sxglobals.alpha_targets[target_type])
 
 
     def get_layer_mask(self, obj, sourcelayer, channel='A'):
-        channel_targets = {'R': 0, 'G': 1, 'B': 2, 'A': 3}
         layer_type = sourcelayer.layer_type
 
         if layer_type in sxglobals.rgba_targets:
-            colors = self.get_colors(obj, sourcelayer.color_attribute)
-            values = colors[channel_targets[channel]::4]
+            values = self.get_channel(obj, sourcelayer.color_attribute, channel)
         elif layer_type in sxglobals.alpha_targets:
-            colors = self.get_colors(obj, sourcelayer.color_attribute)
-            values = colors[sxglobals.alpha_targets[layer_type]::4]
-
-        if any(v != 0.0 for v in values):
-            return values, False
-        else:
-            return values, True
+            values = self.get_channel(obj, sourcelayer.color_attribute, sxglobals.alpha_targets[sourcelayer.layer_type])
+        
+        empty = not any(v != 0.0 for v in values)
+        return values, empty
 
 
     def get_colors(self, obj, source_name):
@@ -2359,9 +2366,51 @@ class SXTOOLS2_layers(object):
         obj.data.update()
 
 
-    def set_channel(self, obj, target, values, channel):
+    def get_channel(self, obj, color_attribute, channel):
+        """
+        Get a specific channel from a color attribute.
+        
+        Args:
+            obj: The object containing the color attribute
+            color_attribute: Name of the color attribute
+            channel: Index (0-3) or name ('R','G','B','A') of the channel
+        
+        Returns:
+            List of channel values
+        """
         channel_dict = {'R': 0, 'G': 1, 'B': 2, 'A': 3}
-        source_index = channel_dict[channel]
+        
+        # Handle both numeric and string channel inputs
+        if isinstance(channel, int) and 0 <= channel <= 3:
+            source_index = channel
+        elif isinstance(channel, str) and channel in channel_dict:
+            source_index = channel_dict[channel]
+        else:
+            raise ValueError(f"Invalid channel: {channel}. Must be 0-3 or 'R', 'G', 'B', 'A'")
+        
+        colors = self.get_colors(obj, color_attribute)
+        return colors[source_index::4]
+
+
+    def set_channel(self, obj, target, values, channel):
+        """
+        Set values for a specific color channel in a target color attribute
+        
+        Args:
+            obj: The object containing the color attribute
+            target: The name of the color attribute to modify
+            values: List of float values to set
+            channel: Channel to modify, either integer index (0-3) or string ('R', 'G', 'B', 'A')
+        """
+        channel_dict = {'R': 0, 'G': 1, 'B': 2, 'A': 3}
+        
+        if isinstance(channel, int) and 0 <= channel <= 3:
+            source_index = channel
+        elif isinstance(channel, str) and channel in channel_dict:
+            source_index = channel_dict[channel]
+        else:
+            raise ValueError(f"Invalid channel: {channel}. Must be 0-3 or 'R', 'G', 'B', 'A'")
+        
         colors = self.get_colors(obj, target)
         for i, value in enumerate(values):
             colors[i*4+source_index] = value
@@ -2372,7 +2421,7 @@ class SXTOOLS2_layers(object):
 
     def get_luminances(self, obj, sourcelayer=None, colors=None, as_rgba=False, as_alpha=False):
         if colors is None:
-            if sourcelayer is not None:
+            if sourcelayer:
                 colors = self.get_layer(obj, sourcelayer)
             else:
                 colors = generate.empty_list(obj, 4)
@@ -2821,7 +2870,7 @@ class SXTOOLS2_tools(object):
                         if layer.paletted:
                             source_colors = layers.get_layer(obj, layer)
                             colors = generate.color_list(obj, palette[layer.palette_index], masklayer=layer)
-                            if colors is not None:
+                            if colors:
                                 values = tools.blend_values(colors, source_colors, 'PAL', obj.sx2.palettedshading)
                                 layers.set_layer(obj, values, layer)
 
@@ -3078,7 +3127,7 @@ class SXTOOLS2_modifiers(object):
                 obj.modifiers['sxMirror'].use_axis[0] = obj.sx2.xmirror
                 obj.modifiers['sxMirror'].use_axis[1] = obj.sx2.ymirror
                 obj.modifiers['sxMirror'].use_axis[2] = obj.sx2.zmirror
-                obj.modifiers['sxMirror'].mirror_object = obj.sx2.mirrorobject if obj.sx2.mirrorobject is not None else None
+                obj.modifiers['sxMirror'].mirror_object = obj.sx2.mirrorobject if obj.sx2.mirrorobject else None
                 obj.modifiers['sxMirror'].use_clip = True
                 obj.modifiers['sxMirror'].use_mirror_merge = True
 
@@ -3403,11 +3452,11 @@ class SXTOOLS2_export(object):
                 zmirror = obj.sx2.zmirror
                 org_pivot = obj.matrix_world.to_translation()
 
-                if ('sxMirror' in obj.modifiers) and (obj.modifiers['sxMirror'].mirror_object is not None):
+                if ('sxMirror' in obj.modifiers) and obj.modifiers['sxMirror'].mirror_object:
                     ref_loc = obj.modifiers['sxMirror'].mirror_object.matrix_world.to_translation()
                     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
                     bpy.ops.object.modifier_apply(modifier='sxMirror')
-                elif obj.sx2.mirrorobject is not None:
+                elif obj.sx2.mirrorobject:
                     ref_loc = obj.sx2.mirrorobject.matrix_world.to_translation()
                 else:
                     ref_loc = obj.matrix_world.to_translation()
@@ -3782,7 +3831,7 @@ class SXTOOLS2_export(object):
                         low_ratio = mid_ratio
                 
                 # If we've found a valid collapse ratio that preserves shape and meets triangle target
-                if best_ratio is not None:
+                if best_ratio:
                     collapse_ratio = best_ratio
                     if scene.benchmark_cvx:
                         print(f"SX Tools: Collapse phase - Selected ratio {collapse_ratio:.3f}, triangles: {best_collapse_tri_count}, shape score: {best_collapse_score:.4f}")
@@ -4638,7 +4687,7 @@ class SXTOOLS2_export(object):
             bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_VOLUME', center='MEDIAN')
             if force:
                 pivot_loc = obj.matrix_world.to_translation()
-                if obj.sx2.mirrorobject is not None:
+                if obj.sx2.mirrorobject:
                     mirror_pivot_loc = obj.sx2.mirrorobject.matrix_world.to_translation()
                 else:
                     mirror_pivot_loc = (0.0, 0.0, 0.0)
@@ -4655,7 +4704,7 @@ class SXTOOLS2_export(object):
             bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
             if force:
                 pivot_loc = obj.matrix_world.to_translation()
-                if obj.sx2.mirrorobject is not None:
+                if obj.sx2.mirrorobject:
                     mirror_pivot_loc = obj.sx2.mirrorobject.matrix_world.to_translation()
                 else:
                     mirror_pivot_loc = (0.0, 0.0, 0.0)
@@ -5450,8 +5499,9 @@ class SXTOOLS2_magic(object):
         # Apply Gradient1 to roughness and metallic
         for obj in objs:
             obj.sx2layers['Gradient1'].opacity = 1.0
-            colors = layers.get_layer(obj, obj.sx2layers['Gradient1'])
-            if colors is not None:
+            mask, empty = layers.get_layer_mask(obj, obj.sx2layers['Gradient1'])
+            if not empty:
+                colors = layers.get_layer(obj, obj.sx2layers['Gradient1'])
                 scene.toolmode = 'COL'
                 scene.toolopacity = 1.0
                 scene.toolblend = 'ALPHA'
@@ -5460,8 +5510,9 @@ class SXTOOLS2_magic(object):
 
         # Emissive road paint
         for obj in objs:
-            colors = layers.get_layer(obj, obj.sx2layers['Layer 2 - Paint'])
-            if colors is not None:
+            mask, empty = layers.get_layer_mask(obj, obj.sx2layers['Layer 2 - Paint'])
+            if not empty:
+                colors = layers.get_layer(obj, obj.sx2layers['Layer 2 - Paint'])
                 layers.set_layer(obj, colors, obj.sx2layers['Emission'])
 
         # Emissives are smooth
@@ -5536,8 +5587,8 @@ class SXTOOLS2_magic(object):
 
             # Mix metallic with occlusion (dirt in crevices)
             colors = generate.color_list(obj, color=palette[1], masklayer=utils.find_color_layers(obj, 6))
-            colors1 = layers.get_layer(obj, obj.sx2layers['Occlusion'], single_as_alpha=True)
-            if colors is not None:
+            if colors:
+                colors1 = layers.get_layer(obj, obj.sx2layers['Occlusion'], single_as_alpha=True)
                 colors = tools.blend_values(colors1, colors, 'MUL', 1.0)
                 layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
 
@@ -5599,8 +5650,8 @@ class SXTOOLS2_magic(object):
 
             # Mix metallic with occlusion (dirt in crevices)
             colors = generate.color_list(obj, color=palette[1], masklayer=utils.find_color_layers(obj, 6))
-            colors1 = layers.get_layer(obj, obj.sx2layers['Occlusion'])  # , single_as_alpha=True)
-            if colors is not None:
+            if colors:
+                colors1 = layers.get_layer(obj, obj.sx2layers['Occlusion'])  # , single_as_alpha=True)
                 colors = tools.blend_values(colors1, colors, 'MUL', 1.0)
                 layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
 
@@ -5681,17 +5732,17 @@ class SXTOOLS2_magic(object):
 
             # Apply PBR metal based on layer7
             colors = generate.color_list(obj, color=palette[0], masklayer=utils.find_color_layers(obj, 6))
-            if colors is not None:
+            if colors:
                 layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
 
             # Windows are smooth and emissive
             colors = generate.color_list(obj, color=(0.0, 0.0, 0.0, 1.0), masklayer=utils.find_color_layers(obj, 6))
             base = layers.get_layer(obj, obj.sx2layers['Roughness'])
             colors = tools.blend_values(colors, base, 'ALPHA', 1.0)
-            if colors is not None:
+            if colors:
                 layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
             emission_base = generate.color_list(obj, color=(1.0, 1.0, 1.0, 1.0), masklayer=utils.find_color_layers(obj, 6))
-            if emission_base is not None:
+            if emission_base:
                 layers.set_layer(obj, emission_base, obj.sx2layers['Emission'])
                 emission = generate.emission_list(obj, 200)
                 layers.set_layer(obj, emission, obj.sx2layers['Emission'])
@@ -6547,7 +6598,7 @@ class SXTOOLS2_setup(object):
             # Get all objects in the scene with sx2 data
             sx2_objs = []
             for obj in context.view_layer.objects:
-                if (obj is not None) and (obj.type == 'MESH') and ('sx2layers' in obj.keys()):
+                if obj and (obj.type == 'MESH') and ('sx2layers' in obj.keys()):
                     sx2_objs.append(obj)
 
             sx2_objs = list(set(sx2_objs))
@@ -6779,7 +6830,7 @@ def update_paletted_layers(self, context, index):
     for obj in objs:
         # If update_paletted_layers is called during object category change, materials may not exist
         mat_name = utils.find_sx2material_name(obj)
-        if (mat_name is not None) and ((obj.sx2.shadingmode == 'FULL') or (obj.sx2.shadingmode == 'XRAY')):
+        if mat_name and ((obj.sx2.shadingmode == 'FULL') or (obj.sx2.shadingmode == 'XRAY')):
             for layer in obj.sx2layers:
                 if layer.paletted:
                     color = getattr(scene, 'newpalette'+str(layer.palette_index))
@@ -6917,12 +6968,12 @@ def update_modifiers(self, context, prop):
                         obj.modifiers['sxMirror'].use_axis[1] = obj.sx2.ymirror
                         obj.modifiers['sxMirror'].use_axis[2] = obj.sx2.zmirror
 
-                        if obj.sx2.mirrorobject is not None:
+                        if obj.sx2.mirrorobject:
                             obj.modifiers['sxMirror'].mirror_object = obj.sx2.mirrorobject
                         else:
                             obj.modifiers['sxMirror'].mirror_object = None
 
-                        if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror or (obj.sx2.mirrorobject is not None):
+                        if obj.sx2.xmirror or obj.sx2.ymirror or obj.sx2.zmirror or obj.sx2.mirrorobject:
                             obj.modifiers['sxMirror'].show_viewport = True
                         else:
                             obj.modifiers['sxMirror'].show_viewport = False
@@ -9916,7 +9967,7 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
                 sxglobals.mode = current_mode
 
         objs = mesh_selection_validator(self, context)
-        if (len(objs) == 0) and (context.active_object is not None) and (context.object.mode == 'EDIT'):
+        if (len(objs) == 0) and context.active_object and (context.object.mode == 'EDIT'):
             objs = [obj for obj in context.objects_in_mode if obj.type == 'MESH']
             if objs:
                 for obj in objs:
@@ -12155,7 +12206,7 @@ class SXTOOLS2_OT_sxtosx2(bpy.types.Operator):
                     hardmode_dict = {0: 'SHARP', 1: 'SMOOTH'}
                     obj.sx2.hardmode = hardmode_dict[obj['sxtools'].get('hardmode', 0)]
                     obj.sx2.staticvertexcolors = str(obj['sxtools'].get('staticvertexcolors', 1))
-                    if obj.parent is not None:
+                    if obj.parent:
                         obj.parent.sx2.exportready = obj.parent['sxtools'].get('exportready', False)
 
                     count = len(obj.data.color_attributes)
