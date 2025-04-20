@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 35),
+    'version': (2, 10, 36),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4577,12 +4577,17 @@ class SXTOOLS2_export(object):
     def generate_uv_channels(self, objs):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         for obj in objs:
+            category_key = sxglobals.preset_lookup[obj.sx2.category]
+            category_data = sxglobals.category_dict[category_key]
+
             for layer in obj.sx2layers:
                 if (layer.layer_type == 'CMP') or (layer.layer_type == 'CID'):
-                    pass
-                elif layer.layer_type != 'COLOR':
-                    channel_name = 'uv_' + layer.name.lower()
-                    uvmap, target_channel = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]][channel_name]
+                    continue
+
+                channel_name = 'uv_' + layer.name.lower()
+
+                if layer.layer_type != 'COLOR':
+                    uvmap, target_channel = category_data[channel_name]
 
                     # Take layer opacity into account
                     values = layers.get_luminances(obj, layer)
@@ -4598,8 +4603,7 @@ class SXTOOLS2_export(object):
                     layers.set_uvs(obj, uvmap, values, target_channel)
 
                 elif 'Gradient' in layer.name:
-                    channel_name = 'uv_' + layer.name.lower()
-                    uvmap, target_channel = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]][channel_name]
+                    uvmap, target_channel = category_data[channel_name]
 
                     values, empty = layers.get_layer_mask(obj, layer)
                     if not empty:
@@ -4608,8 +4612,7 @@ class SXTOOLS2_export(object):
                     layers.set_uvs(obj, uvmap, values, target_channel)
 
                 elif layer.name == 'Overlay':
-                    channel_name = 'uv_' + layer.name.lower()
-                    target0, target1 = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]][channel_name]
+                    target0, target1 = category_data[channel_name]
                     colors = layers.get_layer(obj, obj.sx2layers['Overlay'])
                     gray = generate.color_list(obj, (0.5, 0.5, 0.5, 1.0))
                     colors = tools.blend_values(colors, gray, 'ALPHA', obj.sx2layers['Overlay'].opacity)
@@ -5801,6 +5804,36 @@ class SXTOOLS2_magic(object):
         print('SX Tools: Exiting magic')
 
 
+class SXTOOLS2_macro_executor:
+    def __init__(self):
+        self.operation_map = {
+            "palette_override": self.apply_palette_overrides,
+            "occlusion": self.apply_occlusion,
+            "curvature_overlay": self.apply_curvature_overlay,
+            "set_material": self.apply_material,
+            "set_emission": self.apply_emission,
+            "apply_gradient": self.apply_gradient,
+            # Add more operations as needed
+        }
+    
+    def execute_category_macro(self, objs, category_name):
+        """Execute a category processing macro on objects"""
+        macro = self.get_category_macro(category_name)
+        if not macro:
+            return False
+        
+        for step in macro["steps"]:
+            operation = step["operation"]
+            params = step["params"]
+            
+            if operation in self.operation_map:
+                self.operation_map[operation](objs, **params)
+            else:
+                print(f"SX Tools Warning: Unknown operation '{operation}' in macro")
+        
+        return True
+
+
 # ------------------------------------------------------------------------
 #    Scene Setup
 # ------------------------------------------------------------------------
@@ -6744,11 +6777,12 @@ def mesh_selection_validator(self, context):
     mesh_objs = []
     for obj in context.view_layer.objects.selected:
         if obj is None:
-            pass
+            continue
         elif (obj.type == 'MESH') and (obj.hide_viewport is False):
             mesh_objs.append(obj)
         elif obj.type == 'ARMATURE':
-            mesh_objs += utils.find_children(obj, recursive=True, child_type='MESH')
+            children = utils.find_children(obj, recursive=True, child_type='MESH')
+            mesh_objs += [child for child in children if not child.hide_viewport]
 
     return list(set(mesh_objs))
 
@@ -8130,6 +8164,70 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
         size=3)
 
 
+# Add this class before SXTOOLS2_sceneprops
+
+class SXTOOLS2_operation_props(bpy.types.PropertyGroup):
+    operation_type: bpy.props.StringProperty(
+        name="Operation Type",
+        description="Type of macro operation",
+        default=""
+    )
+    
+    # Common parameters
+    masklayer: bpy.props.StringProperty(
+        name="Mask Layer",
+        description="Layer to use as a mask",
+        default=""
+    )
+    
+    # Palette override parameters
+    clear: bpy.props.BoolProperty(
+        name="Clear Existing",
+        description="Clear existing overrides before applying new ones",
+        default=False
+    )
+    
+    # Occlusion parameters
+    blend: bpy.props.FloatProperty(
+        name="Blend Amount",
+        description="Blend between self-occlusion and scene contribution",
+        min=0.0,
+        max=1.0,
+        default=0.5
+    )
+    distance: bpy.props.FloatProperty(
+        name="Ray Distance",
+        description="Maximum distance for occlusion rays",
+        min=0.1,
+        max=100.0,
+        default=10.0
+    )
+    groundplane: bpy.props.BoolProperty(
+        name="Use Ground Plane",
+        description="Enable temporary ground plane for occlusion",
+        default=True
+    )
+    
+    # Curvature overlay parameters
+    convex: bpy.props.BoolProperty(
+        name="Normalize Convex",
+        description="Normalize convex curvature values",
+        default=True
+    )
+    concave: bpy.props.BoolProperty(
+        name="Normalize Concave", 
+        description="Normalize concave curvature values",
+        default=True
+    )
+    noise: bpy.props.FloatProperty(
+        name="Noise Amount",
+        description="Amount of noise to add to curvature",
+        min=0.0,
+        max=1.0,
+        default=0.01
+    )
+
+
 class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
 
     benchmark_modifiers: bpy.props.BoolProperty(
@@ -8726,6 +8824,24 @@ class SXTOOLS2_sceneprops(bpy.types.PropertyGroup):
 
     exportcolliders: bpy.props.BoolProperty(
         name='Export Mesh Colliders',
+        default=False)
+
+    # Macro system properties
+    current_macro_category: bpy.props.StringProperty(
+        name='Current Macro Category',
+        description='Currently selected macro category',
+        default='')
+        
+    current_operation_props: bpy.props.PointerProperty(
+        type=SXTOOLS2_operation_props,
+        name='Current Operation Properties')
+        
+    macro_categories: bpy.props.CollectionProperty(
+        type=bpy.types.PropertyGroup,
+        name='Macro Categories')
+        
+    expand_macro_editor: bpy.props.BoolProperty(
+        name='Expand Macro Editor',
         default=False)
 
 
@@ -9878,6 +9994,92 @@ class SXTOOLS2_preferences(bpy.types.AddonPreferences):
         layout_split11.prop(self, 'cataloguepath', text='')
 
         bpy.context.preferences.filepaths.use_relative_paths = not self.absolutepaths
+
+
+class SXTOOLS2_PT_operation_params(bpy.types.Panel):
+    bl_label = "Operation Parameters"
+    bl_idname = "SXTOOLS2_PT_operation_params"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "SX Tools 2"
+    
+    def draw(self, context):
+        layout = self.layout
+        op_props = context.scene.sx2.current_operation_props
+        
+        if not op_props.operation_type:
+            layout.label(text="No operation selected")
+            return
+        
+        if op_props.operation_type == "palette_override":
+            layout.prop(op_props, "clear", text="Clear Existing")
+        
+        elif op_props.operation_type == "occlusion":
+            layout.prop(op_props, "masklayer", text="Mask Layer")
+            layout.prop(op_props, "blend", text="Blend Amount")
+            layout.prop(op_props, "distance", text="Ray Distance")
+            layout.prop(op_props, "groundplane", text="Use Ground Plane")
+            
+        elif op_props.operation_type == "curvature_overlay":
+            layout.prop(op_props, "convex", text="Normalize Convex")
+            layout.prop(op_props, "concave", text="Normalize Concave")
+            layout.prop(op_props, "noise", text="Noise Amount")
+                
+        # Add more parameter editors for other operation types
+
+
+class SXTOOLS2_PT_category_macro_editor(bpy.types.Panel):
+    bl_label = "Category Macro Editor"
+    bl_idname = "SXTOOLS2_PT_category_macro_editor"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "SX Tools 2"
+    
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene.sx2
+        
+        # Category selection
+        row = layout.row()
+        row.prop(scene, "current_macro_category", text="Category")
+        
+        # New category button
+        row = layout.row(align=True)
+        row.operator("sx2.new_category_macro", text="New")
+        row.operator("sx2.duplicate_category_macro", text="Duplicate")
+        row.operator("sx2.delete_category_macro", text="Delete")
+        
+        # Show macro operations
+        if scene.current_macro_category:
+            box = layout.box()
+            row = box.row()
+            row.label(text="Operations")
+            
+            # List operations in this macro
+            for i, op in enumerate(scene.macro_operations):
+                row = box.row(align=True)
+                row.prop(op, "operation_type", text="")
+                row.operator("sx2.edit_macro_operation", text="", icon='PREFERENCES').index = i
+                row.operator("sx2.remove_macro_operation", text="", icon='X').index = i
+                
+                # Up/down buttons
+                if i > 0:
+                    row.operator("sx2.move_macro_operation", text="", icon='TRIA_UP').direction = 'UP'
+                if i < len(scene.macro_operations) - 1:
+                    row.operator("sx2.move_macro_operation", text="", icon='TRIA_DOWN').direction = 'DOWN'
+            
+            # Add operation button
+            row = box.row()
+            row.operator("sx2.add_macro_operation", text="Add Operation")
+            
+            # Import/Export buttons
+            row = layout.row(align=True)
+            row.operator("sx2.import_category_macro", text="Import")
+            row.operator("sx2.export_category_macro", text="Export")
+            
+            # Save button
+            row = layout.row()
+            row.operator("sx2.save_category_macro", text="Save Macro")
 
 
 class SXTOOLS2_MT_piemenu(bpy.types.Menu):
@@ -12431,6 +12633,48 @@ class SXTOOLS2_OT_exportatlases(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class SXTOOLS2_OT_new_category_macro(bpy.types.Operator):
+    bl_idname = 'sx2.new_category_macro'
+    bl_label = 'New Category Macro'
+    bl_description = 'Create a new category macro'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    name: bpy.props.StringProperty(
+        name="Name",
+        description="Name of the new macro category",
+        default="New Macro")
+        
+    def execute(self, context):
+        # Add implementation here
+        self.report({'INFO'}, f"Created new macro category: {self.name}")
+        return {'FINISHED'}
+    
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+class SXTOOLS2_OT_duplicate_category_macro(bpy.types.Operator):
+    bl_idname = 'sx2.duplicate_category_macro'
+    bl_label = 'Duplicate Category Macro'
+    bl_description = 'Duplicate the current category macro'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        # Add implementation here
+        self.report({'INFO'}, "Duplicated category macro")
+        return {'FINISHED'}
+
+class SXTOOLS2_OT_delete_category_macro(bpy.types.Operator):
+    bl_idname = 'sx2.delete_category_macro'
+    bl_label = 'Delete Category Macro'
+    bl_description = 'Delete the current category macro'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        # Add implementation here
+        self.report({'INFO'}, "Deleted category macro")
+        return {'FINISHED'}
+
+
 class SXTOOLS2_OT_testbutton(bpy.types.Operator):
     bl_idname = 'sx2.testbutton'
     bl_label = 'Test Button'
@@ -12459,6 +12703,7 @@ export = SXTOOLS2_export()
 magic = SXTOOLS2_magic()
 
 core_classes = (
+    SXTOOLS2_operation_props,
     SXTOOLS2_objectprops,
     SXTOOLS2_sceneprops,
     SXTOOLS2_layerprops,
@@ -12468,6 +12713,8 @@ core_classes = (
     SXTOOLS2_rampcolor,
     SXTOOLS2_PT_panel,
     SXTOOLS2_UL_layerlist,
+    SXTOOLS2_PT_operation_params,
+    SXTOOLS2_PT_category_macro_editor,
     SXTOOLS2_MT_piemenu,
     SXTOOLS2_OT_selectionmonitor,
     SXTOOLS2_OT_keymonitor,
@@ -12536,6 +12783,9 @@ export_classes = (
     SXTOOLS2_OT_generate_emission_meshes,
     SXTOOLS2_OT_generatemasks,
     SXTOOLS2_OT_resetscene,
+    SXTOOLS2_OT_new_category_macro,
+    SXTOOLS2_OT_duplicate_category_macro,
+    SXTOOLS2_OT_delete_category_macro,
     SXTOOLS2_OT_testbutton,
     SXTOOLS2_OT_sxtosx2,
     SXTOOLS2_OT_exportatlases)
