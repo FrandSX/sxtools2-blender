@@ -1793,17 +1793,25 @@ class SXTOOLS2_generate(object):
         for modifier in obj.modifiers:
             modifier.show_viewport = False
 
+        mesh = obj.data
         hemi_up = Vec((0.0, 0.0, 1.0))
         vert_dict = self.vertex_data_dict(obj, masklayer, dots=False)
         face_colors = calculate_face_colors(obj)
         original_emissive_vertex_colors = {}
-        original_emissive_vertex_face_count = [0] * len(obj.data.vertices)
+        original_emissive_vertex_face_count = [0] * len(mesh.vertices)
         dist = max(utils.get_object_bounding_box([obj, ], mode='local')) * 5
         bias = 0.001
 
         get_item = original_emissive_vertex_colors.get
-        for face in obj.data.polygons:
-            color = face_colors[face.index]
+        face_data = {}
+        for face in mesh.polygons:
+            idx = face.index
+            face_normal = face.normal
+            vertices = [mesh.vertices[face_vert_id].co for face_vert_id in face.vertices]
+            face_center = sum(vertices, Vec()) / len(vertices) + (bias * face_normal)
+            face_data[idx] = (face_center, face_normal, hemi_up.rotation_difference(face_normal))
+
+            color = face_colors[idx]
             if color.length > 0:
                 for vert_idx in face.vertices:
                     vert_color = get_item(vert_idx, Vec((0.0, 0.0, 0.0, 0.0)))
@@ -1814,14 +1822,12 @@ class SXTOOLS2_generate(object):
         hemisphere = self.ray_randomizer(raycount)
         contribution = 1.0 / float(raycount)
         for i in range(10):
-            for j, face in enumerate(obj.data.polygons):
+            for j, face in enumerate(mesh.polygons):
                 face_emission = Vec((0.0, 0.0, 0.0, 0.0))
-                vertices = [obj.data.vertices[face_vert_id].co for face_vert_id in face.vertices]
-                face_center = (sum(vertices, Vec()) / len(vertices)) + (bias * face.normal)
-                rotQuat = hemi_up.rotation_difference(face.normal)
+                face_center, face_normal, rot_quat = face_data[face.index]
 
                 for sample, _ in hemisphere:
-                    sample_ray = rotQuat @ sample
+                    sample_ray = rot_quat @ sample
                     hit, _, hit_normal, hit_face_index = obj.ray_cast(face_center, sample_ray, distance=dist)
                     if hit and (hit_normal.dot(sample_ray) < 0):
                         face_color = face_colors[hit_face_index].copy()
@@ -1850,7 +1856,7 @@ class SXTOOLS2_generate(object):
                 if len(vertex_faces[vert_idx]) > 0:
                     vertex_colors[vert_idx] = color_sum / len(vertex_faces[vert_idx])
 
-        for loop in obj.data.loops:
+        for loop in mesh.loops:
             vert_idx = loop.vertex_index
             loop_idx = loop.index
             vert_emission_list[(0+loop_idx*4):(4+loop_idx*4)] = vertex_colors[vert_idx]
