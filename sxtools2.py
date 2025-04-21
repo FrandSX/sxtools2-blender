@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 36),
+    'version': (2, 10, 37),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1247,17 +1247,6 @@ class SXTOOLS2_generate(object):
 
     def blur_list(self, obj, layer, masklayer=None, returndict=False):
         Vec = Vector
-
-        def average_color(colors):
-            if not colors:
-                return Vec((0.0, 0.0, 0.0, 0.0))
-            
-            sum_color = Vec((0.0, 0.0, 0.0, 0.0))
-            for color in colors:
-                sum_color += color
-            return sum_color / len(colors)
-
-
         color_dict = {}
         vert_blur_dict = {}
         mesh = obj.data
@@ -1267,35 +1256,72 @@ class SXTOOLS2_generate(object):
 
         colors = layers.get_layer(obj, layer)
         for vert in bm.verts:
-            loop_colors = []
-            for loop in vert.link_loops:
-                loop_color = Vec(colors[(loop.index*4):(loop.index*4+4)])
-                loop_colors.append(loop_color)
+            if not vert.link_loops:
+                color_dict[vert.index] = Vec((0.0, 0.0, 0.0, 0.0))
+                continue
+
+            avg_r = avg_g = avg_b = avg_a = 0.0
+            loop_count = 0
             
-            color_dict[vert.index] = average_color(loop_colors)
+            for loop in vert.link_loops:
+                idx = loop.index * 4
+                avg_r += colors[idx]
+                avg_g += colors[idx+1]
+                avg_b += colors[idx+2]
+                avg_a += colors[idx+3]
+                loop_count += 1
+                
+            color_dict[vert.index] = Vec((
+                avg_r/loop_count, 
+                avg_g/loop_count, 
+                avg_b/loop_count, 
+                avg_a/loop_count
+            ))
 
         for vert in bm.verts:
             num_connected = len(vert.link_edges)
-            if num_connected > 0:
-                edge_weights = [(edge.other_vert(vert).co - vert.co).length for edge in vert.link_edges]
-                max_weight = max(edge_weights)
-                if (max_weight == 0):
-                    vert_blur_dict[vert.index] = color_dict[vert.index]
-                    continue
-                else:
-                    edge_weights = [weight if (weight > 0) else max_weight for weight in edge_weights]
-
-                    # weights are inverted so near colors are more important
-                    edge_weights = [int((1.1 - (weight / max_weight)) * 10) for weight in edge_weights]
-
-                    neighbor_colors = [Vec(color_dict[vert.index])] * 20
-                    for i, edge in enumerate(vert.link_edges):
-                        for j in range(edge_weights[i]):
-                            neighbor_colors.append(Vec(color_dict[edge.other_vert(vert).index]))
-
-                    vert_blur_dict[vert.index] = average_color(neighbor_colors)
-            else:
+            if num_connected == 0:
                 vert_blur_dict[vert.index] = color_dict[vert.index]
+                continue
+
+            # Calculate weights based on edge lengths
+            edge_weights = []
+            neighbor_indices = []
+            
+            for edge in vert.link_edges:
+                other_vert = edge.other_vert(vert)
+                weight = (other_vert.co - vert.co).length
+                edge_weights.append(weight)
+                neighbor_indices.append(other_vert.index)
+
+            # Handle zero-length edges
+            max_weight = max(edge_weights)
+            if max_weight == 0:
+                vert_blur_dict[vert.index] = color_dict[vert.index]
+                continue
+
+            # Give current vertex a fixed weight of 2.0
+            total_weight = 2.0
+            sum_r = color_dict[vert.index][0] * 2.0
+            sum_g = color_dict[vert.index][1] * 2.0
+            sum_b = color_dict[vert.index][2] * 2.0
+            sum_a = color_dict[vert.index][3] * 2.0
+            
+            for i, neighbor_idx in enumerate(neighbor_indices):
+                # Invert weight so closer vertices have higher weights
+                # Normalize to 0-1 range and apply smoothly
+                w = 1.0 - min(edge_weights[i] / max_weight, 1.0)
+                w = w * w  # Square for smoother falloff
+                
+                neighbor_color = color_dict[neighbor_idx]
+                sum_r += neighbor_color[0] * w
+                sum_g += neighbor_color[1] * w
+                sum_b += neighbor_color[2] * w
+                sum_a += neighbor_color[3] * w
+                total_weight += w
+            
+            # Store weighted average
+            vert_blur_dict[vert.index] = Vec((sum_r, sum_g, sum_b, sum_a)) / total_weight
 
         bm.free()
 
