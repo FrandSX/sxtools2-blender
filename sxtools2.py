@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 38),
+    'version': (2, 10, 41),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -761,7 +761,13 @@ class SXTOOLS2_utils(object):
 
     def find_root_pivot(self, objs):
         xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box(objs)
-        pivot = ((xmax + xmin)*0.5, (ymax + ymin)*0.5, zmin)
+        pivot = Vector(((xmax + xmin)*0.5, (ymax + ymin)*0.5, zmin))
+        return pivot
+
+
+    def find_center_pivot(self, objs):
+        xmin, xmax, ymin, ymax, zmin, zmax = self.get_object_bounding_box(objs)
+        pivot = Vector(((xmax + xmin)*0.5, (ymax + ymin)*0.5, (zmax + zmin)*0.5))
         return pivot
 
 
@@ -1750,24 +1756,26 @@ class SXTOOLS2_generate(object):
         return result
 
 
-    def emission_list(self, obj, raycount=250, masklayer=None):
+    def emission_list(self, obj, raycount=50, masklayer=None):
         Vec = Vector
 
         def calculate_face_colors(obj):
             colors = layers.get_layer(obj, obj.sx2layers['Emission'], as_tuple=True)
-            face_colors = [None] * len(obj.data.polygons)
+            face_colors = [Vec((0.0, 0.0, 0.0, 0.0))] * len(obj.data.polygons)
 
             for face in obj.data.polygons:
                 face_color = Vec((0.0, 0.0, 0.0, 0.0))
-                has_emission = False
                 loop_count = len(face.loop_indices)
 
+                has_emission = False
                 for loop_index in face.loop_indices:
                     loop_color = Vec(colors[loop_index])
                     if loop_color[3] > 0.0:
-                        face_color += Vec(colors[loop_index])
+                        face_color += loop_color
                         has_emission = True
-                face_colors[face.index] = face_color / loop_count if has_emission else face_color
+
+                if has_emission:
+                    face_colors[face.index] = face_color / loop_count
 
             return face_colors
 
@@ -1795,7 +1803,6 @@ class SXTOOLS2_generate(object):
 
         mesh = obj.data
         hemi_up = Vec((0.0, 0.0, 1.0))
-        vert_dict = self.vertex_data_dict(obj, masklayer, dots=False)
         face_colors = calculate_face_colors(obj)
         original_emissive_vertex_colors = {}
         original_emissive_vertex_face_count = [0] * len(mesh.vertices)
@@ -1838,11 +1845,11 @@ class SXTOOLS2_generate(object):
                     face_colors[j] = face_emission.copy()
 
         # Pass 2: Average face colors to vertices
-        vertex_colors = [Vec((0, 0, 0, 0)) for _ in obj.data.vertices]
-        vertex_faces = [[] for _ in obj.data.vertices]
+        vertex_colors = [Vec((0, 0, 0, 0)) for _ in mesh.vertices]
+        vertex_faces = [[] for _ in mesh.vertices]
         vert_emission_list = self.empty_list(obj, 4)
 
-        for face in obj.data.polygons:
+        for face in mesh.polygons:
             color = face_colors[face.index]
             if color.length > 0:
                 for vert_idx in face.vertices:
@@ -2007,31 +2014,42 @@ class SXTOOLS2_generate(object):
     def vert_dict_to_loop_list(self, obj, vert_dict, dictchannelcount, listchannelcount):
         loop_list = self.empty_list(obj, listchannelcount)
         loop_ids = utils.get_data(obj, 'loop_ids')
-        
+
         if dictchannelcount < listchannelcount:
             if (dictchannelcount == 1) and (listchannelcount == 2):
                 for loop_idx, vert_idx in enumerate(loop_ids):
                     value = vert_dict.get(vert_idx, 0.0)
-                    loop_list[(loop_idx*2):(loop_idx*2+2)] = [value, value]
+                    base_idx = loop_idx * 2
+                    loop_list[base_idx] = value
+                    loop_list[base_idx+1] = value
                     
             elif (dictchannelcount == 1) and (listchannelcount == 4):
                 for loop_idx, vert_idx in enumerate(loop_ids):
                     value = vert_dict.get(vert_idx, 0.0)
-                    loop_list[(loop_idx*4):(loop_idx*4+4)] = [value, value, value, 1.0]
+                    base_idx = loop_idx * 4
+                    loop_list[base_idx] = value
+                    loop_list[base_idx+1] = value
+                    loop_list[base_idx+2] = value
+                    loop_list[base_idx+3] = 1.0
                     
             elif (dictchannelcount == 3) and (listchannelcount == 4):
                 for loop_idx, vert_idx in enumerate(loop_ids):
                     value = vert_dict.get(vert_idx, [0.0, 0.0, 0.0])
-                    loop_list[(loop_idx*4):(loop_idx*4+4)] = [value[0], value[1], value[2], 1.0]
+                    base_idx = loop_idx * 4
+                    loop_list[base_idx] = value[0]
+                    loop_list[base_idx+1] = value[1]
+                    loop_list[base_idx+2] = value[2]
+                    loop_list[base_idx+3] = 1.0
         else:
             if listchannelcount == 1:
                 for loop_idx, vert_idx in enumerate(loop_ids):
                     loop_list[loop_idx] = vert_dict.get(vert_idx, 0.0)
             else:
                 for loop_idx, vert_idx in enumerate(loop_ids):
-                    start_idx = loop_idx * listchannelcount
-                    end_idx = start_idx + listchannelcount
-                    loop_list[start_idx:end_idx] = vert_dict.get(vert_idx, [0.0] * listchannelcount)
+                    value = vert_dict.get(vert_idx, [0.0] * listchannelcount)
+                    base_idx = loop_idx * listchannelcount
+                    for i in range(listchannelcount):
+                        loop_list[base_idx + i] = value[i]
         
         return loop_list
 
@@ -2040,6 +2058,7 @@ class SXTOOLS2_generate(object):
         Vec = Vector
         mesh = obj.data
         mat = obj.matrix_world
+        mat_normal = mat.inverted().transposed().to_3x3()
         origin = mat @ Vec()
         vertex_dict = {}
         
@@ -2072,14 +2091,29 @@ class SXTOOLS2_generate(object):
                 
             vert_ids_to_process = {ids[i] for i, sel in enumerate(vert_sel) if sel}
         
+        min_dots = {}
         # Create BMesh for dots calculation only if needed
-        bm = None
         if dots:
             bm = bmesh.new()
             bm.from_mesh(mesh)
             bm.normal_update()
             bmesh.types.BMVertSeq.ensure_lookup_table(bm.verts)
-        
+
+            for vert in bm.verts:
+                vert_id = vert.index
+                if process_all or vert_id in vert_ids_to_process:
+                    num_connected = len(vert.link_edges)
+                    if num_connected > 0:
+                        vert_normal_normalized = vert.normal.normalized()
+                        dot_values = []
+                        for edge in vert.link_edges:
+                            other_vert = edge.other_vert(vert)
+                            edge_vec = (other_vert.co - vert.co).normalized()
+                            dot_values.append(vert_normal_normalized.dot(edge_vec))
+                        min_dots[vert_id] = min(dot_values) if dot_values else None
+
+            bm.free()
+
         # Process vertices
         for i in range(vert_count):
             vert_id = ids[i]
@@ -2091,25 +2125,11 @@ class SXTOOLS2_generate(object):
             vert_co = Vec((coords[idx], coords[idx+1], coords[idx+2]))
             vert_normal = Vec((normals[idx], normals[idx+1], normals[idx+2]))
             world_co = mat @ vert_co
-            world_normal = (mat @ vert_normal - origin).normalized()
+            # world_normal = (mat @ vert_normal - origin).normalized()
+            world_normal = (mat_normal @ vert_normal).normalized()
             
-            min_dot = None
-            if dots:
-                bm_vert = bm.verts[vert_id]
-                num_connected = len(bm_vert.link_edges)
-                if num_connected > 0:
-                    vert_normal_normalized = bm_vert.normal.normalized()
-                    dot_values = []
-                    for edge in bm_vert.link_edges:
-                        other_vert = edge.other_vert(bm_vert)
-                        edge_vec = (other_vert.co - bm_vert.co).normalized()
-                        dot_values.append(vert_normal_normalized.dot(edge_vec))
-                    min_dot = min(dot_values) if dot_values else None
-            
+            min_dot = min_dots.get(vert_id)
             vertex_dict[vert_id] = (vert_co, vert_normal, world_co, world_normal, min_dot)
-        
-        if bm:
-            bm.free()
         
         return vertex_dict
 
@@ -4700,11 +4720,56 @@ class SXTOOLS2_export(object):
         utils.mode_manager(objs, set_mode=False, mode_id='group_objects')
 
 
-    # pivotmodes: OFF == no change, MASS == center of mass, BBOX == center of bbox,
-    # ROOT == base of bbox, ORG == world origin, PAR == pivot of parent, CID == used with submesh convex hulls,
-    # CUR == 3D cursor, force == set mirror axis to mirrorobj
     def set_pivots(self, objs, pivotmode=None, force=False):
+        """
+        Set pivot points (origins) for objects using various placement strategies.
+        
+        Args:
+            objs (list): List of objects to process
+            pivotmode (str, optional): Override the pivot mode for all objects.
+                If None, uses each object's own sx2.pivotmode setting.
+                Available modes:
+                    'OFF': No change to pivot
+                    'MASS': Center of mass
+                    'BBOX': Center of bounding box 
+                    'ROOT': Base of bounding box
+                    'ORG': World origin (0,0,0)
+                    'PAR': Pivot of parent
+                    'CID': Special mode for convex hulls
+                    'CUR': 3D cursor position
+            force (bool, optional): When True, force pivot to mirror object location
+                                    on selected axes
+        
+        Returns:
+            None
+        
+        Note:
+            The function preserves selection state and active object.
+            Performance metrics are reported when scene.benchmark_magic is enabled.
+        """
         scene = bpy.context.scene.sx2
+        if not objs:
+            return
+
+        def set_origin_direct(obj, new_origin_world):
+            # Calculate offset between current and new origin
+            offset = new_origin_world - obj.matrix_world.translation
+            
+            # Update the matrix
+            mat = obj.matrix_world.copy()
+            mat.translation = new_origin_world
+            obj.matrix_world = mat
+            
+            # Adjust mesh vertices to maintain world position
+            coords = utils.get_data(obj, 'coords')
+            for i in range(0, len(coords), 3):
+                coords[i] -= offset.x
+                coords[i+1] -= offset.y  
+                coords[i+2] -= offset.z
+
+            # Update all vertices at once
+            obj.data.vertices.foreach_set('co', coords)
+            obj.data.update()
 
         def pivot_no_change(obj):
             pivot_loc = obj.matrix_world.to_translation()
@@ -4715,8 +4780,9 @@ class SXTOOLS2_export(object):
                 pivot_loc[1] *= -1.0
             if obj.sx2.zmirror and not (zmin < pivot_loc[2] < zmax):
                 pivot_loc[2] *= -1.0
-            bpy.context.scene.cursor.location = pivot_loc
-            bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+            # bpy.context.scene.cursor.location = pivot_loc
+            # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+            set_origin_direct(obj, pivot_loc)
 
         def pivot_center_of_mass(obj):
             bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_VOLUME', center='MEDIAN')
@@ -4732,11 +4798,14 @@ class SXTOOLS2_export(object):
                     pivot_loc[1] = mirror_pivot_loc[1]
                 if obj.sx2.zmirror:
                     pivot_loc[2] = mirror_pivot_loc[2]
-                bpy.context.scene.cursor.location = pivot_loc
-                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+                # bpy.context.scene.cursor.location = pivot_loc
+                # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+                set_origin_direct(obj, pivot_loc)
 
         def pivot_center_bbox(obj):
-            bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+            # bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+            pivot_loc = utils.find_center_pivot([obj, ])
+            set_origin_direct(obj, pivot_loc)
             if force:
                 pivot_loc = obj.matrix_world.to_translation()
                 if obj.sx2.mirrorobject:
@@ -4749,21 +4818,27 @@ class SXTOOLS2_export(object):
                     pivot_loc[1] = mirror_pivot_loc[1]
                 if obj.sx2.zmirror:
                     pivot_loc[2] = mirror_pivot_loc[2]
-                bpy.context.scene.cursor.location = pivot_loc
-                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+                # bpy.context.scene.cursor.location = pivot_loc
+                # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+                set_origin_direct(obj, pivot_loc)
 
         def pivot_root_bbox(obj):
-            bpy.context.scene.cursor.location = utils.find_root_pivot([obj, ])
-            bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+            pivot_loc = utils.find_root_pivot([obj, ])
+            set_origin_direct(obj, pivot_loc)
+            # bpy.context.scene.cursor.location = utils.find_root_pivot([obj, ])
+            # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
 
         def pivot_world_origin(obj):
-            bpy.context.scene.cursor.location = (0.0, 0.0, 0.0)
-            bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+            pivot_loc = Vector((0.0, 0.0, 0.0))
+            set_origin_direct(obj, pivot_loc)
+            # bpy.context.scene.cursor.location = (0.0, 0.0, 0.0)
+            # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
 
         def pivot_parent(obj):
             pivot_loc = obj.parent.matrix_world.to_translation()
-            bpy.context.scene.cursor.location = pivot_loc
-            bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+            # bpy.context.scene.cursor.location = pivot_loc
+            # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+            set_origin_direct(obj, pivot_loc)
 
         def pivot_collision_hull(obj):
             pivot_world = obj.matrix_world.to_translation()
@@ -4782,11 +4857,14 @@ class SXTOOLS2_export(object):
                 pivot_world[2] += -2 * (pivot_loc[2] - pivot_ref[2])
             elif obj.sx2.zmirror and (((zmin + zmax) * 0.5) < pivot_ref[2]) and (pivot_loc[2] > pivot_ref[2]):
                 pivot_world[2] += -2 * (pivot_loc[2] - pivot_ref[2])
-            bpy.context.scene.cursor.location = pivot_world
-            bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+            # bpy.context.scene.cursor.location = pivot_world
+            # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+            set_origin_direct(obj, pivot_world)
 
         def pivot_cursor(obj):
-            bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+            pivot_loc = bpy.context.scene.cursor.location
+            set_origin_direct(obj, pivot_loc)
+            # bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
 
 
         viewlayer = bpy.context.view_layer
@@ -4806,24 +4884,36 @@ class SXTOOLS2_export(object):
         for sel in viewlayer.objects.selected:
             sel.select_set(False)
 
+        # Group objects by pivot mode for batch processing
+        pivot_groups = {}
         for obj in objs:
             mode = obj.sx2.pivotmode if pivotmode is None else pivotmode
-            viewlayer.objects.active = obj
-            obj.select_set(True)
+            if mode not in pivot_groups:
+                pivot_groups[mode] = []
+            pivot_groups[mode].append(obj)
 
-            # print(f'SX Tools: Setting pivot for {obj.name} to mode {mode})
+        # Process each pivot mode group
+        for mode, mode_objs in pivot_groups.items():
+            if mode not in pivotmodes:
+                print(f'SX Tools Error: Unknown pivot mode {mode} for {mode_objs}')
+                continue
 
-            if scene.benchmark_magic:
-                then = time.perf_counter()
+            for obj in mode_objs:
+                viewlayer.objects.active = obj
+                obj.select_set(True)
 
-            if mode in pivotmodes:
+                # print(f'SX Tools: Setting pivot for {obj.name} to mode {mode})
+
+                if scene.benchmark_magic:
+                    then = time.perf_counter()
+
                 pivotmodes[mode](obj)
 
-            if scene.benchmark_magic:
-                now = time.perf_counter()
-                print(f'SX Tools: {obj.name} pivot set: {round(now-then, 4)} seconds')
+                if scene.benchmark_magic:
+                    now = time.perf_counter()
+                    print(f'SX Tools: {obj.name} pivot set: {round(now-then, 4)} seconds')
 
-            obj.select_set(False)
+                obj.select_set(False)
 
         for sel in selected:
             sel.select_set(True)
@@ -5251,7 +5341,7 @@ class SXTOOLS2_magic(object):
 
         if scene.benchmark_magic:
             now = time.perf_counter()
-            print(f'SX Tools: Setup 2: {round(now-then2, 4)} seconds')
+            print(f'SX Tools: Magic - Pivots Set: {round(now-then2, 4)} seconds')
             then2 = now
 
         # Fix transforms
@@ -5259,7 +5349,7 @@ class SXTOOLS2_magic(object):
 
         if scene.benchmark_magic:
             now = time.perf_counter()
-            print(f'SX Tools: Setup 3: {round(now-then2, 4)} seconds')
+            print(f'SX Tools: Magic - Fixed Transforms: {round(now-then2, 4)} seconds')
             then2 = now
 
         for obj in objs:
@@ -11637,17 +11727,18 @@ class SXTOOLS2_OT_setpivots(bpy.types.Operator):
 
     def invoke(self, context, event):
         if event.shift:
-            pivotmode = 2
+            pivotmode = 'BBOX'
         elif event.ctrl:
-            pivotmode = 3
+            pivotmode = 'ROOT'
         elif event.alt:
-            pivotmode = 4
+            pivotmode = 'ORG'
         else:
-            pivotmode = 1
+            pivotmode = 'MASS'
 
         objs = mesh_selection_validator(self, context)
         if objs:
             export.set_pivots(objs, pivotmode, force=True)
+            context.view_layer.update()
 
         return {'FINISHED'}
 
