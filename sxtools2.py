@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 42),
+    'version': (2, 10, 43),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -753,9 +753,8 @@ class SXTOOLS2_utils(object):
         color_layers.sort(key=lambda x: x.index)
 
         index_layer = None
-        if index:
-            if index <= (len(color_layers) - 1):
-                index_layer = color_layers[index]
+        if (index is not None) and (0 <= index < len(color_layers)):
+            index_layer = color_layers[index]
 
         return color_layers if index is None else index_layer
 
