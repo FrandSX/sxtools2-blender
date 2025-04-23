@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 43),
+    'version': (2, 10, 44),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -2849,7 +2849,7 @@ class SXTOOLS2_tools(object):
                     # union of selection and color mask
                     mask = [sel_mask[i] * col_mask[i] for i in range(len(col_mask))]
 
-                if channel:
+                if channel is not None:
                     grayscales = convert.colors_to_values(colors, as_rgba=True)
                     values, _ = layers.get_layer_mask(obj, targetlayer, channel)
 
