@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 41),
+    'version': (2, 10, 42),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -46,6 +46,7 @@ class SXTOOLS2_sxglobals(object):
         self.mode = None
         self.mode_id = None
         self.randomseed = 42
+        self.hemisphere = {}
 
         self.selection_modal_status = False
         self.key_modal_status = False
@@ -1285,9 +1286,10 @@ class SXTOOLS2_generate(object):
             ))
 
         for vert in bm.verts:
+            vert_id = vert.index
             num_connected = len(vert.link_edges)
             if num_connected == 0:
-                vert_blur_dict[vert.index] = color_dict[vert.index]
+                vert_blur_dict[vert_id] = color_dict[vert_id]
                 continue
 
             # Calculate weights based on edge lengths
@@ -1303,15 +1305,15 @@ class SXTOOLS2_generate(object):
             # Handle zero-length edges
             max_weight = max(edge_weights)
             if max_weight == 0:
-                vert_blur_dict[vert.index] = color_dict[vert.index]
+                vert_blur_dict[vert_id] = color_dict[vert_id]
                 continue
 
             # Give current vertex a fixed weight of 2.0
             total_weight = 2.0
-            sum_r = color_dict[vert.index][0] * 2.0
-            sum_g = color_dict[vert.index][1] * 2.0
-            sum_b = color_dict[vert.index][2] * 2.0
-            sum_a = color_dict[vert.index][3] * 2.0
+            sum_r = color_dict[vert_id][0] * 2.0
+            sum_g = color_dict[vert_id][1] * 2.0
+            sum_b = color_dict[vert_id][2] * 2.0
+            sum_a = color_dict[vert_id][3] * 2.0
             
             for i, neighbor_idx in enumerate(neighbor_indices):
                 # Invert weight so closer vertices have higher weights
@@ -1327,7 +1329,7 @@ class SXTOOLS2_generate(object):
                 total_weight += w
             
             # Store weighted average
-            vert_blur_dict[vert.index] = Vec((sum_r, sum_g, sum_b, sum_a)) / total_weight
+            vert_blur_dict[vert_id] = Vec((sum_r, sum_g, sum_b, sum_a)) / total_weight
 
         bm.free()
 
@@ -1560,7 +1562,10 @@ class SXTOOLS2_generate(object):
         Vec = Vector
 
         def dist_caster(obj, vert_dict):
-            hemisphere = self.ray_randomizer(20)
+            hemi_key = (20, sxglobals.randomseed)
+            if hemi_key not in sxglobals.hemisphere:
+                sxglobals.hemisphere[hemi_key] = self.ray_randomizer(raycount)
+            hemisphere = sxglobals.hemisphere[hemi_key]
             for vert_id, vert_data in vert_dict.items():
                 vertLoc = vert_data[0]
                 vertNormal = vert_data[1]
@@ -1584,15 +1589,18 @@ class SXTOOLS2_generate(object):
                     if hit:
                         dist_list.append((loc - vertPos).length)
 
-                bias_vert_dict[vert_id] = (vertPos, invNormal)
+                bias_vert_dict[vert_id] = (vertPos, invNormal, rotQuat)
 
 
         def sample_caster(obj, raycount, vert_dict, raydistance=1.70141e+38):
-            hemisphere = self.ray_randomizer(raycount)
+            hemi_key = (raycount, sxglobals.randomseed)
+            if hemi_key not in sxglobals.hemisphere:
+                sxglobals.hemisphere[hemi_key] = self.ray_randomizer(raycount)
+            hemisphere = sxglobals.hemisphere[hemi_key]
             for vert_id, vert_data in vert_dict.items():
                 vertPos = vert_data[0]
                 invNormal = vert_data[1]
-                rotQuat = forward.rotation_difference(invNormal)
+                rotQuat = vert_data[2]
 
                 for ray, _ in hemisphere:
                     hit = obj.ray_cast(vertPos, rotQuat @ Vec(ray), distance=raydistance)[0]
@@ -1634,9 +1642,12 @@ class SXTOOLS2_generate(object):
         Vec = Vector
         scene = bpy.context.scene
         contribution = 1.0/float(raycount)
-        hemisphere = self.ray_randomizer(raycount)
         mix = max(min(blend, 1.0), 0.0)
         forward = Vec((0.0, 0.0, 1.0))
+        hemi_key = (raycount, sxglobals.randomseed)
+        if hemi_key not in sxglobals.hemisphere:
+            sxglobals.hemisphere[hemi_key] = self.ray_randomizer(raycount)
+        hemisphere = sxglobals.hemisphere[hemi_key]
 
         if obj.sx2.tiling:
             blend = 0.0
@@ -1826,7 +1837,10 @@ class SXTOOLS2_generate(object):
                     original_emissive_vertex_face_count[vert_idx] += 1
 
         # Pass 1: Propagate emission to face colors
-        hemisphere = self.ray_randomizer(raycount)
+        hemi_key = (raycount, sxglobals.randomseed)
+        if hemi_key not in sxglobals.hemisphere:
+            sxglobals.hemisphere[hemi_key] = self.ray_randomizer(raycount)
+        hemisphere = sxglobals.hemisphere[hemi_key]
         contribution = 1.0 / float(raycount)
         for i in range(10):
             for j, face in enumerate(mesh.polygons):
@@ -3395,35 +3409,38 @@ class SXTOOLS2_modifiers(object):
         return count
 
 
-    def calculate_volume_area(self, obj):
+    def calculate_volume_area_tris(self, obj):
         """
-        Calculate the volume and area of an object with modifiers applied.
+        Calculate the volume, area, and triangle count of an object with modifiers applied.
         Uses the signed tetrahedron method for volume calculation.
         
         Args:
             mesh: Blender mesh data
             
         Returns:
-            tuple: (volume, area)
+            tuple: (volume, area, count)
         """
         if obj.type != 'MESH':
             return 0.0, 0.0
         
-        utils.mode_manager([obj, ], set_mode=True, mode_id='calculate_volume_area')
+        utils.mode_manager([obj, ], set_mode=True, mode_id='calculate_volume_area_tris')
 
         edg = bpy.context.evaluated_depsgraph_get()
         eval_data = obj.evaluated_get(edg).data
         
         volume = 0.0
         area = 0.0
+        count = 0
 
         for face in eval_data.polygons:
-            if len(face.vertices) < 3:
+            face_verts = face.vertices
+            face_vert_count = len(face_verts)
+            if face_vert_count < 3:
                 continue
 
-            v0 = eval_data.vertices[face.vertices[0]].co
-            v1 = eval_data.vertices[face.vertices[1]].co
-            v2 = eval_data.vertices[face.vertices[2]].co
+            v0 = eval_data.vertices[face_verts[0]].co
+            v1 = eval_data.vertices[face_verts[1]].co
+            v2 = eval_data.vertices[face_verts[2]].co
             
             # Calculate the signed volume of tetrahedron formed by face and origin
             # Formula: V = (1/6) * |(v1 - v0) × (v2 - v0)) · v0|
@@ -3433,8 +3450,10 @@ class SXTOOLS2_modifiers(object):
 
             area += face.area
 
-        utils.mode_manager([obj, ], set_mode=False, mode_id='calculate_volume_area')
-        return abs(volume), area
+            count += face_vert_count - 2
+
+        utils.mode_manager([obj, ], set_mode=False, mode_id='calculate_volume_area_tris')
+        return abs(volume), area, count
 
 
 
@@ -3658,7 +3677,7 @@ class SXTOOLS2_export(object):
             test_objs = objs
             culled = []
             for obj in test_objs:
-                tri_count = modifiers.calculate_triangles([obj])
+                tri_count = modifiers.calculate_triangles([obj, ])
                 if tri_count < 4:
                     culled.append(obj)
                     print(f"SX Tools Warning: {obj.name} has fewer than 4 triangles and will be removed")
@@ -3728,8 +3747,7 @@ class SXTOOLS2_export(object):
             bpy.context.view_layer.objects.active = obj
 
             # Store original mesh data to compare against
-            original_volume, original_area = modifiers.calculate_volume_area(obj)
-            original_tri_count = modifiers.calculate_triangles([obj])
+            original_volume, original_area, original_tri_count = modifiers.calculate_volume_area_tris(obj)
 
             if scene.benchmark_cvx:
                 print(f"SX Tools: Optimizing {obj.name}")
@@ -3740,7 +3758,7 @@ class SXTOOLS2_export(object):
             dissolve_angle = 0.0
             collapse_ratio = 1.0  # Default to no collapse (ratio of 1.0)
 
-            tri_count = modifiers.calculate_triangles([obj])
+            tri_count = original_tri_count
             if tri_count < 4:
                 phase1 = False
                 phase2 = False
@@ -3785,7 +3803,7 @@ class SXTOOLS2_export(object):
                         continue
 
                     # Calculate shape preservation metrics
-                    test_volume, test_area = modifiers.calculate_volume_area(obj)
+                    test_volume, test_area, test_tris = modifiers.calculate_volume_area_tris(obj)
                     
                     # Calculate deviation metrics with greater weight to volume
                     volume_ratio = abs(test_volume - original_volume) / original_volume
@@ -3849,15 +3867,14 @@ class SXTOOLS2_export(object):
                     collapse_mod.ratio = mid_ratio
                     
                     # Calculate shape preservation metrics
-                    test_volume, test_area = modifiers.calculate_volume_area(obj)
+                    test_volume, test_area, test_tris = modifiers.calculate_volume_area_tris(obj)
                     # Calculate shape deviation metrics
                     volume_ratio = abs(test_volume - original_volume) / original_volume
                     area_ratio = abs(test_area - original_area) / original_area
                     collapse_score = (volume_ratio * score_bias_p2) + (area_ratio * (1.0 - score_bias_p2))  # Favor volume preservation
-                    
-                    collapse_tri_count = modifiers.calculate_triangles([obj, ])
+
                     # Check if we have at least 4 triangles (minimum for a valid hull)
-                    valid_hull = collapse_tri_count >= min_triangles
+                    valid_hull = test_tris >= min_triangles
                     
                     # if scene.benchmark_cvx:
                     #     print(f"SX Tools: Collapse phase - Ratio {mid_ratio:.3f}, Tris {collapse_tri_count}, Score {collapse_score:.4f}, Valid: {valid_hull}")
@@ -3869,11 +3886,11 @@ class SXTOOLS2_export(object):
                     # Then check shape preservation
                     elif collapse_score <= shape_threshold:
                         # Shape is preserved and we have enough triangles
-                        if collapse_tri_count <= target_tris:
+                        if test_tris <= target_tris:
                             # Perfect: under triangle target and within shape threshold
                             best_ratio = mid_ratio
                             best_collapse_score = collapse_score
-                            best_collapse_tri_count = collapse_tri_count
+                            best_collapse_tri_count = test_tris
                             high_ratio = mid_ratio  # Try for even fewer triangles
                         else:
                             # Shape is good but still too many triangles, need more aggressive collapse
