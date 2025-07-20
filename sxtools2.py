@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 10, 44),
+    'version': (2, 11, 1),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -151,9 +151,9 @@ class SXTOOLS2_files(object):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         directory = prefs.libraryfolder
         file_path = directory + mode + '.json'
-        # Palettes.json Materials.json
+        modes = ['palettes', 'materials', 'gradients', 'categories']
 
-        if directory:
+        if directory and (mode in modes):
             with open(file_path, 'w') as output:
                 if mode == 'palettes':
                     temp_dict = {}
@@ -167,11 +167,15 @@ class SXTOOLS2_files(object):
                     temp_dict = {}
                     temp_dict = sxglobals.ramp_dict
                     json.dump(temp_dict, output, indent=4)
+                elif mode == 'categories':
+                    temp_dict = {}
+                    temp_dict = sxglobals.category_dict
+                    json.dump(temp_dict, output, indent=4)
                 output.close()
             message_box(f'{mode} saved')
             # print('SX Tools: ' + mode + ' saved')
         else:
-            message_box(f'{mode} file location not set!', 'SX Tools Error', 'ERROR')
+            message_box(f'Unknown mode {mode} or file location not set!', 'SX Tools Error', 'ERROR')
             # print('SX Tools Warning: ' + mode + ' file location not set!')
 
 
@@ -1565,6 +1569,8 @@ class SXTOOLS2_generate(object):
             if hemi_key not in sxglobals.hemisphere:
                 sxglobals.hemisphere[hemi_key] = self.ray_randomizer(raycount)
             hemisphere = sxglobals.hemisphere[hemi_key]
+            hemisphere_rays = [Vec(ray) for ray, _ in hemisphere]
+
             for vert_id, vert_data in vert_dict.items():
                 vertLoc = vert_data[0]
                 vertNormal = vert_data[1]
@@ -1583,8 +1589,8 @@ class SXTOOLS2_generate(object):
                 vertPos = vertLoc + (bias * invNormal)
 
                 # Raycast for distance
-                for ray, _ in hemisphere:
-                    hit, loc, normal, _ = obj.ray_cast(vertPos, rotQuat @ Vec(ray))
+                for ray in hemisphere_rays:
+                    hit, loc, normal, _ = obj.ray_cast(vertPos, rotQuat @ ray)
                     if hit:
                         dist_list.append((loc - vertPos).length)
 
@@ -1596,13 +1602,15 @@ class SXTOOLS2_generate(object):
             if hemi_key not in sxglobals.hemisphere:
                 sxglobals.hemisphere[hemi_key] = self.ray_randomizer(raycount)
             hemisphere = sxglobals.hemisphere[hemi_key]
+            hemisphere_rays = [Vec(ray) for ray, _ in hemisphere]
+
             for vert_id, vert_data in vert_dict.items():
                 vertPos = vert_data[0]
                 invNormal = vert_data[1]
                 rotQuat = vert_data[2]
 
-                for ray, _ in hemisphere:
-                    hit = obj.ray_cast(vertPos, rotQuat @ Vec(ray), distance=raydistance)[0]
+                for ray in hemisphere_rays:
+                    hit = obj.ray_cast(vertPos, rotQuat @ ray, distance=raydistance)[0]
                     vert_occ_dict[vert_id] += contribution * hit
 
 
@@ -1647,15 +1655,23 @@ class SXTOOLS2_generate(object):
         if hemi_key not in sxglobals.hemisphere:
             sxglobals.hemisphere[hemi_key] = self.ray_randomizer(raycount)
         hemisphere = sxglobals.hemisphere[hemi_key]
+        hemisphere_rays = []
+        hemisphere_dots = []
+        for ray, dot in hemisphere:
+            hemisphere_rays.append(Vec(ray))
+            hemisphere_dots.append(dot)
 
         if obj.sx2.tiling:
             blend = 0.0
             groundplane = False
             xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ], mode='local')
+            bounds = [(xmin, xmax), (ymin, ymax), (zmin, zmax)]
             dist = 2.0 * min(xmax-xmin, ymax-ymin, zmax-zmin)
             if 'sxTiler' not in obj.modifiers:
                 modifiers.add_modifiers([obj, ])
             obj.modifiers['sxTiler'].show_viewport = True
+            tiling_props = [('tile_neg_x', 'tile_pos_x'), ('tile_neg_y', 'tile_pos_y'), ('tile_neg_z', 'tile_pos_z')]
+            
 
         vert_occ_dict = {vert_id: 0.0 for vert_id in vert_dict}
 
@@ -1681,9 +1697,6 @@ class SXTOOLS2_generate(object):
                 mod_normal = list(vertNormal)
                 match = False
 
-                tiling_props = [('tile_neg_x', 'tile_pos_x'), ('tile_neg_y', 'tile_pos_y'), ('tile_neg_z', 'tile_pos_z')]
-                bounds = [(xmin, xmax), (ymin, ymax), (zmin, zmax)]
-
                 for i, coord in enumerate(vertLoc):
                     for j, prop in enumerate(tiling_props[i]):
                         if getattr(obj.sx2, prop) and (round(coord, 2) == round(bounds[i][j], 2)):
@@ -1705,12 +1718,12 @@ class SXTOOLS2_generate(object):
 
             # Pass 1: Mark hits for rays that are inside the mesh
             first_hit_index = raycount
-            for i, (_, dot) in enumerate(hemisphere):
+            for i, dot in enumerate(hemisphere_dots):
                 if dot < min_dot:
                     first_hit_index = i
                     break
 
-            valid_rays = [ray for ray, _ in hemisphere[:first_hit_index]]
+            valid_rays = hemisphere_rays[:first_hit_index]
             occValue -= contribution * (raycount - first_hit_index)
 
             # Store Pass 2 valid ray hits
@@ -1726,7 +1739,7 @@ class SXTOOLS2_generate(object):
                 # for every object ray hit, subtract a fraction from the vertex brightness
                 for i, ray in enumerate(valid_rays):
                     # hit = obj_eval.ray_cast(vertPos, rotQuat @ Vec(ray), distance=dist)[0]
-                    result = bvh.ray_cast(vertPos, rotQuat @ Vec(ray), dist)
+                    result = bvh.ray_cast(vertPos, rotQuat @ ray, dist)
                     hit = not all(x is None for x in result)
                     occValue -= contribution * hit
                     pass2_hits[i] = hit
@@ -1744,7 +1757,7 @@ class SXTOOLS2_generate(object):
                 # Fire rays only for samples that had not hit in Pass 2
                 for i, ray in enumerate(valid_rays):
                     if not pass2_hits[i]:
-                        hit = scene.ray_cast(edg, scnVertPos, rotQuat @ Vec(ray), distance=dist)[0]
+                        hit = scene.ray_cast(edg, scnVertPos, rotQuat @ ray, distance=dist)[0]
                         scnOccValue -= contribution * hit
 
             vert_occ_dict[vert_id] = float((occValue * (1.0 - mix)) + (scnOccValue * mix))
@@ -1840,14 +1853,15 @@ class SXTOOLS2_generate(object):
         if hemi_key not in sxglobals.hemisphere:
             sxglobals.hemisphere[hemi_key] = self.ray_randomizer(raycount)
         hemisphere = sxglobals.hemisphere[hemi_key]
+        hemisphere_rays = [Vec(ray) for ray, _ in hemisphere]
         contribution = 1.0 / float(raycount)
         for i in range(10):
             for j, face in enumerate(mesh.polygons):
                 face_emission = Vec((0.0, 0.0, 0.0, 0.0))
                 face_center, face_normal, rot_quat = face_data[face.index]
 
-                for sample, _ in hemisphere:
-                    sample_ray = rot_quat @ sample
+                for ray in hemisphere_rays:
+                    sample_ray = rot_quat @ ray
                     hit, _, hit_normal, hit_face_index = obj.ray_cast(face_center, sample_ray, distance=dist)
                     if hit and (hit_normal.dot(sample_ray) < 0):
                         face_color = face_colors[hit_face_index].copy()
@@ -9536,6 +9550,8 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                         row_cat = col_export.row(align=True)
                         row_cat.label(text='Category:')
                         row_cat.prop(sx2, 'category', text='')
+                        row_cat.operator('sx2.add_category', text="", icon='ADD')
+                        row_cat.operator('sx2.del_category', text="", icon='REMOVE')
 
                         col_export.separator()
 
@@ -11996,6 +12012,224 @@ class SXTOOLS2_OT_macro(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class SXTOOLS2_OT_add_category(bpy.types.Operator):
+    """Add a new Magic Category based on the active object's settings"""
+    bl_idname = "sx2.add_category"
+    bl_label = "Add Magic Category from Object"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    new_category_name: bpy.props.StringProperty(
+        name="Category Name",
+        description="Name for the new Magic category",
+        default="New Category"
+    )
+    export_subfolder: bpy.props.StringProperty(
+        name="Export Subfolder",
+        description="Relative path for exports (e.g., Project//Content//Imports)",
+        default=""
+    )
+
+    @classmethod
+    def poll(cls, context):
+        # Check if an object is active, is a mesh, and has sx2 layers
+        obj = context.object
+        return (obj and obj.type == 'MESH' and
+                hasattr(obj, 'sx2layers') and len(obj.sx2layers) > 0 and
+                hasattr(sxglobals, 'category_dict') and
+                isinstance(sxglobals.category_dict, dict))
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        col.prop(self, 'new_category_name', text='Name')
+        col.prop(self, 'export_subfolder', text='Export Subfolder')
+        col.label(text='NOTE: The final folder is\nExport Folder + Category Export Subfolder + Categoryname')
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        obj = context.object
+        scene = context.scene.sx2
+        if obj:
+            self.new_category_name = 'New Category'
+            self.export_subfolder = ''
+        return wm.invoke_props_dialog(self)
+
+    def execute(self, context):
+        if not self.new_category_name:
+            self.report({'ERROR'}, "Category name cannot be empty.")
+            return {'CANCELLED'}
+
+        clean_name = self.new_category_name.strip()
+        if not clean_name:
+            self.report({'ERROR'}, "Category name cannot be empty after stripping whitespace.")
+            return {'CANCELLED'}
+
+        # --- Pre-computation Checks ---
+        if not hasattr(sxglobals, 'category_dict') or not isinstance(sxglobals.category_dict, dict):
+             self.report({'ERROR'}, "Internal Error: Category dictionary not initialized or invalid.")
+             return {'CANCELLED'}
+
+        if clean_name in sxglobals.category_dict:
+            self.report({'ERROR'}, f"Category '{clean_name}' already exists.")
+            return {'CANCELLED'}
+
+        obj = context.object
+        if not obj or obj.type != 'MESH' or not hasattr(obj, 'sx2layers') or len(obj.sx2layers) == 0:
+            self.report({'ERROR'}, "Active object must be a Mesh with SX2 layers.")
+            return {'CANCELLED'}
+
+        sx2 = obj.sx2
+        # --- Core Logic: Build data from object ---
+        try:
+            new_category_data = {}
+
+            # 1. Export Subfolder
+            new_category_data['export_subfolder'] = self.export_subfolder
+
+            # 2. Layers
+            # Sort layers by their stack index before saving
+            sorted_layers = sorted(obj.sx2layers, key=lambda layer: layer.index)
+            layer_data_list = []
+            for layer in sorted_layers:
+                # Structure: [name, type, blend_mode, opacity, palette_index_or_None_string]
+                palette_info = str(layer.palette_index) if layer.paletted else "None"
+                layer_data_list.append([
+                    layer.name,
+                    layer.layer_type,
+                    layer.blend_mode,
+                    layer.opacity,
+                    palette_info
+                ])
+            new_category_data['layers'] = layer_data_list
+
+            # 3. Object Properties
+            new_category_data['staticvertexcolors'] = int(sx2.staticvertexcolors)
+            new_category_data['metallic_override'] = sx2.metallicoverride
+            new_category_data['palette_metallic'] = [
+                sx2.metallic0, sx2.metallic1, sx2.metallic2,
+                sx2.metallic3, sx2.metallic4
+            ]
+            new_category_data['static_metallic'] = sx2.static_metallic # Added
+            new_category_data['roughness_override'] = sx2.roughnessoverride
+            new_category_data['palette_roughness'] = [
+                sx2.roughness0, sx2.roughness1, sx2.roughness2,
+                sx2.roughness3, sx2.roughness4
+            ]
+            new_category_data['static_roughness'] = sx2.static_roughness # Added
+
+            # Use mat_overlay for overlay_opacity, ensure it exists
+            overlay_opacity = getattr(sx2, 'mat_overlay', 1.0) # Default to 1.0 if missing
+            new_category_data['overlay_opacity'] = overlay_opacity
+
+            # Add the new category to the main dictionary *in memory* first
+            sxglobals.category_dict[clean_name] = new_category_data
+
+            # --- Save Operation ---
+            save_successful = files.save_file('categories')
+
+            if save_successful:
+                print(f'Category {clean_name} added.')
+                # Force UI refresh
+                for window in context.window_manager.windows:
+                    for area in window.screen.areas:
+                        if area.type in {'PROPERTIES', 'VIEW_3D'}:
+                            area.tag_redraw()
+            else:
+                # Revert in-memory change if save failed
+                if clean_name in sxglobals.category_dict:
+                    del sxglobals.category_dict[clean_name]
+                print(f'Failed to save categories.json. Category {clean_name} was not added.')
+                return {'CANCELLED'}
+
+        except AttributeError as e:
+             print(f'SX Tools 2 property error on {obj.name}')
+             # Attempt to revert
+             if clean_name in sxglobals.category_dict:
+                 try: del sxglobals.category_dict[clean_name]
+                 except KeyError: pass
+             return {'CANCELLED'}
+        except Exception as e:
+            print(f'Add category error')
+            # Attempt to revert
+            if clean_name in sxglobals.category_dict:
+                 try: del sxglobals.category_dict[clean_name]
+                 except KeyError: pass
+            return {'CANCELLED'}
+
+        return {'FINISHED'}
+
+
+class SXTOOLS2_OT_del_category(bpy.types.Operator):
+    """Delete the selected Magic Category"""
+    bl_idname = "sx2.del_category"
+    bl_label = "Delete Magic Category"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        # Ensure sxglobals and category_dict are initialized
+        if not hasattr(sxglobals, 'category_dict'):
+            return False
+        # Check if an object is selected and has sx2 properties, and category exists
+        return (obj and obj.sx2 and obj.sx2.category
+                and obj.sx2.category in sxglobals.category_dict
+                and obj.sx2.category != 'Default') # Prevent deleting Default
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_confirm(self, event)
+
+    def execute(self, context):
+        obj = context.object
+        category_to_delete = obj.sx2.category
+
+        if category_to_delete == 'Default':
+            self.report({'ERROR'}, "Cannot delete the 'Default' category.")
+            return {'CANCELLED'}
+
+        # Ensure sxglobals and category_dict are initialized before accessing
+        if not hasattr(sxglobals, 'category_dict'):
+             self.report({'ERROR'}, "Category dictionary not initialized.")
+             return {'CANCELLED'}
+
+        if category_to_delete not in sxglobals.category_dict:
+            self.report({'ERROR'}, f"Category '{category_to_delete}' not found.")
+            return {'CANCELLED'}
+
+        try:
+            del sxglobals.category_dict[category_to_delete]
+
+            # Save the updated categories
+            files.save_file('categories')
+            self.report({'INFO'}, f"Category '{category_to_delete}' deleted.")
+
+            # Reset selection to Default if the deleted one was active
+            if obj.sx2.category == category_to_delete:
+                 # Find the first available category key (prefer 'Default')
+                 first_key = 'Default' if 'Default' in sxglobals.category_dict else next(iter(sxglobals.category_dict), None)
+                 if first_key:
+                     obj.sx2.category = first_key
+                 else:
+                     # Handle case where no categories are left (shouldn't happen if Default isn't deletable)
+                     obj.sx2.category = '' # Or some other indicator
+
+            # Force refresh
+            for window in context.window_manager.windows:
+                for area in window.screen.areas:
+                    if area.type == 'VIEW_3D':
+                        area.tag_redraw()
+                        break
+
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to delete category: {e}")
+            # import traceback
+            # traceback.print_exc()
+            return {'CANCELLED'}
+
+        return {'FINISHED'}
+
+
 class SXTOOLS2_OT_checklist(bpy.types.Operator):
     bl_idname = 'sx2.checklist'
     bl_label = 'Export Checklist'
@@ -12712,6 +12946,8 @@ export_classes = (
     SXTOOLS2_OT_zeroverts,
     SXTOOLS2_OT_bytestofloats,
     SXTOOLS2_OT_macro,
+    SXTOOLS2_OT_add_category,
+    SXTOOLS2_OT_del_category,
     SXTOOLS2_OT_checklist,
     SXTOOLS2_OT_catalogue_add,
     SXTOOLS2_OT_catalogue_remove,
