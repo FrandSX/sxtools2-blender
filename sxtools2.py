@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 11, 1),
+    'version': (2, 12, 0),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5764,12 +5764,17 @@ class SXTOOLS2_magic(object):
         for obj in objs:
             colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
             # Static colors layer is rough
-            rgh_value = (obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness)
-            colors1 = generate.color_list(obj, rgh_value, utils.find_color_layers(obj, 5))
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            # Combine with roughness from PBR material
-            colors1 = generate.color_list(obj, palette[2], utils.find_color_layers(obj, 6))
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
+            rgh_value = (obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness, 1.0)
+            layer_statics = utils.find_color_layers(obj, 5)
+            colors1 = generate.color_list(obj, rgh_value, layer_statics)
+            mask, _ = layers.get_layer_mask(obj, layer_statics)
+            colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
+            # Combine with roughness from PBR material if not manually applied by artist
+            if not obj.sx2.preserve_pbr:
+                layer_pbr = utils.find_color_layers(obj, 6)
+                colors1 = generate.color_list(obj, palette[2], layer_pbr)
+                mask, _ = layers.get_layer_mask(obj, layer_pbr)
+                colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
             # Noise for variance
             colors1 = generate.noise_list(obj, 0.01, True)
             colors = tools.blend_values(colors1, colors, 'OVR', 1.0)
@@ -5803,11 +5808,15 @@ class SXTOOLS2_magic(object):
             scene.toolopacity = 1.0
             scene.toolblend = 'ALPHA'
 
-            # Mix metallic with occlusion (dirt in crevices)
-            colors = generate.color_list(obj, color=palette[1], masklayer=utils.find_color_layers(obj, 6))
+            # Mix metallic with occlusion (non-metallic dirt in crevices)
+            if not obj.sx2.preserve_pbr:
+                colors = generate.color_list(obj, color=palette[1], masklayer=utils.find_color_layers(obj, 6))
+            else:
+                colors = layers.get_layer(obj, obj.sx2layers['Metallic'])
+
             if colors:
-                colors1 = layers.get_layer(obj, obj.sx2layers['Occlusion'])  # , single_as_alpha=True)
-                colors = tools.blend_values(colors1, colors, 'MUL', 1.0)
+                colors1 = layers.get_layer(obj, obj.sx2layers['Occlusion'])
+                colors = tools.blend_values(colors1, colors, 'MUL', 0.85)
                 layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
 
 
@@ -8045,9 +8054,15 @@ class SXTOOLS2_objectprops(bpy.types.PropertyGroup):
 
     transmissionoverride: bpy.props.BoolProperty(
         name='Override Transmission',
-        description='Retain manually applied Transmission / SSS',
+        description='Preserve manually applied Transmission / SSS',
         default=False,
         update=lambda self, context: update_obj_props(self, context, 'transmissionoverride'))
+
+    preserve_pbr: bpy.props.BoolProperty(
+        name='Preserve PBR Roughness/Metallic',
+        description='Preserve manually applied Roughness / Metallic\naccording to Layer 6 mask!',
+        default=False,
+        update=lambda self, context: update_obj_props(self, context, 'preserve_pbr'))
 
     generatelodmeshes: bpy.props.BoolProperty(
         name='Generate LOD Meshes',
@@ -9627,6 +9642,9 @@ class SXTOOLS2_PT_panel(bpy.types.Panel):
                             col_mat_ovr.enabled = sx2.materialoverride
                             mat_ovr_panel.separator()
                             mat_ovr_panel.prop(sx2, 'transmissionoverride', text='Preserve Transmission / SSS', toggle=True)
+                        
+                        row_pbr = col_export.row(align=True)
+                        row_pbr.prop(sx2, 'preserve_pbr', text='Preserve PBR Roughness / Metallic', toggle=True)
 
                         col_export.separator()
                         row_static = col_export.row(align=True)
