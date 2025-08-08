@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 12, 0),
+    'version': (2, 12, 4),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1929,46 +1929,27 @@ class SXTOOLS2_generate(object):
                 if empty:
                     mask = mask1
                 else:
-                    mask = [0.0] * len(mask1)
-                    for i in range(len(mask1)):
-                        m1 = mask1[i]
-                        m2 = mask2[i]
-                        if (m1 > 0.0) and (m2 > 0.0):
-                            mask[i] = min(m1, m2)
+                    mask = [m1 if m1 < m2 else m2 for m1, m2 in zip(mask1, mask2)]
         else:
             mask, empty = layers.get_layer_mask(obj, masklayer)
             if empty:
                 return None
 
         if as_tuple:
-            result = [None] * count
-            for i in range(count):
-                idx = i * 4
-                mask_val = mask[i]
-                result[i] = (
-                    colors[idx] * mask_val,
-                    colors[idx+1] * mask_val,
-                    colors[idx+2] * mask_val,
-                    colors[idx+3] * mask_val
-                )                    
-            return result
+            if override_mask:
+                alphas = mask
+            else:
+                alphas = [a * m for a, m in zip(colors[3::4], mask)]
+            return [(colors[i*4], colors[i*4+1], colors[i*4+2], alphas[i]) for i in range(count)]
         else:
             result = [0.0] * (count * 4)
+            result[0::4] = colors[0::4]
+            result[1::4] = colors[1::4]
+            result[2::4] = colors[2::4]
             if override_mask:
-                for i in range(count):
-                    idx = i * 4
-                    result[idx] = colors[idx]
-                    result[idx+1] = colors[idx+1]
-                    result[idx+2] = colors[idx+2]
-                    result[idx+3] = mask[i]
+                result[3::4] = mask
             else:
-                for i in range(count):
-                    idx = i * 4
-                    result[idx] = colors[idx]
-                    result[idx+1] = colors[idx+1]
-                    result[idx+2] = colors[idx+2]
-                    result[idx+3] = colors[idx+3] * mask[i]
-
+                result[3::4] = [a * m for a, m in zip(colors[3::4], mask)]
             return result
 
 
@@ -2382,28 +2363,26 @@ class SXTOOLS2_layers(object):
                 channel_index = sxglobals.alpha_targets[layer_type]
                 channel_values = self.get_channel(obj, sourcelayer.color_attribute, channel_index)
                 values = [None] * (len(channel_values) * 4)
+                n = len(channel_values)
 
-                for i, value in enumerate(channel_values):
-                    idx = i * 4
-                    if single_as_alpha:
-                        if value > 0.0:
-                            values[idx:idx+4] = [1.0, 1.0, 1.0, value]
-                        else:
-                            values[idx:idx+4] = [0.0, 0.0, 0.0, 0.0]
-                    else:
-                        values[idx:idx+4] = [value, value, value, 1.0]
-
-            if apply_layer_opacity and sourcelayer.opacity != 1.0:
-                count = len(values)//4
-                for i in range(count):
-                    values[3+i*4] *= sourcelayer.opacity
+                if single_as_alpha:
+                    # RGB = 1.0, A = channel
+                    values = [1.0, 1.0, 1.0, 0.0] * n
+                    values[3::4] = channel_values  # C-level stride write
+                    if apply_layer_opacity and sourcelayer.opacity != 1.0:
+                        a = sourcelayer.opacity
+                        values[3::4] = [v * a for v in values[3::4]]
+                else:
+                    # RGB = channel, A = 1.0
+                    values = [0.0] * (n * 4)
+                    values[0::4] = channel_values
+                    values[1::4] = channel_values
+                    values[2::4] = channel_values
+                    values[3::4] = [1.0] * n
 
         if as_tuple:
-            count = len(values)//4
-            rgba = [None] * count
-            for i in range(count):
-                rgba[i] = tuple(values[(0+i*4):(4+i*4)])
-            return rgba
+            it = iter(values)
+            return [tuple((next(it), next(it), next(it), next(it))) for _ in range(len(values)//4)]
         else:
             return values
 
@@ -2491,8 +2470,8 @@ class SXTOOLS2_layers(object):
             raise ValueError(f"Invalid channel: {channel}. Must be 0-3 or 'R', 'G', 'B', 'A'")
         
         colors = self.get_colors(obj, target)
-        for i, value in enumerate(values):
-            colors[i*4+source_index] = value
+        colors[source_index::4] = values
+
         target_colors = obj.data.color_attributes[target].data
         target_colors.foreach_set('color', colors)
         obj.data.update()
@@ -2525,21 +2504,17 @@ class SXTOOLS2_layers(object):
 
 
     def get_uvs(self, obj, source, channel=None):
-        channels = {'U': 0, 'V': 1}
         source_uvs = obj.data.uv_layers[source].data
         count = len(source_uvs)
         source_values = [None] * count * 2
         source_uvs.foreach_get('uv', source_values)
 
         if channel is None:
-            uvs = source_values
-        else:
-            uvs = [None] * count
-            sc = channels[channel]
-            for i in range(count):
-                uvs[i] = source_values[sc+i*2]
-
-        return uvs
+            return source_values
+        if channel == 'U':
+            return source_values[0::2]
+        elif channel == 'V':
+            return source_values[1::2]
 
 
     # when targetchannel is None, sourceuvs is expected to contain data for both U and V
@@ -2549,13 +2524,15 @@ class SXTOOLS2_layers(object):
 
         if targetchannel is None:
             target_uvs.foreach_set('uv', sourceuvs)
-        else:
-            target_values = self.get_uvs(obj, target)
-            tc = channels[targetchannel]
-            count = len(sourceuvs)
-            for i in range(count):
-                target_values[tc+i*2] = sourceuvs[i]
-            target_uvs.foreach_set('uv', target_values)
+            return
+        
+        target_values = self.get_uvs(obj, target)
+        if targetchannel == 'U':
+            target_values[0::2] = sourceuvs
+        elif targetchannel == 'V':
+            target_values[1::2] = sourceuvs
+
+        target_uvs.foreach_set('uv', target_values)
 
 
     def clear_layers(self, objs, targetlayer=None):
@@ -5706,12 +5683,17 @@ class SXTOOLS2_magic(object):
         for obj in objs:
             colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
             # Static colors layer is rough
-            rgh_value = (obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness)
-            colors1 = generate.color_list(obj, rgh_value, utils.find_color_layers(obj, 5))
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            # Combine with roughness from PBR material
-            colors1 = generate.color_list(obj, palette[2], utils.find_color_layers(obj, 6))
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
+            rgh_value = (obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness, 1.0)
+            layer_statics = utils.find_color_layers(obj, 5)
+            colors1 = generate.color_list(obj, rgh_value, layer_statics)
+            mask, _ = layers.get_layer_mask(obj, layer_statics)
+            colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
+            # Combine with roughness from PBR material if not manually applied by artist
+            if not obj.sx2.preserve_pbr:
+                layer_pbr = utils.find_color_layers(obj, 6)
+                colors1 = generate.color_list(obj, palette[2], layer_pbr)
+                mask, _ = layers.get_layer_mask(obj, layer_pbr)
+                colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
             # Noise for variance
             colors1 = generate.noise_list(obj, 0.01, True)
             colors = tools.blend_values(colors1, colors, 'OVR', 1.0)
@@ -5735,13 +5717,19 @@ class SXTOOLS2_magic(object):
             # Emissives are smooth
             color = (0.0, 0.0, 0.0, 1.0)
             colors1 = generate.color_list(obj, color, obj.sx2layers['Emission'])
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
+            # colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
+            mask, _ = layers.get_layer_mask(obj, obj.sx2layers['Emission'])
+            colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
+
             # Write roughness
             layer = obj.sx2layers['Roughness']
             layers.set_layer(obj, colors, layer)
 
-            # Mix metallic with occlusion (dirt in crevices)
-            colors = generate.color_list(obj, color=palette[1], masklayer=utils.find_color_layers(obj, 6))
+            # Mix metallic with occlusion (non-metallic dirt in crevices)
+            if not obj.sx2.preserve_pbr:
+                colors = generate.color_list(obj, color=palette[1], masklayer=utils.find_color_layers(obj, 6))
+            else:
+                colors = layers.get_layer(obj, obj.sx2layers['Metallic'])
             if colors:
                 colors1 = layers.get_layer(obj, obj.sx2layers['Occlusion'], single_as_alpha=True)
                 colors = tools.blend_values(colors1, colors, 'MUL', 1.0)
@@ -5797,7 +5785,9 @@ class SXTOOLS2_magic(object):
             colors = tools.blend_values(colors1, colors, 'ADD', 0.2)
             # Emissives are smooth
             colors1 = generate.color_list(obj, (0.0, 0.0, 0.0, 1.0), obj.sx2layers['Emission'])
-            colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
+            # colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
+            mask, _ = layers.get_layer_mask(obj, obj.sx2layers['Emission'])
+            colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
             # Write roughness
             layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
 
@@ -5815,7 +5805,7 @@ class SXTOOLS2_magic(object):
                 colors = layers.get_layer(obj, obj.sx2layers['Metallic'])
 
             if colors:
-                colors1 = layers.get_layer(obj, obj.sx2layers['Occlusion'])
+                colors1 = layers.get_layer(obj, obj.sx2layers['Occlusion'], single_as_alpha=True)
                 colors = tools.blend_values(colors1, colors, 'MUL', 0.85)
                 layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
 
