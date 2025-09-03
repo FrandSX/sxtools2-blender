@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 12, 4),
+    'version': (2, 13, 3),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3666,11 +3666,19 @@ class SXTOOLS2_export(object):
         def cull_hulls(objs):
             test_objs = objs
             culled = []
+            min_surface_area = 0.0001
+
             for obj in test_objs:
                 tri_count = modifiers.calculate_triangles([obj, ])
                 if tri_count < 4:
                     culled.append(obj)
                     print(f"SX Tools Warning: {obj.name} has fewer than 4 triangles and will be removed")
+                    continue
+
+                _, surface_area, _ = modifiers.calculate_volume_area_tris(obj)
+                if surface_area < min_surface_area:
+                    culled.append(obj)
+                    print(f"SX Tools Warning: {obj.name} has near-zero surface area ({surface_area:.8f}) and will be removed")
             
             for hull_obj in culled:
                 mesh = hull_obj.data
@@ -3749,11 +3757,11 @@ class SXTOOLS2_export(object):
             collapse_ratio = 1.0  # Default to no collapse (ratio of 1.0)
 
             tri_count = original_tri_count
-            if tri_count < 4:
+            if tri_count < min_triangles:
                 phase1 = False
                 phase2 = False
                 phase3 = False
-                print(f"SX Tools: {obj.name} skipped - mesh has fewer than 4 faces")
+                print(f"SX Tools: {obj.name} skipped - mesh has fewer than 12 faces")
 
             # PHASE 1: DISSOLVE DECIMATION
             if phase1:
@@ -3777,13 +3785,13 @@ class SXTOOLS2_export(object):
     
                     # Check face count first - prevent error if getting too low
                     tri_count = modifiers.calculate_triangles([obj, ])
-                    if tri_count < 4:
+                    if tri_count < min_triangles:  # 4:
                         temp_angle = low_angle  # Start from known safe value
                         while temp_angle < mid_angle:
                             test_angle = (temp_angle + mid_angle) / 2.0
                             dissolve_mod.angle_limit = math.radians(test_angle)
                             test_tri_count = modifiers.calculate_triangles([obj, ])
-                            if test_tri_count >= 4:
+                            if test_tri_count >= min_triangles:  # 4:
                                 temp_angle = test_angle
                             else:
                                 break
@@ -3838,89 +3846,94 @@ class SXTOOLS2_export(object):
 
             # PHASE 2: COLLAPSE DECIMATION (always enter this phase)
             if phase2:
-                # Add collapse modifier after the dissolve modifier
-                collapse_mod = obj.modifiers.new(type='DECIMATE', name='TempCollapse')
-                collapse_mod.decimate_type = 'COLLAPSE'
-                collapse_mod.symmetry_axis = 'X'
-                collapse_mod.use_collapse_triangulate = False
-                
-                # Binary search for optimal collapse ratio that preserves shape
-                low_ratio = 0.1  # Don't go below 10% to prevent complete destruction
-                high_ratio = 1.0  # Start from no decimation
-                best_ratio = None
-                best_collapse_score = float('inf')
-                best_collapse_tri_count = dissolve_tri_count
-                ratio_epsilon = 0.01
-                
-                while high_ratio - low_ratio > ratio_epsilon:
-                    mid_ratio = (low_ratio + high_ratio) / 2.0
-                    collapse_mod.ratio = mid_ratio
-                    
-                    # Calculate shape preservation metrics
-                    test_volume, test_area, test_tris = modifiers.calculate_volume_area_tris(obj)
-                    # Calculate shape deviation metrics
-                    volume_ratio = abs(test_volume - original_volume) / original_volume
-                    area_ratio = abs(test_area - original_area) / original_area
-                    collapse_score = (volume_ratio * score_bias_p2) + (area_ratio * (1.0 - score_bias_p2))  # Favor volume preservation
+                # Check for valid mesh after dissolve
+                test_volume, test_area, test_tris = modifiers.calculate_volume_area_tris(obj)
+                valid_hull = test_tris >= min_triangles
 
-                    # Check if we have at least 4 triangles (minimum for a valid hull)
-                    valid_hull = test_tris >= min_triangles
+                if valid_hull:
+                    # Add collapse modifier after the dissolve modifier
+                    collapse_mod = obj.modifiers.new(type='DECIMATE', name='TempCollapse')
+                    collapse_mod.decimate_type = 'COLLAPSE'
+                    collapse_mod.symmetry_axis = 'X'
+                    collapse_mod.use_collapse_triangulate = False
                     
-                    # if scene.benchmark_cvx:
-                    #     print(f"SX Tools: Collapse phase - Ratio {mid_ratio:.3f}, Tris {collapse_tri_count}, Score {collapse_score:.4f}, Valid: {valid_hull}")
+                    # Binary search for optimal collapse ratio that preserves shape
+                    low_ratio = 0.1  # Don't go below 10% to prevent complete destruction
+                    high_ratio = 1.0  # Start from no decimation
+                    best_ratio = None
+                    best_collapse_score = float('inf')
+                    best_collapse_tri_count = dissolve_tri_count
+                    ratio_epsilon = 0.01
                     
-                    # First make sure we have enough triangles for a valid hull
-                    if not valid_hull:
-                        # Not enough triangles, need less aggressive decimation
-                        low_ratio = mid_ratio
-                    # Then check shape preservation
-                    elif collapse_score <= shape_threshold:
-                        # Shape is preserved and we have enough triangles
-                        if test_tris <= target_tris:
-                            # Perfect: under triangle target and within shape threshold
-                            best_ratio = mid_ratio
-                            best_collapse_score = collapse_score
-                            best_collapse_tri_count = test_tris
-                            high_ratio = mid_ratio  # Try for even fewer triangles
+                    while high_ratio - low_ratio > ratio_epsilon:
+                        mid_ratio = (low_ratio + high_ratio) / 2.0
+                        collapse_mod.ratio = mid_ratio
+                        
+                        # Calculate shape preservation metrics
+                        test_volume, test_area, test_tris = modifiers.calculate_volume_area_tris(obj)
+                        # Calculate shape deviation metrics
+                        volume_ratio = abs(test_volume - original_volume) / original_volume
+                        area_ratio = abs(test_area - original_area) / original_area
+                        collapse_score = (volume_ratio * score_bias_p2) + (area_ratio * (1.0 - score_bias_p2))  # Favor volume preservation
+
+                        # Check if we have minimum for a valid hull
+                        valid_hull = test_tris >= min_triangles
+                        
+                        # if scene.benchmark_cvx:
+                        #     print(f"SX Tools: Collapse phase - Ratio {mid_ratio:.3f}, Tris {collapse_tri_count}, Score {collapse_score:.4f}, Valid: {valid_hull}")
+                        
+                        # First make sure we have enough triangles for a valid hull
+                        if not valid_hull:
+                            # Not enough triangles, need less aggressive decimation
+                            low_ratio = mid_ratio
+                        # Then check shape preservation
+                        elif collapse_score <= shape_threshold:
+                            # Shape is preserved and we have enough triangles
+                            if test_tris <= target_tris:
+                                # Perfect: under triangle target and within shape threshold
+                                best_ratio = mid_ratio
+                                best_collapse_score = collapse_score
+                                best_collapse_tri_count = test_tris
+                                high_ratio = mid_ratio  # Try for even fewer triangles
+                            else:
+                                # Shape is good but still too many triangles, need more aggressive collapse
+                                high_ratio = mid_ratio
                         else:
-                            # Shape is good but still too many triangles, need more aggressive collapse
-                            high_ratio = mid_ratio
-                    else:
-                        # Shape is not preserved within threshold
-                        low_ratio = mid_ratio
-                
-                # If we've found a valid collapse ratio that preserves shape and meets triangle target
-                if best_ratio:
-                    collapse_ratio = best_ratio
-                    if scene.benchmark_cvx:
-                        print(f"SX Tools: Collapse phase - Selected ratio {collapse_ratio:.3f}, triangles: {best_collapse_tri_count}, shape score: {best_collapse_score:.4f}")
-                
-                # If still over triangle target, try a direct ratio calculation as fallback, but ensure we maintain at least 4 triangles
-                elif dissolve_tri_count > target_tris:
-                    # Base calculation 
-                    desired_ratio = max(0.05, target_tris / dissolve_tri_count)
+                            # Shape is not preserved within threshold
+                            low_ratio = mid_ratio
                     
-                    # Test the desired ratio to make sure we don't collapse too much
-                    collapse_mod.ratio = desired_ratio
-                    test_tri_count = modifiers.calculate_triangles([obj, ])
+                    # If we've found a valid collapse ratio that preserves shape and meets triangle target
+                    if best_ratio:
+                        collapse_ratio = best_ratio
+                        if scene.benchmark_cvx:
+                            print(f"SX Tools: Collapse phase - Selected ratio {collapse_ratio:.3f}, triangles: {best_collapse_tri_count}, shape score: {best_collapse_score:.4f}")
                     
-                    if test_tri_count < min_triangles:
-                        # Increase ratio until we have at least min_triangles
-                        test_ratio = desired_ratio
-                        while test_tri_count < min_triangles and test_ratio < 1.0:
-                            test_ratio += 0.05
-                            collapse_mod.ratio = test_ratio
-                            test_tri_count = modifiers.calculate_triangles([obj, ])
+                    # If still over triangle target, try a direct ratio calculation as fallback, but ensure we maintain at least 4 triangles
+                    elif dissolve_tri_count > target_tris:
+                        # Base calculation 
+                        desired_ratio = max(0.05, target_tris / dissolve_tri_count)
                         
-                        collapse_ratio = test_ratio
-                    else:
-                        collapse_ratio = desired_ratio
+                        # Test the desired ratio to make sure we don't collapse too much
+                        collapse_mod.ratio = desired_ratio
+                        test_tri_count = modifiers.calculate_triangles([obj, ])
                         
-                    if scene.benchmark_cvx:
-                        print(f"SX Tools: Adjusted collapse ratio to {collapse_ratio:.3f} to ensure valid hull with at least 4 triangles")
+                        if test_tri_count < min_triangles:
+                            # Increase ratio until we have at least min_triangles
+                            test_ratio = desired_ratio
+                            while test_tri_count < min_triangles and test_ratio < 1.0:
+                                test_ratio += 0.05
+                                collapse_mod.ratio = test_ratio
+                                test_tri_count = modifiers.calculate_triangles([obj, ])
+                            
+                            collapse_ratio = test_ratio
+                        else:
+                            collapse_ratio = desired_ratio
+                            
+                        if scene.benchmark_cvx:
+                            print(f"SX Tools: Adjusted collapse ratio to {collapse_ratio:.3f} to ensure valid hull with at least 4 triangles")
 
-                # Apply temporary modifier
-                bpy.ops.object.modifier_apply(modifier='TempCollapse')
+                    # Apply temporary modifier
+                    bpy.ops.object.modifier_apply(modifier='TempCollapse')
 
             final_tri_count = modifiers.calculate_triangles([obj, ])
 
