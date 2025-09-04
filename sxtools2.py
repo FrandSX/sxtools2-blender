@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 13, 3),
+    'version': (2, 13, 5),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3387,7 +3387,7 @@ class SXTOOLS2_modifiers(object):
 
 
     def calculate_triangles(self, objs):
-        utils.mode_manager(objs, set_mode=True, mode_id='calculate_triangles')
+        # utils.mode_manager(objs, set_mode=True, mode_id='calculate_triangles')
         edg = bpy.context.evaluated_depsgraph_get()
         count = 0
         for obj in objs:
@@ -3395,7 +3395,7 @@ class SXTOOLS2_modifiers(object):
                 eval_data = obj.evaluated_get(edg).data
                 for face in eval_data.polygons:
                     count += len(face.vertices) - 2
-        utils.mode_manager(objs, set_mode=False, mode_id='calculate_triangles')
+        # utils.mode_manager(objs, set_mode=False, mode_id='calculate_triangles')
         return count
 
 
@@ -3413,7 +3413,7 @@ class SXTOOLS2_modifiers(object):
         if obj.type != 'MESH':
             return 0.0, 0.0
         
-        utils.mode_manager([obj, ], set_mode=True, mode_id='calculate_volume_area_tris')
+        # utils.mode_manager([obj, ], set_mode=True, mode_id='calculate_volume_area_tris')
 
         edg = bpy.context.evaluated_depsgraph_get()
         eval_data = obj.evaluated_get(edg).data
@@ -3442,7 +3442,7 @@ class SXTOOLS2_modifiers(object):
 
             count += face_vert_count - 2
 
-        utils.mode_manager([obj, ], set_mode=False, mode_id='calculate_volume_area_tris')
+        # utils.mode_manager([obj, ], set_mode=False, mode_id='calculate_volume_area_tris')
         return abs(volume), area, count
 
 
@@ -3939,10 +3939,10 @@ class SXTOOLS2_export(object):
 
             # PHASE 3: WELDING
             if phase3:
-                weld_threshold = 0.025
                 xmin, xmax, ymin, ymax, zmin, zmax = utils.get_object_bounding_box([obj, ])
-                min_dimension = min(xmax - xmin, ymax - ymin, zmax - zmin)
-                if (final_tri_count > min_triangles) and (min_dimension > weld_threshold):
+                min_dimension = min(xmax - xmin, ymax - ymin, zmax - zmin) * 0.5
+                weld_threshold = min(0.025, min_dimension * 0.5)
+                if (final_tri_count > min_triangles):
                     weld_mod = obj.modifiers.new(type='WELD', name='TempWeld')
                     weld_mod.mode = 'CONNECTED'
                     weld_mod.merge_threshold = weld_threshold
