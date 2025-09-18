@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 13, 5),
+    'version': (2, 13, 9),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5549,14 +5549,19 @@ class SXTOOLS2_magic(object):
                 if 'Roughness' not in obj.sx2layers.keys():
                     layers.add_layer([obj, ], name='Roughness', layer_type='RGH')
 
+                base = layers.get_layer(obj, obj.sx2layers['Roughness'])
                 for layer in paletted_layers:
+                    mask, empty = layers.get_layer_mask(obj, layer)
+                    if empty:
+                        continue
+
                     value = getattr(obj.sx2, 'roughness'+str(layer.palette_index))
                     value *= layer.opacity
                     color = (value, value, value, 1.0)
                     values = generate.color_list(obj, color, layer)
-                    base = layers.get_layer(obj, obj.sx2layers['Roughness'])
-                    colors = tools.blend_values(values, base, 'ALPHA', 1.0)
-                    layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
+                    base = tools.blend_values(values, base, 'ALPHA', 1.0)
+
+                layers.set_layer(obj, base, obj.sx2layers['Roughness'])
 
             if obj.sx2.metallicoverride:
                 if clear:
@@ -5565,14 +5570,19 @@ class SXTOOLS2_magic(object):
                 if 'Metallic' not in obj.sx2layers.keys():
                     layers.add_layer([obj, ], name='Metallic', layer_type='MET')
 
+                base = layers.get_layer(obj, obj.sx2layers['Metallic'])
                 for layer in paletted_layers:
+                    mask, empty = layers.get_layer_mask(obj, layer)
+                    if empty:
+                        continue
+
                     value = getattr(obj.sx2, 'metallic'+str(layer.palette_index))
                     value *= layer.opacity
                     color = (value, value, value, 1.0)
                     values = generate.color_list(obj, color, layer)
-                    base = layers.get_layer(obj, obj.sx2layers['Metallic'])
-                    colors = tools.blend_values(values, base, 'ALPHA', 1.0)
-                    layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
+                    base = tools.blend_values(values, base, 'REP', 1.0, selectionmask=mask)
+
+                layers.set_layer(obj, base, obj.sx2layers['Metallic'])
 
 
     def apply_occlusion(self, objs, masklayername=None, blend=0.5, rays=50, groundplane=True, distance=10.0):
@@ -5651,13 +5661,14 @@ class SXTOOLS2_magic(object):
                 scene.toolopacity = 1.0
                 scene.toolblend = 'ALPHA'
                 tools.apply_tool(objs, obj.sx2layers['Metallic'], masklayer=obj.sx2layers['Gradient1'], color=(1.0, 1.0, 1.0, 1.0))
-                tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Gradient1'], color=(0.0, 0.0, 0.0, 1.0))
+                tools.apply_tool(objs, obj.sx2layers['Roughness'], masklayer=obj.sx2layers['Gradient1'], color=(0.75, 0.75, 0.75, 1.0))
 
         # Emissive road paint
         for obj in objs:
             mask, empty = layers.get_layer_mask(obj, obj.sx2layers['Layer 2 - Paint'])
             if not empty:
-                colors = layers.get_layer(obj, obj.sx2layers['Layer 2 - Paint'])
+                colors = generate.color_list(obj, (0.2, 0.2, 0.2, 0.2), obj.sx2layers['Layer 2 - Paint'])
+                # colors = layers.get_layer(obj, obj.sx2layers['Layer 2 - Paint'])
                 layers.set_layer(obj, colors, obj.sx2layers['Emission'])
 
         # Emissives are smooth
@@ -5752,7 +5763,7 @@ class SXTOOLS2_magic(object):
     def process_vehicles(self, objs):
         scene = bpy.context.scene.sx2
 
-        self.apply_palette_overrides(objs, clear=True)
+        self.apply_palette_overrides(objs, clear=False)
         self.apply_occlusion(objs, masklayername='Emission')
         self.apply_curvature_overlay(objs, convex=True, concave=False, noise=0.01)
 
@@ -5814,6 +5825,8 @@ class SXTOOLS2_magic(object):
             # Mix metallic with occlusion (non-metallic dirt in crevices)
             if not obj.sx2.preserve_pbr:
                 colors = generate.color_list(obj, color=palette[1], masklayer=utils.find_color_layers(obj, 6))
+                colors1 = layers.get_layer(obj, obj.sx2layers['Metallic'])
+                colors = tools.blend_values(colors, colors1, 'ALPHA', 1.0)
             else:
                 colors = layers.get_layer(obj, obj.sx2layers['Metallic'])
 
