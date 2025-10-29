@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 13, 9),
+    'version': (2, 14, 0),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -69,10 +69,11 @@ class SXTOOLS2_sxglobals(object):
             'EMI': (0.0, 0.0, 0.0, 0.0),
             'CMP': (0.0, 0.0, 0.0, 0.0),
             'CID': (0.0, 0.0, 0.0, 0.0),
+            'WEIGHT': (0.0, 0.0, 0.0, 0.0)
             }
 
         # Layer definitions for four-channel and single-channel layers, used for layer data access
-        self.rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP', 'CID']
+        self.rgba_targets = ['COLOR', 'SSS', 'EMI', 'CMP', 'CID', 'WEIGHT']
         self.alpha_targets = {'OCC': 0, 'MET': 1, 'RGH': 2, 'TRN': 3}
 
         # {layer_keys: (index, obj)}
@@ -2519,7 +2520,6 @@ class SXTOOLS2_layers(object):
 
     # when targetchannel is None, sourceuvs is expected to contain data for both U and V
     def set_uvs(self, obj, target, sourceuvs, targetchannel=None):
-        channels = {'U': 0, 'V': 1}
         target_uvs = obj.data.uv_layers[target].data
 
         if targetchannel is None:
@@ -4654,6 +4654,11 @@ class SXTOOLS2_export(object):
 
             for layer in obj.sx2layers:
                 if (layer.layer_type == 'CMP') or (layer.layer_type == 'CID'):
+                    continue
+
+                if (layer.layer_type == 'WEIGHT'):
+                    values = layers.get_luminances(obj, layer)
+                    layers.set_uvs(obj, 'UVSet1', values, 'U')
                     continue
 
                 channel_name = 'uv_' + layer.name.lower()
@@ -7302,7 +7307,7 @@ def load_category(self, context):
 
             # Move Collider ID layer out of the way
             for layer in obj.sx2layers:
-                if layer.layer_type == 'CID':
+                if (layer.layer_type == 'CID') or (layer.name == 'WEIGHT'):
                     new_index = len(obj.sx2layers) - 1
                     layer.index = utils.insert_layer_at_index(obj, layer, new_index)
 
@@ -8941,7 +8946,8 @@ class SXTOOLS2_layerprops(bpy.types.PropertyGroup):
             ('SSS', 'Subsurface', ''),
             ('EMI', 'Emission', ''),
             ('CMP', 'Composite', ''),
-            ('CID', 'Collider IDs', '')],
+            ('CID', 'Collider IDs', ''),
+            ('WEIGHT', 'Vertex Weights', '')],
         default='COLOR')
 
     default_color: bpy.props.FloatVectorProperty(
@@ -10874,7 +10880,8 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
             ('SSS', 'Subsurface', ''),
             ('EMI', 'Emission', ''),
             ('CMP', 'Composite', ''),
-            ('CID', 'Collider IDs', '')],
+            ('CID', 'Collider IDs', ''),
+            ('WEIGHT', 'Vertex Weights', '')],
         default='COLOR')
 
     layer_variants: bpy.props.BoolProperty(
@@ -10950,15 +10957,18 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
             # max layer count needs to account for layers not used in compositing
             cmp_exists = False
             cid_exists = False
+            weight_exists = False
             for sx2layer in obj.sx2layers:
                 if sx2layer.layer_type == 'CMP':
                     cmp_exists = True
                 if sx2layer.layer_type == 'CID':
                     cid_exists = True
+                if sx2layer.layer_type == 'WEIGHT':
+                    weight_exists = True
 
             var_layers = len([attribute for attribute in obj.data.color_attributes if '_var' in attribute.name])
 
-            layermax = 14 + cmp_exists + cid_exists + var_layers
+            layermax = 14 + cmp_exists + cid_exists + weight_exists + var_layers
 
             if (self.layer_type != 'CMP') and (self.layer_type != 'CID') and (len(obj.data.color_attributes) == layermax) and (layer.layer_type in alpha_mats) and (self.layer_type not in alpha_mats):
                 message_box('Layer stack at max, delete a color layer and try again.')
@@ -10981,6 +10991,8 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     name = 'Composite'
                 elif self.layer_type == 'CID':
                     name = 'Collider IDs'
+                elif self.layer_type == 'WEIGHT':
+                    name = 'Vertex Weights'
                 else:
                     name = self.layer_name
 
@@ -11002,7 +11014,7 @@ class SXTOOLS2_OT_layer_props(bpy.types.Operator):
                     layers.clear_layers([obj, ], layer)
 
                 layer.layer_type = self.layer_type
-                if layer.layer_type in ['OCC', 'MET', 'RGH', 'TRN', 'CMP', 'CID']:
+                if layer.layer_type in ['OCC', 'MET', 'RGH', 'TRN', 'CMP', 'CID', 'WEIGHT']:
                     layer.paletted = False
                 else:
                     layer.paletted = True
