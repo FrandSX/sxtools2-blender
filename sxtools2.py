@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 14, 0),
+    'version': (2, 14, 2),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5196,7 +5196,7 @@ class SXTOOLS2_export(object):
             if obj.sx2.category != 'DEFAULT':
                 category_data = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]
                 cat_layers = category_data['layers']
-                obj_layers = [layer for layer in obj.sx2layers if layer.name != 'Collider IDs']
+                obj_layers = [layer for layer in obj.sx2layers if ((layer.layer_type != 'CID') and (layer.layer_type != 'WEIGHT')) ]
                 if len(cat_layers) == len(obj_layers):
                     for cat_layer, layer in zip(cat_layers, obj_layers):
                         if (cat_layer[0] != layer.name) or (cat_layer[1] != layer.layer_type):
@@ -13085,5 +13085,6 @@ if __name__ == '__main__':
 
 # TODO:
 # BUG: Grouping of objs with armatures
+# BUG: Single channels with channel viewmode
 # FEAT: match existing layers when loading category
 # FEAT: review non-metallic PBR material values
