@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 14, 3),
+    'version': (2, 14, 4),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -6109,7 +6109,7 @@ class SXTOOLS2_setup(object):
             transform.location = (800, -100*i)
 
             # link combine to translation
-            connect_nodes(combine.outputs["Vector"], transform.inputs[1])
+            connect_nodes(combine.outputs["Vector"], transform.inputs['Translation'])
 
             # expose axis enable switches
             connect_nodes(group_in.outputs[axis_switches[i]], switch.inputs['Switch'])
