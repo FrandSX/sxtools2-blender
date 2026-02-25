@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 14, 4),
+    'version': (2, 14, 6),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -4628,25 +4628,31 @@ class SXTOOLS2_export(object):
     # palettemasks, alpha_tolerance can be used to fix this.
     # The default setting accepts only fully opaque values.
     def generate_palette_masks(self, objs, alpha_tolerance=1.0):
-        channels = {'R': 0, 'G': 1, 'B': 2, 'A': 3, 'U': 0, 'V': 1}
-
         for obj in objs:
-            layers = utils.find_color_layers(obj, staticvertexcolors=False)
+            layer_list = utils.find_color_layers(obj, staticvertexcolors=False)
             uvmap, target_channel = sxglobals.category_dict[sxglobals.preset_lookup[obj.sx2.category]]['uv_palette_masks']
             if uvmap not in obj.data.uv_layers.keys():
                 obj.data.uv_layers.new(name=uvmap)
 
-            for i, layer in enumerate(layers):
-                for poly in obj.data.polygons:
-                    for loop_idx in poly.loop_indices:
-                        vertex_alpha = 1.0 if i == 0 else obj.data.color_attributes[layer.color_attribute].data[loop_idx].color[3]
-                        if vertex_alpha >= alpha_tolerance:
-                            if layer.paletted:
-                                obj.data.uv_layers[uvmap].data[loop_idx].uv[channels[target_channel]] = layer.palette_index + 1
-                            elif 'PBR' in layer.name:
-                                obj.data.uv_layers[uvmap].data[loop_idx].uv[channels[target_channel]] = 7
-                            else:
-                                obj.data.uv_layers[uvmap].data[loop_idx].uv[channels[target_channel]] = 6
+            result = generate.empty_list(obj, 1)
+            loop_count = len(result)
+
+            for i, layer in enumerate(layer_list):
+                colors = layers.get_layer(obj, layer)
+                
+                if layer.paletted:
+                    palette_value = layer.palette_index + 1
+                elif 'PBR' in layer.name:
+                    palette_value = 7
+                else:
+                    palette_value = 6
+
+                for loop_idx in range(loop_count):
+                    vertex_alpha = 1.0 if i == 0 else colors[loop_idx * 4 + 3]
+                    if vertex_alpha >= alpha_tolerance:
+                        result[loop_idx] = palette_value
+
+            layers.set_uvs(obj, uvmap, result, target_channel)
 
 
     def generate_uv_channels(self, objs):
@@ -5140,32 +5146,29 @@ class SXTOOLS2_export(object):
     def validate_palette_layers(self, objs):
         for obj in objs:
             if obj.sx2.category != 'DEFAULT':
-                mesh = obj.data
-                layers = utils.find_color_layers(obj, staticvertexcolors=int(obj.sx2.staticvertexcolors))
-                for layer in layers:
-                    if layer.paletted:
-                        colors = []
-                        vertex_colors = mesh.attributes[layer.color_attribute].data
+                layer_list = utils.find_color_layers(obj, staticvertexcolors=int(obj.sx2.staticvertexcolors))
+                round_stepped = utils.round_stepped
 
-                        for poly in mesh.polygons:
-                            for loop_idx in poly.loop_indices:
-                                colors.append(vertex_colors[loop_idx].color[:])
+                for layer in layer_list:
+                    if layer.paletted:
+                        colors = layers.get_layer(obj, layer)
+                        loop_count = len(colors) // 4
 
                         # if object is transparent, ignore alpha
-                        round_stepped = utils.round_stepped
-                        if layers[0].opacity < 1.0:
-                            quantized_colors = [(round_stepped(color[0]), round_stepped(color[1]), round_stepped(color[2])) for color in colors]
-                        else:
-                            quantized_colors = [(round_stepped(color[0]), round_stepped(color[1]), round_stepped(color[2]), round_stepped(color[3])) for color in colors]
-                        color_set = set(quantized_colors)
+                        ignore_alpha = layer_list[0].opacity < 1.0
 
-                        if layer == layers[0]:
-                            if len(color_set) > 1:
-                                print(f'SX Tools Error: Multiple colors in {obj.name} {layer.name}\nValues: {color_set}')
-                                message_box(f'Multiple colors in {obj.name} {layer.name}')
-                                return False
-                        else:
-                            if len(color_set) > 2:
+                        color_set = set()
+                        for i in range(loop_count):
+                            idx = i * 4
+                            if ignore_alpha:
+                                key = (round_stepped(colors[idx]), round_stepped(colors[idx+1]), round_stepped(colors[idx+2]))
+                            else:
+                                key = (round_stepped(colors[idx]), round_stepped(colors[idx+1]), round_stepped(colors[idx+2]), round_stepped(colors[idx+3]))
+                            color_set.add(key)
+
+                            # Early exit - no need to continue if we already found too many
+                            max_colors = 1 if layer == layer_list[0] else 2
+                            if len(color_set) > max_colors:
                                 print(f'SX Tools Error: Multiple colors in {obj.name} {layer.name}\nValues: {color_set}')
                                 message_box(f'Multiple colors in {obj.name} {layer.name}')
                                 return False
