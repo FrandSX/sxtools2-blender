@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 14, 3),
+    'version': (2, 14, 6),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1031,7 +1031,7 @@ class SXTOOLS2_utils(object):
 
     # uses raycheck to calculate safe distance for shrinking mesh colliders
     def find_safe_mesh_offset(self, obj):
-        utils.mode_manager([obj, ], set_mode=False, mode_id='find_safe_mesh_offset')
+        utils.mode_manager([obj, ], set_mode=True, mode_id='find_safe_mesh_offset')
         bias = 0.005
         Vec = Vector
 
@@ -10811,11 +10811,9 @@ class SXTOOLS2_OT_layer_up(bpy.types.Operator):
             updated = False
             for obj in objs:
                 if obj.sx2layers:
-                    utils.mode_manager(objs, set_mode=True, mode_id='layer_up')
                     new_index = obj.sx2layers[idx].index + 1 if obj.sx2layers[idx].index + 1 < len(obj.sx2layers) else obj.sx2layers[idx].index
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
                     updated = True
-                    utils.mode_manager(objs, set_mode=False, mode_id='layer_up')
 
             if updated:
                 setup.update_sx2material(context)
@@ -10851,11 +10849,9 @@ class SXTOOLS2_OT_layer_down(bpy.types.Operator):
             updated = False
             for obj in objs:
                 if obj.sx2layers:
-                    utils.mode_manager(objs, set_mode=True, mode_id='layer_down')
                     new_index = obj.sx2layers[idx].index - 1 if obj.sx2layers[idx].index - 1 >= 0 else 0
                     obj.sx2layers[idx].index = utils.insert_layer_at_index(obj, obj.sx2layers[idx], new_index)
                     updated = True
-                    utils.mode_manager(objs, set_mode=False, mode_id='layer_down')
 
             if updated:
                 setup.update_sx2material(context)
@@ -11138,12 +11134,10 @@ class SXTOOLS2_OT_prev_variant(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         if objs:
-            utils.mode_manager(objs, set_mode=True, mode_id='prev_variant')
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             layer.variant_index -= 1
             layers.set_variant_layer(layer, layer.variant_index)
             setup.update_sx2material(context)
-            utils.mode_manager(objs, set_mode=False, mode_id='prev_variant')
             refresh_swatches(self, context)
 
         return {'FINISHED'}
@@ -11172,12 +11166,10 @@ class SXTOOLS2_OT_next_variant(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         if objs:
-            utils.mode_manager(objs, set_mode=True, mode_id='next_variant')
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             layer.variant_index += 1
             layers.set_variant_layer(layer, layer.variant_index)
             setup.update_sx2material(context)
-            utils.mode_manager(objs, set_mode=False, mode_id='next_variant')
             refresh_swatches(self, context)
 
         return {'FINISHED'}
@@ -11206,11 +11198,8 @@ class SXTOOLS2_OT_prev_palette(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         if objs:
-            utils.mode_manager(objs, set_mode=True, mode_id='prev_variant')
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             layer.palette_index -= 1
-            # setup.update_sx2material(context)
-            utils.mode_manager(objs, set_mode=False, mode_id='prev_variant')
             # refresh_swatches(self, context)
 
         return {'FINISHED'}
@@ -11239,11 +11228,8 @@ class SXTOOLS2_OT_next_palette(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         if objs:
-            utils.mode_manager(objs, set_mode=True, mode_id='next_palette')
             layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
             layer.palette_index += 1
-            # setup.update_sx2material(context)
-            utils.mode_manager(objs, set_mode=False, mode_id='next_palette')
             # refresh_swatches(self, context)
 
         return {'FINISHED'}
@@ -11387,21 +11373,22 @@ class SXTOOLS2_OT_pastelayer(bpy.types.Operator):
     def invoke(self, context, event):
         objs = mesh_selection_validator(self, context)
         if objs:
-            for obj in objs:
-                target_layer = obj.sx2layers[objs[0].sx2.selectedlayer]
+            target_layer = objs[0].sx2layers[objs[0].sx2.selectedlayer]
 
-                if event.shift:
-                    mode = 'mask'
-                elif event.ctrl:
-                    mode = 'lumtomask'
-                else:
-                    mode = False
+            if event.shift:
+                mode = 'mask'
+            elif event.ctrl:
+                mode = 'lumtomask'
+            else:
+                mode = False
 
-                if obj.name not in sxglobals.copy_buffer:
-                    message_box(f'Nothing to paste to {obj.name}!')
-                else:
-                    layers.paste_layer([obj, ], target_layer, mode)
-                    refresh_swatches(self, context)
+            valid_objs = [obj for obj in objs if obj.name in sxglobals.copy_buffer]
+
+            if valid_objs:
+                layers.paste_layer(valid_objs, target_layer, mode)
+                refresh_swatches(self, context)
+            else:
+                message_box(f'Nothing to paste!')
 
         return {'FINISHED'}
 
