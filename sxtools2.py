@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 14, 7),
+    'version': (2, 14, 9),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -17,7 +17,6 @@ import random
 import math
 import bmesh
 import json
-import pathlib
 import statistics
 import sys
 import os
@@ -26,7 +25,7 @@ from collections import Counter, defaultdict
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 from contextlib import redirect_stdout
-
+from pathlib import Path
 
 # ------------------------------------------------------------------------
 #    Globals
@@ -107,38 +106,37 @@ class SXTOOLS2_files(object):
     def load_file(self, mode):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         directory = prefs.libraryfolder
-        file_path = directory + mode + '.json'
+        file_path = Path(directory) / f'{mode}.json'
 
-        if directory:
-            try:
-                with open(file_path, 'r') as input:
-                    temp_dict = {}
-                    temp_dict = json.load(input)
-                    if mode == 'palettes':
-                        del sxglobals.master_palette_list[:]
-                        bpy.context.scene.sx2palettes.clear()
-                        sxglobals.master_palette_list = temp_dict['Palettes']
-                    elif mode == 'materials':
-                        del sxglobals.material_list[:]
-                        bpy.context.scene.sx2materials.clear()
-                        sxglobals.material_list = temp_dict['Materials']
-                    elif mode == 'gradients':
-                        sxglobals.ramp_dict.clear()
-                        sxglobals.ramp_dict = temp_dict
-                    elif mode == 'categories':
-                        sxglobals.category_dict.clear()
-                        sxglobals.category_dict = temp_dict
-
-                print(f'SX Tools: {mode} loaded from {file_path}')
-            except ValueError:
-                print(f'SX Tools Error: Invalid {mode} file.')
-                prefs.libraryfolder = ''
-                return False
-            except IOError:
-                print(f'SX Tools Error: {mode} file not found!')
-                return False
-        else:
+        if not directory:
             print(f'SX Tools: No {mode} file found - set Library Folder location in SX Tools 2 Preferences')
+            return False
+
+        try:
+            with file_path.open('r') as input:
+                loaded = json.load(input)
+                if mode == 'palettes':
+                    sxglobals.master_palette_list.clear()
+                    bpy.context.scene.sx2palettes.clear()
+                    sxglobals.master_palette_list.extend(loaded['Palettes'])
+                elif mode == 'materials':
+                    sxglobals.material_list.clear()
+                    bpy.context.scene.sx2materials.clear()
+                    sxglobals.material_list.extend(loaded['Materials'])
+                elif mode == 'gradients':
+                    sxglobals.ramp_dict.clear()
+                    sxglobals.ramp_dict.update(loaded)
+                elif mode == 'categories':
+                    sxglobals.category_dict.clear()
+                    sxglobals.category_dict.update(loaded)
+
+            print(f'SX Tools: {mode} loaded from {file_path}')
+        except ValueError:
+            print(f'SX Tools Error: Invalid {mode} file.')
+            prefs.libraryfolder = ''
+            return False
+        except IOError:
+            print(f'SX Tools Error: {mode} file not found!')
             return False
 
         if mode == 'palettes':
@@ -151,33 +149,28 @@ class SXTOOLS2_files(object):
     def save_file(self, mode):
         prefs = bpy.context.preferences.addons['sxtools2'].preferences
         directory = prefs.libraryfolder
-        file_path = directory + mode + '.json'
-        modes = ['palettes', 'materials', 'gradients', 'categories']
 
-        if directory and (mode in modes):
-            with open(file_path, 'w') as output:
-                if mode == 'palettes':
-                    temp_dict = {}
-                    temp_dict['Palettes'] = sxglobals.master_palette_list
-                    json.dump(temp_dict, output, indent=4)
-                elif mode == 'materials':
-                    temp_dict = {}
-                    temp_dict['Materials'] = sxglobals.material_list
-                    json.dump(temp_dict, output, indent=4)
-                elif mode == 'gradients':
-                    temp_dict = {}
-                    temp_dict = sxglobals.ramp_dict
-                    json.dump(temp_dict, output, indent=4)
-                elif mode == 'categories':
-                    temp_dict = {}
-                    temp_dict = sxglobals.category_dict
-                    json.dump(temp_dict, output, indent=4)
-                output.close()
-            message_box(f'{mode} saved')
-            # print('SX Tools: ' + mode + ' saved')
-        else:
-            message_box(f'Unknown mode {mode} or file location not set!', 'SX Tools Error', 'ERROR')
-            # print('SX Tools Warning: ' + mode + ' file location not set!')
+        if not directory:
+            message_box('File location not set!', 'SX Tools Error', 'ERROR')
+            return
+
+        file_path = Path(directory) / f'{mode}.json'
+        data_map = {
+            'palettes': {'Palettes': sxglobals.master_palette_list},
+            'materials': {'Materials': sxglobals.material_list},
+            'gradients': sxglobals.ramp_dict,
+            'categories': sxglobals.category_dict,
+        }
+
+        data = data_map.get(mode)
+        if data is None:
+            message_box(f'Unknown mode {mode}', 'SX Tools Error', 'ERROR')
+            return
+
+        with file_path.open('w') as output:
+            json.dump(data, output, indent=4)
+
+        message_box(f'{mode} saved')
 
 
     def load_swatches(self, swatch_list):
@@ -238,6 +231,8 @@ class SXTOOLS2_files(object):
         export_dict = {'LIN': 'LINEAR', 'SRGB': 'SRGB'}
         empty = True
 
+        sxversion = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
+        colorspace = export_dict[prefs.exportspace]
         groupNames = []
         for group in groups:
             if scene.benchmark_export:
@@ -261,7 +256,7 @@ class SXTOOLS2_files(object):
                 for collider in colliders:
                     if collider.get('group_id') == group.name:
                         collider_list.append(collider)
-                        collider['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
+                        collider['sxToolsVersion'] = sxversion
                     # if collider.name.startswith(collider_id):
                     #     collider_list.append(collider)
                     #     collider['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
@@ -286,8 +281,8 @@ class SXTOOLS2_files(object):
                     sel['specular'] = sel.sx2.mat_specular
                     sel['anisotropic'] = sel.sx2.mat_anisotropic
                     sel['clearcoat'] = sel.sx2.mat_clearcoat
-                    sel['sxToolsVersion'] = 'SX Tools 2 for Blender ' + str(sys.modules['sxtools2'].bl_info.get('version'))
-                    sel['colorSpace'] = export_dict[prefs.exportspace]
+                    sel['sxToolsVersion'] = sxversion
+                    sel['colorSpace'] = colorspace
 
             if obj_list:
                 empty = False
@@ -323,7 +318,7 @@ class SXTOOLS2_files(object):
                     path = scene.exportfolder + category + os.path.sep
                 else:
                     path = scene.exportfolder + subfolder + os.path.sep + category + os.path.sep
-                pathlib.Path(path).mkdir(exist_ok=True, parents=True)
+                Path(path).mkdir(exist_ok=True, parents=True)
 
                 if collider_list:
                     for collider in collider_list:
@@ -432,7 +427,7 @@ class SXTOOLS2_files(object):
             category = objs[0].sx2.category.lower()
             print(f'Determining path: {objs[0].name} {category}')
             path = scene.exportfolder + category + os.path.sep
-            pathlib.Path(path).mkdir(exist_ok=True)
+            Path(path).mkdir(exist_ok=True)
 
             export_path = path + obj.name + '.' + 'fbx'
             export_settings = ['FBX_SCALE_UNITS', False, False, False, 'Z', '-Y', '-Y', '-X', 'NONE']
@@ -492,7 +487,7 @@ class SXTOOLS2_files(object):
                     pixels[y*swatch_size*row_length+j*row_length:y*swatch_size*row_length+(j+1)*row_length] = row
 
             path = bpy.context.scene.sx2.exportfolder + os.path.sep
-            pathlib.Path(path).mkdir(exist_ok=True)
+            Path(path).mkdir(exist_ok=True)
 
             image = bpy.data.images.new('palette_atlas', alpha=True, width=grid*swatch_size, height=grid*swatch_size)
             image.alpha_mode = 'STRAIGHT'
@@ -2584,18 +2579,20 @@ class SXTOOLS2_layers(object):
                     topcolors = self.get_layer(obj, obj.sx2layers[layer_name], single_as_alpha=single_as_alpha)
                     basecolors = tools.blend_values(topcolors, basecolors, blendmode, layeralpha)
 
-            self.set_layer(obj, basecolors, resultLayer)
+            objlayer = utils.find_layer_by_stack_index(obj, resultLayer.index)
+            self.set_layer(obj, basecolors, objlayer)
         # bpy.context.view_layer.objects.active = active
 
 
     def merge_layers(self, objs, toplayer, baselayer, targetlayer):
         for obj in objs:
+            objlayer = utils.find_layer_by_stack_index(obj, targetlayer.index)
             basecolors = self.get_layer(obj, baselayer, apply_layer_opacity=True, single_as_alpha=True)
             topcolors = self.get_layer(obj, toplayer, apply_layer_opacity=True, single_as_alpha=True)
 
             blendmode = toplayer.blend_mode
             colors = tools.blend_values(topcolors, basecolors, blendmode, 1.0)
-            self.set_layer(obj, colors, targetlayer)
+            self.set_layer(obj, colors, objlayer)
 
         for obj in objs:
             setattr(obj.sx2layers[targetlayer.name], 'visibility', True)
@@ -2609,32 +2606,35 @@ class SXTOOLS2_layers(object):
 
         if fillmode == 'mask':
             for obj in objs:
-                colors = layers.get_layer(obj, targetlayer)
+                objlayer = utils.find_layer_by_stack_index(obj, targetlayer.index)
+                colors = layers.get_layer(obj, objlayer)
                 alphas = sxglobals.copy_buffer[obj.name]
                 if alphas:
                     count = len(colors)//4
                     for i in range(count):
                         colors[(3+i*4):(4+i*4)] = alphas[(3+i*4):(4+i*4)]
-                    layers.set_layer(obj, colors, targetlayer)
+                    layers.set_layer(obj, colors, objlayer)
         elif fillmode == 'lumtomask':
             for obj in objs:
-                colors = layers.get_layer(obj, targetlayer)
+                objlayer = utils.find_layer_by_stack_index(obj, targetlayer.index)
+                colors = layers.get_layer(obj, objlayer)
                 values = sxglobals.copy_buffer[obj.name]
                 if values:
                     alphas = convert.colors_to_values(values)
                     count = len(colors)//4
                     for i in range(count):
                         colors[3+i*4] = alphas[i]
-                    layers.set_layer(obj, colors, targetlayer)
+                    layers.set_layer(obj, colors, objlayer)
         else:
             for obj in objs:
+                objlayer = utils.find_layer_by_stack_index(obj, targetlayer.index)
                 colors = sxglobals.copy_buffer[obj.name]
                 if colors:
-                    targetvalues = self.get_layer(obj, targetlayer)
+                    targetvalues = self.get_layer(obj, objlayer)
                     if sxglobals.mode == 'EDIT':
                         colors = generate.mask_list(obj, colors)
                     colors = tools.blend_values(colors, targetvalues, 'ALPHA', 1.0)
-                    layers.set_layer(obj, colors, targetlayer)
+                    layers.set_layer(obj, colors, objlayer)
 
         utils.mode_manager(objs, set_mode=False, mode_id='paste_layer')
 
@@ -2822,8 +2822,9 @@ class SXTOOLS2_tools(object):
         blendmode = scene.toolblend
 
         for obj in objs:
+            objlayer = utils.find_layer_by_stack_index(obj, targetlayer.index)
             if (masklayer is None) and (targetlayer.locked):
-                masklayer = targetlayer
+                masklayer = objlayer
 
             colors = None
             generator = color_generators.get(toolmode)
@@ -2842,17 +2843,17 @@ class SXTOOLS2_tools(object):
 
                 if channel is not None:
                     grayscales = convert.colors_to_values(colors, as_rgba=True)
-                    values, _ = layers.get_layer_mask(obj, targetlayer, channel)
+                    values, _ = layers.get_layer_mask(obj, objlayer, channel)
 
                     target_grayscales = convert.values_to_colors(values)
                     target_grayscales = self.blend_values(grayscales, target_grayscales, blendmode, blendvalue, selectionmask=mask)
                     target_values = convert.colors_to_values(target_grayscales)
-                    layers.set_channel(obj, targetlayer.color_attribute, target_values, channel)
+                    layers.set_channel(obj, objlayer.color_attribute, target_values, channel)
                 else:
-                    target_colors = layers.get_layer(obj, targetlayer)
+                    target_colors = layers.get_layer(obj, objlayer)
                     colors = self.blend_values(colors, target_colors, blendmode, blendvalue, selectionmask=mask)
 
-                    layers.set_layer(obj, colors, targetlayer)
+                    layers.set_layer(obj, colors, objlayer)
 
         utils.mode_manager(objs, set_mode=False, mode_id='apply_tool')
         if scene.benchmark_tool:
@@ -2876,6 +2877,7 @@ class SXTOOLS2_tools(object):
             offset = newValue
 
         for obj in objs:
+            layer = utils.find_layer_by_stack_index(obj, layer.index)
             org_colors = layers.get_layer(obj, layer)
             colors = generate.mask_list(obj, org_colors)
             if colors:
@@ -10146,13 +10148,12 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
 
 
     def modal(self, context, event):
-        if event.type == 'TIMER_REPORT':
+        if event.type in {'MOUSEMOVE', 'TIMER', 'TIMER_REPORT'}:
             return {'PASS_THROUGH'}
 
-        if not context.area:
-            print('Selection Monitor: Context Lost')
-            sxglobals.selection_modal_status = False
-            return {'CANCELLED'}
+        # optional: context safety check
+        if not context.area or context.area.type != 'VIEW_3D':
+            return {'PASS_THROUGH'}            
 
         if (len(sxglobals.master_palette_list) == 0) or (len(sxglobals.material_list) == 0) or (len(sxglobals.ramp_dict) == 0) or (len(sxglobals.category_dict) == 0):
             sxglobals.libraries_status = False
@@ -10166,7 +10167,7 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
             
             # If user has manually switched modes, reset the mode_manager state
             if current_mode != stored_mode and current_mode != 'OBJECT':
-                print(f"SX Tools: Mode changed manually. Resetting mode manager.")
+                self.report({'INFO'}, 'SX Tools: Manual mode switch detected. Resetting mode manager.')
                 sxglobals.mode_id = None
                 sxglobals.mode = current_mode
 
@@ -10232,7 +10233,7 @@ class SXTOOLS2_OT_selectionmonitor(bpy.types.Operator):
         # bpy.app.timers.register(lambda: 0.01 if 'PASS_THROUGH' in self.modal(context, event) else None)
         sxglobals.prev_selection = context.view_layer.objects.selected.keys()[:]
         context.window_manager.modal_handler_add(self)
-        print('SX Tools: Starting selection monitor')
+        self.report({'INFO'}, 'SX Tools: Starting selection monitor')
         return {'RUNNING_MODAL'}
 
 
@@ -10285,7 +10286,7 @@ class SXTOOLS2_OT_keymonitor(bpy.types.Operator):
 
     def invoke(self, context, event):
         context.window_manager.modal_handler_add(self)
-        print('SX Tools: Starting key monitor')
+        self.report({'INFO'}, 'SX Tools: Starting key monitor')
         return {'RUNNING_MODAL'}
 
 
@@ -10386,19 +10387,21 @@ class SXTOOLS2_OT_addpalettecategory(bpy.types.Operator):
         for i, category_dict in enumerate(sxglobals.master_palette_list):
             for category in category_dict:
                 if category == self.paletteCategoryName.replace(" ", ""):
-                    message_box('Palette Category Exists!')
                     found = True
                     break
 
-        if not found:
-            categoryName = self.paletteCategoryName.replace(" ", "")
-            categoryEnum = categoryName.upper()
-            category_dict = {categoryName: {}}
+        if found:
+            self.report({'ERROR'}, 'Palette Category already exists!')
+            return {'CANCELLED'}
 
-            sxglobals.master_palette_list.append(category_dict)
-            files.save_file('palettes')
-            files.load_file('palettes')
-            context.scene.sx2.palettecategories = categoryEnum
+        categoryName = self.paletteCategoryName.replace(" ", "")
+        categoryEnum = categoryName.upper()
+        category_dict = {categoryName: {}}
+
+        sxglobals.master_palette_list.append(category_dict)
+        files.save_file('palettes')
+        files.load_file('palettes')
+        context.scene.sx2.palettecategories = categoryEnum
         return {'FINISHED'}
 
 
@@ -10520,7 +10523,8 @@ class SXTOOLS2_OT_addpalette(bpy.types.Operator):
         scene = context.scene.sx2
         paletteName = self.label.replace(" ", "")
         if paletteName in context.scene.sx2palettes:
-            message_box('Palette Name Already in Use!')
+            self.report({'ERROR'}, 'Palette Name Already in Use!')
+            return {'CANCELLED'}
         else:
             for category_dict in sxglobals.master_palette_list:
                 for i, category in enumerate(category_dict.keys()):
