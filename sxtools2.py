@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 14, 9),
+    'version': (2, 14, 12),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -1152,45 +1152,40 @@ class SXTOOLS2_convert(object):
     def hsl_to_rgb(self, in_value):
         H, S, L = in_value
 
-        v1 = 0.0
-        v2 = 0.0
-
-        rgb = [0.0, 0.0, 0.0]
-
         if S == 0.0:
-            rgb = [L, L, L]
+            return [L, L, L]
+
+        if L < 0.5:
+            v1 = L * (S + 1.0)
         else:
-            if L < 0.5:
-                v1 = L*(S+1.0)
-            elif L >= 0.5:
-                v1 = L+S-L*S
+            v1 = L + S - L * S
 
-            v2 = 2.0*L-v1
+        v2 = 2.0 * L - v1
 
-            # H = H/360.0
+        def calc(t):
+            if t < 0.0:
+                t += 1.0
+            elif t > 1.0:
+                t -= 1.0
 
-            tR = H + 0.333333
-            tG = H
-            tB = H - 0.333333
+            if t * 6.0 < 1.0:
+                return v2 + (v1 - v2) * 6.0 * t
+            elif t * 2.0 < 1.0:
+                return v1
+            elif t * 3.0 < 2.0:
+                return v2 + (v1 - v2) * (0.666666 - t) * 6.0
+            else:
+                return v2
 
-            tList = [tR, tG, tB]
+        tR = H + 0.333333
+        tG = H
+        tB = H - 0.333333
 
-            for i, t in enumerate(tList):
-                if t < 0.0:
-                    t += 1.0
-                elif t > 1.0:
-                    t -= 1.0
+        r = calc(tR)
+        g = calc(tG)
+        b = calc(tB)
 
-                if t*6.0 < 1.0:
-                    rgb[i] = v2+(v1-v2)*6.0*t
-                elif t*2.0 < 1.0:
-                    rgb[i] = v1
-                elif t*3.0 < 2.0:
-                    rgb[i] = v2+(v1-v2)*(0.666666 - t)*6.0
-                else:
-                    rgb[i] = v2
-
-        return rgb
+        return (r, g, b)
 
 
     def colors_to_values(self, colors, as_rgba=False):
@@ -1584,9 +1579,11 @@ class SXTOOLS2_generate(object):
                 # offset ray origin with normal bias
                 vertPos = vertLoc + (bias * invNormal)
 
+                rotated_rays = [rotQuat @ ray for ray in hemisphere_rays]
+
                 # Raycast for distance
-                for ray in hemisphere_rays:
-                    hit, loc, normal, _ = obj.ray_cast(vertPos, rotQuat @ ray)
+                for ray in rotated_rays:
+                    hit, loc, normal, _ = obj.ray_cast(vertPos, ray)
                     if hit:
                         dist_list.append((loc - vertPos).length)
 
@@ -1604,9 +1601,10 @@ class SXTOOLS2_generate(object):
                 vertPos = vert_data[0]
                 invNormal = vert_data[1]
                 rotQuat = vert_data[2]
+                rotated_rays = [rotQuat @ ray for ray in hemisphere_rays]
 
-                for ray in hemisphere_rays:
-                    hit = obj.ray_cast(vertPos, rotQuat @ ray, distance=raydistance)[0]
+                for ray in rotated_rays:
+                    hit = obj.ray_cast(vertPos, ray, distance=raydistance)[0]
                     vert_occ_dict[vert_id] += contribution * hit
 
 
@@ -1728,14 +1726,15 @@ class SXTOOLS2_generate(object):
             # Pass 2: Local space occlusion for individual object
             if 0.0 <= mix < 1.0:
                 rotQuat = forward.rotation_difference(vertNormal)
+                rotated_rays_obj = [rotQuat @ ray for ray in valid_rays]
 
                 # offset ray origin with normal bias
                 vertPos = vertLoc + (bias * vertNormal)
 
                 # for every object ray hit, subtract a fraction from the vertex brightness
-                for i, ray in enumerate(valid_rays):
+                for i, ray in enumerate(rotated_rays_obj):
                     # hit = obj_eval.ray_cast(vertPos, rotQuat @ Vec(ray), distance=dist)[0]
-                    result = bvh.ray_cast(vertPos, rotQuat @ ray, dist)
+                    result = bvh.ray_cast(vertPos, ray, dist)
                     hit = not all(x is None for x in result)
                     occValue -= contribution * hit
                     pass2_hits[i] = hit
@@ -1743,6 +1742,7 @@ class SXTOOLS2_generate(object):
             # Pass 3: Worldspace occlusion for scene
             if 0.0 < mix <= 1.0:
                 rotQuat = forward.rotation_difference(vertWorldNormal)
+                rotated_rays_world = [rotQuat @ ray for ray in valid_rays]
 
                 # offset ray origin with normal bias
                 scnVertPos = vertWorldLoc + (bias * vertWorldNormal)
@@ -1751,9 +1751,9 @@ class SXTOOLS2_generate(object):
                 scnOccValue = occValue
 
                 # Fire rays only for samples that had not hit in Pass 2
-                for i, ray in enumerate(valid_rays):
+                for i, ray in enumerate(rotated_rays_world):
                     if not pass2_hits[i]:
-                        hit = scene.ray_cast(edg, scnVertPos, rotQuat @ ray, distance=dist)[0]
+                        hit = scene.ray_cast(edg, scnVertPos, ray, distance=dist)[0]
                         scnOccValue -= contribution * hit
 
             vert_occ_dict[vert_id] = float((occValue * (1.0 - mix)) + (scnOccValue * mix))
@@ -2876,6 +2876,12 @@ class SXTOOLS2_tools(object):
         else:
             offset = newValue
 
+        if abs(offset) < 1e-6:
+            utils.mode_manager(objs, set_mode=False, mode_id='apply_hsl')
+            return
+
+        rgb2hsl = convert.rgb_to_hsl
+        hsl2rgb = convert.hsl_to_rgb
         for obj in objs:
             layer = utils.find_layer_by_stack_index(obj, layer.index)
             org_colors = layers.get_layer(obj, layer)
@@ -2883,11 +2889,16 @@ class SXTOOLS2_tools(object):
             if colors:
                 count = len(colors)//4
                 for i in range(count):
-                    color = colors[(0+i*4):(3+i*4)]
-                    hsl = convert.rgb_to_hsl(color)
+                    idx = i * 4
+                    r = colors[idx]
+                    g = colors[idx + 1]
+                    b = colors[idx + 2]
+                    hsl = rgb2hsl((r, g, b))
                     hsl[hslmode] += offset
-                    rgb = convert.hsl_to_rgb(hsl)
-                    colors[(0+i*4):(3+i*4)] = [rgb[0], rgb[1], rgb[2]]
+                    rgb = hsl2rgb(hsl)
+                    colors[idx]     = rgb[0]
+                    colors[idx + 1] = rgb[1]
+                    colors[idx + 2] = rgb[2]
                 mask = generate.get_selection_mask(obj)[0]
                 colors = self.blend_values(colors, org_colors, 'REP', 1.0, mask)
                 layers.set_layer(obj, colors, layer)
@@ -7340,17 +7351,13 @@ def load_category(self, context):
 
             obj.sx2.staticvertexcolors = str(category_data['staticvertexcolors'])
             obj.sx2.metallicoverride = bool(category_data['metallic_override'])
-            obj.sx2.metallic0 = category_data['palette_metallic'][0]
-            obj.sx2.metallic1 = category_data['palette_metallic'][1]
-            obj.sx2.metallic2 = category_data['palette_metallic'][2]
-            obj.sx2.metallic3 = category_data['palette_metallic'][3]
-            obj.sx2.metallic4 = category_data['palette_metallic'][4]
+            for i, value in enumerate(category_data['palette_metallic']):
+                setattr(obj.sx2, f'metallic{i}', value)
+
             obj.sx2.roughnessoverride = bool(category_data['roughness_override'])
-            obj.sx2.roughness0 = category_data['palette_roughness'][0]
-            obj.sx2.roughness1 = category_data['palette_roughness'][1]
-            obj.sx2.roughness2 = category_data['palette_roughness'][2]
-            obj.sx2.roughness3 = category_data['palette_roughness'][3]
-            obj.sx2.roughness4 = category_data['palette_roughness'][4]
+            for i, value in enumerate(category_data['palette_roughness']):
+                setattr(obj.sx2, f'roughness{i}', value)
+
             if category_data['overlay_opacity'] < 1.0:
                 obj.sx2.materialoverride = True
                 obj.sx2.mat_overlay = category_data['overlay_opacity']
