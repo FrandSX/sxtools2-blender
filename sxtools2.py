@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 14, 12),
+    'version': (2, 14, 16),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -3210,13 +3210,22 @@ class SXTOOLS2_modifiers(object):
                     setup.create_tiler()
                 tiler = obj.modifiers.new(type='NODES', name='sxTiler')
                 tiler.node_group = bpy.data.node_groups['sx_tiler']
-                tiler['Socket_1'] = obj.sx2.tile_offset
-                tiler['Socket_3'] = obj.sx2.tile_neg_x
-                tiler['Socket_4'] = obj.sx2.tile_pos_x
-                tiler['Socket_5'] = obj.sx2.tile_neg_y
-                tiler['Socket_6'] = obj.sx2.tile_pos_y
-                tiler['Socket_7'] = obj.sx2.tile_neg_z
-                tiler['Socket_8'] = obj.sx2.tile_pos_z
+                if sxglobals.version >= 5 and sxglobals.minorversion >= 2: 
+                    tiler.properties.inputs.Socket_1.value = obj.sx2.tile_offset
+                    tiler.properties.inputs.Socket_3.value = obj.sx2.tile_neg_x
+                    tiler.properties.inputs.Socket_4.value = obj.sx2.tile_pos_x
+                    tiler.properties.inputs.Socket_5.value = obj.sx2.tile_neg_y
+                    tiler.properties.inputs.Socket_6.value = obj.sx2.tile_pos_y
+                    tiler.properties.inputs.Socket_7.value = obj.sx2.tile_neg_z
+                    tiler.properties.inputs.Socket_8.value = obj.sx2.tile_pos_z
+                else:
+                    tiler['Socket_1'] = obj.sx2.tile_offset
+                    tiler['Socket_3'] = obj.sx2.tile_neg_x
+                    tiler['Socket_4'] = obj.sx2.tile_pos_x
+                    tiler['Socket_5'] = obj.sx2.tile_neg_y
+                    tiler['Socket_6'] = obj.sx2.tile_pos_y
+                    tiler['Socket_7'] = obj.sx2.tile_neg_z
+                    tiler['Socket_8'] = obj.sx2.tile_pos_z     
                 tiler.show_viewport = False
                 tiler.show_expanded = False
 
@@ -3321,7 +3330,10 @@ class SXTOOLS2_modifiers(object):
                 # bpy.ops.object.modifier_add_node_group(asset_library_type='ESSENTIALS', asset_library_identifier="", relative_asset_identifier="geometry_nodes\\smooth_by_angle.blend\\NodeTree\\Smooth by Angle")
                 obj.modifiers['sxSmoothNormals'].show_viewport = obj.sx2.modifiervisibility
                 obj.modifiers['sxSmoothNormals'].show_expanded = False
-                obj.modifiers["sxSmoothNormals"]["Input_1"] = math.radians(obj.sx2.smoothangle)
+                if sxglobals.version >= 5 and sxglobals.minorversion >= 2:
+                    obj.modifiers["sxSmoothNormals"].properties.inputs.Input_1.value = math.radians(obj.sx2.smoothangle)
+                else:
+                     obj.modifiers["sxSmoothNormals"]["Input_1"] = math.radians(obj.sx2.smoothangle)
 
             if 'sxWeightedNormal' not in obj.modifiers:
                 obj.modifiers.new(type='WEIGHTED_NORMAL', name='sxWeightedNormal')
@@ -6118,11 +6130,13 @@ class SXTOOLS2_setup(object):
             switch = nodetree.nodes.new(type="GeometryNodeSwitch")
             switch.name = 'switch'+str(i)
             switch.location = (600, -100*i)
+            switch.input_type = 'GEOMETRY'
 
             # transforms for mirror copies
             transform = nodetree.nodes.new(type='GeometryNodeTransform')
             transform.name = 'transform'+str(i)
             transform.location = (800, -100*i)
+            transform.inputs['Mode'].default_value = 'Components'
 
             # link combine to translation
             connect_nodes(combine.outputs["Vector"], transform.inputs['Translation'])
@@ -6424,14 +6438,14 @@ class SXTOOLS2_setup(object):
             if obj.sx2layers:
                 sxmaterial = bpy.data.materials.new(name='SX2Material_'+obj.name)
                 sxmaterial.use_nodes = True
-                sxmaterial.node_tree.nodes['Principled BSDF'].inputs[26].default_value = [0.0, 0.0, 0.0, 1.0]
+                sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Sheen Tint'].default_value = [0.0, 0.0, 0.0, 1.0]
                 sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = [0.0, 0.0, 0.0, 1.0]
                 sxmaterial.node_tree.nodes['Principled BSDF'].location = (1000, 0)
                 sxmaterial.node_tree.nodes['Material Output'].location = (1300, 0)
 
                 if (obj.sx2.shadingmode == 'FULL') or (obj.sx2.shadingmode == 'XRAY'):
                     sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Anisotropic'].default_value = obj.sx2.mat_anisotropic
-                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs[18].default_value = obj.sx2.mat_clearcoat
+                    sxmaterial.node_tree.nodes['Principled BSDF'].inputs['Coat Weight'].default_value = obj.sx2.mat_clearcoat
                     prev_color = None
                     prev_alpha = None
                     rgba_mats = ['SSS', 'EMI']
