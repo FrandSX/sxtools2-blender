@@ -1,7 +1,7 @@
 bl_info = {
     'name': 'SX Tools 2',
     'author': 'Jani Kahrama / Secret Exit Ltd.',
-    'version': (2, 14, 16),
+    'version': (2, 15, 1),
     'blender': (4, 2, 0),
     'location': 'View3D',
     'description': 'Multi-layer vertex coloring tool',
@@ -5667,6 +5667,36 @@ class SXTOOLS2_magic(object):
         scene.toolopacity = 1.0
 
 
+    def get_roughness_metallic(self, obj, materialname):
+
+        roughness = layers.get_layer(obj, obj.sx2layers['Roughness'])
+        metallic = layers.get_layer(obj, obj.sx2layers['Metallic'])
+
+        # Static overrides
+        rgh_value = (obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness, 1.0)
+        mtl_value = (obj.sx2.static_metallic, obj.sx2.static_metallic, obj.sx2.static_metallic, 1.0)
+        layer_statics = utils.find_color_layers(obj, 5)
+        rgh_values = generate.color_list(obj, rgh_value, layer_statics)
+        mtl_values = generate.color_list(obj, mtl_value, layer_statics)
+        mask, _ = layers.get_layer_mask(obj, layer_statics)
+        roughness = tools.blend_values(rgh_values, roughness, 'REP', 1.0, selectionmask=mask)
+        metallic = tools.blend_values(mtl_values, metallic, 'REP', 1.0, selectionmask=mask)
+
+        # Combine with roughness and metallic from PBR material if not manually applied by artist
+        if not obj.sx2.preserve_pbr:
+            materialroughness = bpy.context.scene.sx2materials[materialname].color2
+            materialmetallic = bpy.context.scene.sx2materials[materialname].color1
+
+            layer_pbr = utils.find_color_layers(obj, 6)
+            matroughness = generate.color_list(obj, materialroughness, layer_pbr)
+            matmetallic = generate.color_list(obj, materialmetallic, layer_pbr)
+            mask, _ = layers.get_layer_mask(obj, layer_pbr)
+            roughness = tools.blend_values(matroughness, roughness, 'REP', 1.0, selectionmask=mask)
+            metallic = tools.blend_values(matmetallic, metallic, 'REP', 1.0, selectionmask=mask)
+
+        return roughness, metallic
+
+
     def process_default(self, objs):
         self.apply_palette_overrides(objs)
 
@@ -5734,29 +5764,12 @@ class SXTOOLS2_magic(object):
         self.apply_occlusion(objs, masklayername='Emission')
         self.apply_curvature_overlay(objs, convex=True, concave=True, noise=0.01)
 
-        material = 'Iron'
-        palette = [
-            bpy.context.scene.sx2materials[material].color0,
-            bpy.context.scene.sx2materials[material].color1,
-            bpy.context.scene.sx2materials[material].color2]
-
         for obj in objs:
-            colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
-            # Static colors layer is rough
-            rgh_value = (obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness, 1.0)
-            layer_statics = utils.find_color_layers(obj, 5)
-            colors1 = generate.color_list(obj, rgh_value, layer_statics)
-            mask, _ = layers.get_layer_mask(obj, layer_statics)
-            colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
-            # Combine with roughness from PBR material if not manually applied by artist
-            if not obj.sx2.preserve_pbr:
-                layer_pbr = utils.find_color_layers(obj, 6)
-                colors1 = generate.color_list(obj, palette[2], layer_pbr)
-                mask, _ = layers.get_layer_mask(obj, layer_pbr)
-                colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
+            roughness, metallic = self.get_roughness_metallic(obj, 'Iron')
+
             # Noise for variance
             colors1 = generate.noise_list(obj, 0.01, True)
-            colors = tools.blend_values(colors1, colors, 'OVR', 1.0)
+            colors = tools.blend_values(colors1, roughness, 'OVR', 1.0)
             # Combine roughness base mask with custom curvature gradient
             scene.normalizeconvex = True
             scene.normalizeconcave = True
@@ -5774,26 +5787,22 @@ class SXTOOLS2_magic(object):
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
             colors = tools.blend_values(colors1, colors, 'ADD', 0.2)
+
             # Emissives are smooth
-            color = (0.0, 0.0, 0.0, 1.0)
-            colors1 = generate.color_list(obj, color, obj.sx2layers['Emission'])
-            # colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            mask, _ = layers.get_layer_mask(obj, obj.sx2layers['Emission'])
-            colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
+            mask, empty = layers.get_layer_mask(obj, obj.sx2layers['Emission'])
+            if not empty:
+                colors1 = generate.color_list(obj, (0.0, 0.0, 0.0, 1.0), obj.sx2layers['Emission'])
+                # colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
+                colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
 
             # Write roughness
             layer = obj.sx2layers['Roughness']
             layers.set_layer(obj, colors, layer)
 
-            # Mix metallic with occlusion (non-metallic dirt in crevices)
-            if not obj.sx2.preserve_pbr:
-                colors = generate.color_list(obj, color=palette[1], masklayer=utils.find_color_layers(obj, 6))
-            else:
-                colors = layers.get_layer(obj, obj.sx2layers['Metallic'])
-            if colors:
+            if metallic:
                 colors1 = layers.get_layer(obj, obj.sx2layers['Occlusion'], single_as_alpha=True)
-                colors = tools.blend_values(colors1, colors, 'MUL', 1.0)
-                layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
+                metallic = tools.blend_values(colors1, metallic, 'MUL', 1.0)
+                layers.set_layer(obj, metallic, obj.sx2layers['Metallic'])
 
 
     def process_vehicles(self, objs):
@@ -5803,29 +5812,13 @@ class SXTOOLS2_magic(object):
         self.apply_occlusion(objs, masklayername='Emission')
         self.apply_curvature_overlay(objs, convex=True, concave=False, noise=0.01)
 
-        material = 'Iron'
-        palette = [
-            bpy.context.scene.sx2materials[material].color0,
-            bpy.context.scene.sx2materials[material].color1,
-            bpy.context.scene.sx2materials[material].color2]
-
         for obj in objs:
-            colors = layers.get_layer(obj, obj.sx2layers['Roughness'])
-            # Static colors layer is rough
-            rgh_value = (obj.sx2.static_roughness, obj.sx2.static_roughness, obj.sx2.static_roughness, 1.0)
-            layer_statics = utils.find_color_layers(obj, 5)
-            colors1 = generate.color_list(obj, rgh_value, layer_statics)
-            mask, _ = layers.get_layer_mask(obj, layer_statics)
-            colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
-            # Combine with roughness from PBR material if not manually applied by artist
-            if not obj.sx2.preserve_pbr:
-                layer_pbr = utils.find_color_layers(obj, 6)
-                colors1 = generate.color_list(obj, palette[2], layer_pbr)
-                mask, _ = layers.get_layer_mask(obj, layer_pbr)
-                colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
+            roughness, metallic = self.get_roughness_metallic(obj, 'Iron')
+
             # Noise for variance
-            colors1 = generate.noise_list(obj, 0.01, True)
-            colors = tools.blend_values(colors1, colors, 'OVR', 1.0)
+            colors1 = generate.noise_list(obj, 1.0, True)
+            colors = tools.blend_values(colors1, roughness, 'ALPHA', 0.05)
+
             # Combine roughness base mask with custom curvature gradient
             scene.normalizeconvex = True
             scene.normalizeconcave = False
@@ -5834,6 +5827,7 @@ class SXTOOLS2_magic(object):
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
             colors = tools.blend_values(colors1, colors, 'ADD', 0.1)
+
             # Combine previous mix with directional dust
             scene.ramplist = 'DIRECTIONALDUST'
             scene.dirAngle = 0.0
@@ -5843,11 +5837,14 @@ class SXTOOLS2_magic(object):
             values = layers.get_luminances(obj, colors=colors1)
             colors1 = generate.luminance_remap_list(obj, values=values)
             colors = tools.blend_values(colors1, colors, 'ADD', 0.2)
+
             # Emissives are smooth
-            colors1 = generate.color_list(obj, (0.0, 0.0, 0.0, 1.0), obj.sx2layers['Emission'])
-            # colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
-            mask, _ = layers.get_layer_mask(obj, obj.sx2layers['Emission'])
-            colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
+            mask, empty = layers.get_layer_mask(obj, obj.sx2layers['Emission'])
+            if not empty:
+                colors1 = generate.color_list(obj, (0.0, 0.0, 0.0, 1.0), obj.sx2layers['Emission'])
+                # colors = tools.blend_values(colors1, colors, 'ALPHA', 1.0)
+                colors = tools.blend_values(colors1, colors, 'REP', 1.0, selectionmask=mask)
+
             # Write roughness
             layers.set_layer(obj, colors, obj.sx2layers['Roughness'])
 
@@ -5858,18 +5855,10 @@ class SXTOOLS2_magic(object):
             scene.toolopacity = 1.0
             scene.toolblend = 'ALPHA'
 
-            # Mix metallic with occlusion (non-metallic dirt in crevices)
-            if not obj.sx2.preserve_pbr:
-                colors = generate.color_list(obj, color=palette[1], masklayer=utils.find_color_layers(obj, 6))
-                colors1 = layers.get_layer(obj, obj.sx2layers['Metallic'])
-                colors = tools.blend_values(colors, colors1, 'ALPHA', 1.0)
-            else:
-                colors = layers.get_layer(obj, obj.sx2layers['Metallic'])
-
-            if colors:
+            if metallic:
                 colors1 = layers.get_layer(obj, obj.sx2layers['Occlusion'], single_as_alpha=True)
-                colors = tools.blend_values(colors1, colors, 'MUL', 0.85)
-                layers.set_layer(obj, colors, obj.sx2layers['Metallic'])
+                metallic = tools.blend_values(colors1, metallic, 'MUL', 0.85)
+                layers.set_layer(obj, metallic, obj.sx2layers['Metallic'])
 
 
     def process_buildings(self, objs):
